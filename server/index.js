@@ -527,7 +527,15 @@ app.get('/api/dashboard', (req, res) => {
       CAST((julianday(ws.completed_at) - julianday(ws.started_at)) * 86400 AS INTEGER) AS duration_seconds,
       r.name AS routine_name,
       cg.name AS group_name,
-      COUNT(wl.id) AS sets
+      COUNT(wl.id) AS sets,
+      (
+        SELECT e.image_path
+        FROM workout_logs wl2
+        JOIN exercises e ON e.id = wl2.exercise_id
+        WHERE wl2.session_id = ws.id
+        ORDER BY wl2.set_index ASC, wl2.id ASC
+        LIMIT 1
+      ) AS image_path
     FROM workout_sessions ws
     LEFT JOIN routines r ON r.id = ws.routine_id
     LEFT JOIN custom_groups cg ON cg.id = ws.group_id
@@ -538,6 +546,7 @@ app.get('/api/dashboard', (req, res) => {
     LIMIT 30
   `, [userId]).map((row) => ({
     ...row,
+    imageUrl: row.image_path ? `/media/${row.image_path}` : null,
     duration_minutes: formatMinutes(row.duration_seconds)
   }));
 

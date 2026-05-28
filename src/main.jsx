@@ -630,6 +630,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
               <p className="text-sm font-bold">{label}</p>
               <p className="text-2xl font-black">{date.getDate()}</p>
               {routine?.exercises?.[0] && !done && <img src={routine.exercises[0].imageUrl} className="mx-auto mt-1 h-8 w-8 rounded bg-white object-contain" />}
+              {done && mainDone.imageUrl && <img src={mainDone.imageUrl} className="mx-auto mt-1 h-8 w-8 rounded bg-white object-contain ring-1 ring-white/70" />}
               <p className="mt-1 min-h-8 text-xs font-bold leading-tight">{done ? (mainDone.routine_name || mainDone.group_name || 'Buổi tập tự do') : routine?.name || ''}</p>
               {done && (
                 <div className="mt-1 rounded-md bg-white/70 px-1.5 py-1 text-[10px] font-bold leading-tight text-slate-700">
