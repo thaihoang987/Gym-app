@@ -8,6 +8,7 @@ import {
   GripVertical,
   Home,
   Library,
+  LogOut,
   Pause,
   Play,
   Plus,
@@ -37,6 +38,17 @@ const localeOptions = [
   ['en-US', 'English - United States'],
   ['th-TH', 'Thai - Thailand'],
   ['ja-JP', 'Japanese - Japan']
+];
+const rangeOptions = [
+  ['1d', '1 ngày', 1],
+  ['7d', '7 ngày', 7],
+  ['14d', '2 tuần', 14],
+  ['1m', '1 tháng', 30],
+  ['6m', '6 tháng', 183],
+  ['1y', '1 năm', 365],
+  ['2y', '2 năm', 730],
+  ['3y', '3 năm', 1095],
+  ['5y', '5 năm', 1825]
 ];
 
 function supportedTimezones() {
@@ -97,6 +109,17 @@ function bmiFeedback(bmi) {
   if (bmi < 25) return { label: 'Tốt', tone: 'ok', text: 'BMI vẫn ổn, nếu mục tiêu là nét hơn thì giảm mỡ nhẹ và giữ sức mạnh là hướng đẹp.' };
   if (bmi < 30) return { label: 'Cần cải thiện', tone: 'warning', text: 'BMI hơi cao, nên theo dõi vòng eo, volume tập và giảm cân từ từ để bền hơn.' };
   return { label: 'Rủi ro cao', tone: 'danger', text: 'BMI đang cao, nên ưu tiên thói quen ăn uống, vận động đều và cân nhắc tư vấn chuyên môn.' };
+}
+
+function filterByRange(rows, field, rangeKey) {
+  const option = rangeOptions.find(([key]) => key === rangeKey);
+  if (!option) return rows;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - option[2]);
+  return rows.filter((row) => {
+    const date = parseServerDate(row[field]);
+    return date && date >= cutoff;
+  });
 }
 
 function displayPrefs(settings = {}) {
@@ -280,6 +303,7 @@ function Login({ onLogin }) {
 
 function Header({ user, boot, onLogout }) {
   const now = new Date();
+  const [open, setOpen] = useState(false);
   return (
     <header className="mb-5 flex items-center justify-between">
       <div>
@@ -287,9 +311,16 @@ function Header({ user, boot, onLogout }) {
         <h1 className="text-2xl font-bold">{user.name}</h1>
         <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {boot.exerciseCount} bài tập</p>
       </div>
-      <button onClick={onLogout} className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-green-950 font-bold">
-        {avatarContent(user.avatar)}
-      </button>
+      <div className="relative">
+        <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
+          {avatarContent(user.avatar)}
+        </button>
+        {open && (
+          <div className="avatar-menu">
+            <button onClick={onLogout}><LogOut size={17} /> Sign out</button>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
@@ -1573,6 +1604,7 @@ function Analytics({ userId, settings }) {
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
+  const [rangeKey, setRangeKey] = useState('1m');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
   const [selectedRoutineName, setSelectedRoutineName] = useState('');
 
@@ -1592,15 +1624,16 @@ function Analytics({ userId, settings }) {
     label: formatDateTime(row.logged_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
     bmi: settings.height_cm ? Number((Number(row.weight) / ((Number(settings.height_cm) / 100) ** 2)).toFixed(1)) : null
   }));
+  const rangedWeightRows = filterByRange(weightRows, 'logged_at', rangeKey);
   const latestWeight = weightRows[weightRows.length - 1];
   const previousWeight = weightRows[weightRows.length - 2];
   const weightDelta = latestWeight && previousWeight ? Number(latestWeight.weight) - Number(previousWeight.weight) : 0;
   const latestBmi = latestWeight?.bmi;
   const bmiInfo = bmiFeedback(latestBmi);
-  const exerciseChartRows = analytics.exerciseRows
+  const exerciseChartRows = filterByRange(analytics.exerciseRows, 'day', rangeKey)
     .filter((row) => row.exercise_id === selectedExerciseId)
     .map((row) => ({ ...row, label: formatDate(row.day, settings, { day: '2-digit', month: '2-digit' }) }));
-  const sessionChartRows = analytics.sessionRows
+  const sessionChartRows = filterByRange(analytics.sessionRows, 'completed_at', rangeKey)
     .filter((row) => !selectedRoutineName || row.name === selectedRoutineName)
     .map((row) => ({ ...row, label: formatDateTime(row.completed_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }));
   const selectedExercise = analytics.exercises.find((exercise) => exercise.id === selectedExerciseId);
@@ -1608,6 +1641,11 @@ function Analytics({ userId, settings }) {
   return (
     <section className="space-y-4">
       <h2 className="section-title">Thống kê</h2>
+      <div className="range-bar">
+        {rangeOptions.map(([key, label]) => (
+          <button key={key} className={rangeKey === key ? 'active' : ''} onClick={() => setRangeKey(key)}>{label}</button>
+        ))}
+      </div>
       <div className="weight-hero-card">
         <div>
           <p className="text-sm font-bold text-white/75">Cân nặng hiện tại</p>
@@ -1631,9 +1669,9 @@ function Analytics({ userId, settings }) {
       </div>
       <div className="weight-chart-panel h-96">
         <h3 className="mb-3 font-bold">Biểu đồ cân nặng</h3>
-        {weightRows.length ? (
+        {rangedWeightRows.length ? (
           <ResponsiveContainer width="100%" height="82%">
-            <AreaChart data={weightRows} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
+            <AreaChart data={rangedWeightRows} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
               <defs>
                 <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#2563eb" stopOpacity={0.28} />
@@ -1651,9 +1689,9 @@ function Analytics({ userId, settings }) {
       </div>
       <div className="weight-chart-panel h-80">
         <h3 className="mb-3 font-bold">Biểu đồ BMI</h3>
-        {weightRows.some((row) => row.bmi) ? (
+        {rangedWeightRows.some((row) => row.bmi) ? (
           <ResponsiveContainer width="100%" height="85%">
-            <LineChart data={weightRows.filter((row) => row.bmi)} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
+            <LineChart data={rangedWeightRows.filter((row) => row.bmi)} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="label" stroke="#6b668a" tickMargin={14} minTickGap={22} />
               <YAxis stroke="#6b668a" tickMargin={10} domain={['dataMin - 1', 'dataMax + 1']} />
