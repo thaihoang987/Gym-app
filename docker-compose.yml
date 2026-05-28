@@ -1,0 +1,9 @@
+services:
+  gym-app:
+    build: .
+    container_name: gym-app
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,9 @@
+node_modules
+dist
+data/*.sqlite-wal
+data/*.sqlite-shm
+.git
+.gitignore
+ExerciseGifDownloader
+scripts
+*.log

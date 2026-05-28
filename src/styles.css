@@ -1,0 +1,381 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #121619;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease, background-color 120ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+  filter: brightness(0.94);
+}
+
+button:focus-visible {
+  outline: 2px solid #f05a28;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.bg-app {
+  background:
+    linear-gradient(135deg, rgba(255, 111, 78, 0.16), transparent 28rem),
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.14), transparent 30rem),
+    linear-gradient(180deg, #f7f8f3 0%, #e9eee7 100%);
+}
+
+.shadow-soft {
+  box-shadow: 0 24px 70px rgba(18, 22, 25, 0.12);
+}
+
+.panel {
+  @apply rounded-lg border border-stone-200 bg-[#fffdf7] p-4 text-slate-950 shadow-soft;
+}
+
+.panel-green {
+  @apply rounded-lg border border-[#1f2933] bg-[#1f2933] p-4 text-white shadow-soft;
+}
+
+.weight-hero-card {
+  @apply grid grid-cols-[1fr_auto] items-center gap-4 rounded-[28px] p-5 text-white shadow-soft;
+  background: linear-gradient(135deg, #6c63ff 0%, #8f7cf7 48%, #ff8f70 100%);
+}
+
+.bmi-badge {
+  @apply grid h-28 w-28 place-items-center rounded-full bg-white/95 text-center text-[#5b4ee5] ring-8 ring-white/20;
+}
+
+.bmi-badge span {
+  @apply text-xs font-black uppercase;
+}
+
+.bmi-badge strong {
+  @apply text-2xl leading-none;
+}
+
+.bmi-badge small {
+  @apply max-w-20 text-[10px] leading-tight text-[#8b84ad];
+}
+
+.bmi-feedback {
+  @apply rounded-2xl border bg-white p-4 shadow-soft;
+}
+
+.bmi-feedback strong {
+  @apply block text-sm uppercase tracking-wide;
+}
+
+.bmi-feedback span {
+  @apply mt-1 block text-sm text-[#6f6a86];
+}
+
+.bmi-feedback.good {
+  @apply border-emerald-100 bg-emerald-50 text-emerald-800;
+}
+
+.bmi-feedback.ok {
+  @apply border-sky-100 bg-sky-50 text-sky-800;
+}
+
+.bmi-feedback.warning {
+  @apply border-amber-100 bg-amber-50 text-amber-800;
+}
+
+.bmi-feedback.danger {
+  @apply border-rose-100 bg-rose-50 text-rose-800;
+}
+
+.bmi-feedback.neutral {
+  @apply border-violet-100 bg-violet-50 text-violet-800;
+}
+
+.weight-chart-panel,
+.weight-history-panel {
+  @apply rounded-[28px] border border-[#ece8ff] bg-[#fbf9ff] p-5 text-[#2d2855] shadow-soft;
+}
+
+.weight-history-row {
+  @apply flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-[#f0ecff];
+}
+
+.weight-history-row strong {
+  @apply block text-sm text-[#2d2855];
+}
+
+.weight-history-row span {
+  @apply block text-xs font-semibold text-[#8b84ad];
+}
+
+.weight-history-row .text-right strong {
+  @apply text-lg text-[#6c63ff];
+}
+
+.weight-history-dot {
+  @apply h-3 w-3 rounded-full bg-[#ff8f70] ring-4 ring-[#ffe1d8];
+}
+
+.avatar-preview {
+  @apply grid h-16 w-16 place-items-center overflow-hidden rounded-full bg-emerald-500 text-lg font-black text-green-950 ring-2 ring-white shadow-soft;
+}
+
+.exercise-picker {
+  @apply relative mb-3;
+}
+
+.exercise-picker-button,
+.exercise-picker-option {
+  @apply flex w-full items-center gap-3 rounded-lg bg-white p-2 text-left text-sm font-bold ring-1 ring-slate-200;
+}
+
+.exercise-picker-button img,
+.exercise-picker-option img {
+  @apply h-10 w-10 shrink-0 rounded-md bg-slate-50 object-contain;
+}
+
+.exercise-picker-menu {
+  @apply absolute inset-x-0 top-full z-30 mt-2 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-soft;
+}
+
+.exercise-picker-option {
+  @apply mb-1 ring-transparent;
+}
+
+.exercise-picker-option.active {
+  @apply bg-orange-100 text-orange-950;
+}
+
+.builder-section {
+  @apply rounded-xl border border-stone-200 bg-[#fffdf7] p-4 text-slate-950 shadow-soft;
+}
+
+.section-title {
+  @apply mb-3 text-lg font-bold text-slate-950;
+}
+
+.label {
+  @apply mb-1 block text-sm font-semibold text-teal-950;
+}
+
+.input {
+  @apply w-full rounded-md border border-stone-200 bg-white px-3 py-3 text-slate-950 outline-none placeholder:text-slate-400 focus:border-orange-500;
+}
+
+.primary {
+  @apply flex w-full items-center justify-center gap-2 rounded-md bg-[#f05a28] px-4 py-3 font-bold text-white;
+}
+
+.primary-light {
+  @apply flex w-full items-center justify-center gap-2 rounded-md bg-[#fff1e8] px-4 py-3 font-bold text-[#8f2e12];
+}
+
+.ghost-btn {
+  @apply rounded-md border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-950 disabled:opacity-35;
+}
+
+.icon-btn {
+  @apply grid h-12 w-12 shrink-0 place-items-center rounded-md bg-[#f05a28] text-white;
+}
+
+.tiny-btn {
+  @apply grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#1f2933] text-teal-200 ring-1 ring-slate-700;
+}
+
+.small-action {
+  @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-md bg-[#f05a28] px-3 py-2 text-sm font-bold text-white;
+}
+
+.small-danger {
+  @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700;
+}
+
+.exercise-drag-row {
+  @apply flex items-center gap-3 rounded-md bg-slate-50 p-2 ring-1 ring-transparent;
+}
+
+.exercise-drag-row.dragging {
+  @apply bg-orange-50 opacity-70 ring-orange-300;
+}
+
+.exercise-drag-row.drop-target {
+  margin-top: 1rem;
+  @apply bg-orange-50 ring-orange-300;
+}
+
+.drag-handle {
+  @apply grid h-10 w-8 shrink-0 cursor-grab place-items-center rounded-md text-slate-500 hover:bg-white hover:text-slate-900;
+}
+
+.body-weight-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(12rem, 1.2fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.body-weight-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5rem 3rem;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.body-weight-unit {
+  width: 4.5rem;
+}
+
+.compact-input {
+  @apply px-2 py-2;
+}
+
+.weight-history {
+  @apply rounded-md border border-stone-200 bg-white px-3 py-2;
+}
+
+@media (max-width: 520px) {
+  .body-weight-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+.danger-btn {
+  @apply rounded-md border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-700 disabled:opacity-35;
+}
+
+.nav-btn {
+  @apply flex min-h-14 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] text-slate-500;
+}
+
+.nav-btn.active {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.mode-btn {
+  @apply rounded-md border border-slate-200 bg-white px-2 py-3 text-sm font-semibold text-slate-700;
+}
+
+.mode-btn.active {
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
+}
+
+.chip {
+  @apply shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700;
+}
+
+.chip.active {
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
+}
+
+.range {
+  @apply mt-3 h-3 w-full appearance-none rounded-full bg-slate-100 accent-orange-500;
+}
+
+.step {
+  @apply grid h-12 w-12 place-items-center rounded-md bg-slate-100 text-2xl font-bold text-slate-950;
+}
+
+.timer-pop {
+  @apply fixed bottom-24 right-4 z-30 flex max-w-[220px] items-center gap-3 rounded-lg bg-[#1f2933] px-3 py-2 text-sm font-bold text-white shadow-soft;
+}
+
+.calendar-tip {
+  @apply fixed z-50 rounded-md bg-green-950 px-3 py-2 text-xs font-semibold text-white shadow-soft pointer-events-none;
+}
+
+.workout-card {
+  @apply rounded-xl border border-slate-200 bg-white p-4 shadow-soft;
+}
+
+.set-input {
+  @apply h-12 w-full rounded-md border border-transparent bg-transparent text-center text-2xl font-black text-slate-950 outline-none disabled:text-slate-950;
+}
+
+.set-check {
+  @apply grid h-11 w-11 place-items-center rounded-xl bg-slate-200 text-white;
+}
+
+.set-check.done {
+  @apply bg-green-600 text-white;
+}
+
+.add-set-btn {
+  @apply mt-3 w-full rounded-xl bg-slate-100 px-4 py-4 text-lg font-bold text-slate-950;
+}
+
+.wheel-column {
+  @apply relative h-[112px] overflow-hidden rounded-lg bg-white text-center ring-1 ring-slate-200;
+  perspective: 900px;
+  touch-action: none;
+  user-select: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 24%, black 76%, transparent 100%);
+}
+
+.wheel-column:focus-visible {
+  @apply outline-none ring-2 ring-orange-300;
+}
+
+.wheel-highlight {
+  content: "";
+  @apply pointer-events-none absolute inset-x-1 top-1/2 z-0 h-[34px] -translate-y-1/2 rounded-md bg-orange-100 ring-1 ring-orange-200;
+}
+
+.wheel-options {
+  @apply absolute inset-0 z-10;
+  transform-style: preserve-3d;
+}
+
+.wheel-option {
+  @apply absolute left-0 top-1/2 grid h-[34px] w-full place-items-center bg-transparent text-sm font-bold text-slate-500;
+  opacity: var(--wheel-opacity);
+  transform: translateY(calc(-50% + var(--wheel-y))) rotateX(var(--wheel-rotate)) scale(var(--wheel-scale));
+  transform-origin: center center;
+  transition: color 140ms ease, font-size 140ms ease, opacity 120ms ease;
+  will-change: transform, opacity;
+}
+
+.wheel-options.settling .wheel-option {
+  transition: transform 160ms cubic-bezier(.2, .8, .2, 1), color 140ms ease, font-size 140ms ease, opacity 120ms ease;
+}
+
+.wheel-option.active {
+  @apply text-xl text-orange-800;
+}
+
+.stepper-picker {
+  @apply grid h-[104px] overflow-hidden rounded-lg bg-white text-center ring-1 ring-slate-200;
+  grid-template-rows: 30px 44px 30px;
+}
+
+.stepper-btn {
+  @apply grid place-items-center bg-slate-100 text-lg font-black text-slate-700 disabled:opacity-30;
+}
+
+.stepper-value {
+  @apply h-full w-full appearance-none border-0 bg-orange-100 px-1 text-center text-lg font-black text-orange-900 outline-none;
+}
+
+.unit-btn {
+  @apply h-12 rounded-md border border-slate-200 bg-white px-3 font-black text-slate-500;
+}
+
+.unit-btn.active {
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
+}
