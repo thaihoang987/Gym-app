@@ -304,6 +304,24 @@ function Login({ onLogin }) {
 function Header({ user, boot, onLogout }) {
   const now = new Date();
   const [open, setOpen] = useState(false);
+  const menuRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeMenu = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeMenu);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeMenu);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
   return (
     <header className="mb-5 flex items-center justify-between">
       <div>
@@ -311,7 +329,7 @@ function Header({ user, boot, onLogout }) {
         <h1 className="text-2xl font-bold">{user.name}</h1>
         <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {boot.exerciseCount} bài tập</p>
       </div>
-      <div className="relative">
+      <div className="relative" ref={menuRef}>
         <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
           {avatarContent(user.avatar)}
         </button>
