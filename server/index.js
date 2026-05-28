@@ -535,7 +535,7 @@ app.get('/api/dashboard', (req, res) => {
     WHERE ws.user_id = ? AND ws.status = 'COMPLETED'
     GROUP BY ws.id
     ORDER BY ws.completed_at DESC
-    LIMIT 8
+    LIMIT 30
   `, [userId]).map((row) => ({
     ...row,
     duration_minutes: formatMinutes(row.duration_seconds)

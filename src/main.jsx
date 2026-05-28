@@ -577,7 +577,13 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const monday = new Date(today);
   const offset = today.getDay() === 0 ? -6 : 1 - today.getDay();
   monday.setDate(today.getDate() + offset);
-  const doneDays = new Set(history.map((row) => localIsoDate(parseServerDate(row.completed_at))));
+  const historyByDay = new Map();
+  for (const row of history) {
+    const key = localIsoDate(parseServerDate(row.completed_at));
+    if (!historyByDay.has(key)) historyByDay.set(key, []);
+    historyByDay.get(key).push(row);
+  }
+  const doneDays = new Set(historyByDay.keys());
   const routineById = new Map(routines.map((routine) => [routine.id, routine]));
   const fixedByDay = new Map(rules.filter((rule) => rule.mode === 'FIXED').map((rule) => [rule.day_of_week, routineById.get(rule.routine_id)]));
   const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
@@ -591,7 +597,9 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
           date.setDate(monday.getDate() + index);
           const isToday = date.toDateString() === today.toDateString();
           const isPast = date < new Date(today.toDateString());
+          const dayHistory = historyByDay.get(localIsoDate(date)) || [];
           const done = doneDays.has(localIsoDate(date));
+          const mainDone = dayHistory[0];
           const fixedRoutine = fixedByDay.get(index);
           const rollingOffset = Math.round((date - startOfToday) / 86400000);
           const rollingRule = rollingOffset >= 0 && rollingOffset < 3 && rollingRules.length
@@ -600,11 +608,17 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
           const rollingRoutine = rollingRule ? routineById.get(rollingRule.routine_id) : null;
           const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : suggestion?.mode === 'ROLLING' ? rollingRoutine : null;
           return (
-            <div key={label} className={`rounded-lg border p-2 text-center ${isToday ? 'border-emerald-600 bg-emerald-600 text-white' : isPast ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-slate-200 bg-white text-slate-950'}`}>
+            <div key={label} className={`week-day-card ${isToday ? 'today' : ''} ${isPast && !done ? 'past' : ''} ${done ? 'done' : ''}`}>
               <p className="text-sm font-bold">{label}</p>
               <p className="text-2xl font-black">{date.getDate()}</p>
               {routine?.exercises?.[0] && !done && <img src={routine.exercises[0].imageUrl} className="mx-auto mt-1 h-8 w-8 rounded bg-white object-contain" />}
-              <p className="mt-1 min-h-8 text-xs font-bold leading-tight">{done ? 'Đã tập' : routine?.name || ''}</p>
+              <p className="mt-1 min-h-8 text-xs font-bold leading-tight">{done ? (mainDone.routine_name || mainDone.group_name || 'Buổi tập tự do') : routine?.name || ''}</p>
+              {done && (
+                <div className="mt-1 rounded-md bg-white/70 px-1.5 py-1 text-[10px] font-bold leading-tight text-slate-700">
+                  <p>{mainDone.sets || 0} set · {mainDone.duration_minutes} phút</p>
+                  {dayHistory.length > 1 && <p>+{dayHistory.length - 1} buổi khác</p>}
+                </div>
+              )}
             </div>
           );
         })}
