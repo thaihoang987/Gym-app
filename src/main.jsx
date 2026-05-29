@@ -144,6 +144,15 @@ function displayPrefs(settings = {}) {
   };
 }
 
+function themeStyle(settings = {}) {
+  const accent = settings.primary_color || '#f05a28';
+  return {
+    '--accent': accent,
+    '--accent-soft': `${accent}1f`,
+    '--accent-contrast': '#ffffff'
+  };
+}
+
 function parseServerDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -269,8 +278,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-app text-slate-950">
-      <main className="mx-auto min-h-screen w-full max-w-md bg-[#f4f6f1] px-4 pb-40 pt-5 text-slate-950 md:max-w-6xl md:px-8">
+    <div className={`min-h-screen bg-app text-slate-950 ${boot.settings.theme_mode === 'dark' ? 'theme-dark' : 'theme-light'}`} style={themeStyle(boot.settings)}>
+      <main className="app-shell mx-auto min-h-screen w-full max-w-md px-4 pb-40 pt-5 md:max-w-6xl md:px-8">
         {workout ? (
           <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={() => { setWorkout(null); setRefresh((v) => v + 1); }} />
         ) : (
@@ -2058,9 +2067,11 @@ function SettingsPage({ userId, boot, onChanged }) {
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
     const name = prompt('Tên thành viên');
+    if (!name) return;
     const username = prompt('Tên đăng nhập');
+    if (!username) return;
     const password = prompt('Mật khẩu');
-    if (!name || !username || !password) return;
+    if (!password) return;
     await api('/api/users', { method: 'POST', body: JSON.stringify({ userId, name, username, password }) });
     location.reload();
   };
