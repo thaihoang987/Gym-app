@@ -16,14 +16,28 @@ import {
   Trash2,
   UserRound
 } from 'lucide-react';
+import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 
 const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const modeLabels = { FREE: 'Tự do', FIXED: 'Cố định', ROLLING: 'Cuốn chiếu' };
-const iconChoices = ['💪', '🏋️', '🔥', '🦵', '🫀', '⚡', '🎯', '🧱', '✅', '🏆', '🥇', '📈', '🧘', '🤸', '🚴', '🏃', '🦾', '🔩', '⚖️', '⏱️'];
 const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
+const lbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
+const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
+const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
+const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
+const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+const cmToFeetInches = (cm) => {
+  const totalInches = Math.round(Number(cm || 0) / 2.54);
+  return { feet: Math.floor(totalInches / 12) || '', inches: totalInches % 12 || '' };
+};
+const feetInchesToCm = (feet, inches) => {
+  const totalInches = Number(feet || 0) * 12 + Number(inches || 0);
+  return totalInches ? Number((totalInches * 2.54).toFixed(1)) : '';
+};
 
 const fallbackDisplay = { locale: 'vi-VN', timezone: 'Asia/Ho_Chi_Minh' };
 const timezoneOptions = [
@@ -125,7 +139,8 @@ function filterByRange(rows, field, rangeKey) {
 function displayPrefs(settings = {}) {
   return {
     locale: settings.locale || fallbackDisplay.locale,
-    timeZone: settings.timezone || fallbackDisplay.timezone
+    timeZone: settings.timezone || fallbackDisplay.timezone,
+    hour12: settings.clock_format === '12h'
   };
 }
 
@@ -147,14 +162,14 @@ function formatTime(value, settings, options = {}) {
   const date = parseServerDate(value);
   if (!date || Number.isNaN(date.getTime())) return '';
   const prefs = displayPrefs(settings);
-  return date.toLocaleTimeString(prefs.locale, { timeZone: prefs.timeZone, hour: '2-digit', minute: '2-digit', ...options });
+  return date.toLocaleTimeString(prefs.locale, { timeZone: prefs.timeZone, hour12: prefs.hour12, hour: '2-digit', minute: '2-digit', ...options });
 }
 
 function formatDateTime(value, settings, options = {}) {
   const date = parseServerDate(value);
   if (!date || Number.isNaN(date.getTime())) return '';
   const prefs = displayPrefs(settings);
-  return date.toLocaleString(prefs.locale, { timeZone: prefs.timeZone, ...options });
+  return date.toLocaleString(prefs.locale, { timeZone: prefs.timeZone, hour12: prefs.hour12, ...options });
 }
 
 function localIsoDate(date) {
@@ -228,36 +243,69 @@ function App() {
     ['analytics', BarChart3, 'Thống kê'],
     ['settings', Settings, 'Cài đặt']
   ];
+  const startWorkout = (nextWorkout) => {
+    if (nextWorkout?.sessionId) setTab('start');
+    setWorkout(nextWorkout);
+  };
+  const continueWorkout = async () => {
+    if (workout) {
+      setTab('start');
+      return;
+    }
+    const activeSession = await api(`/api/sessions/active?userId=${user.id}`);
+    if (activeSession?.session?.id) {
+      const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${user.id}`) || 'null');
+      const sameSession = saved?.sessionId === activeSession.session.id;
+      setTab('start');
+      setWorkout({
+        sessionId: activeSession.session.id,
+        initialIndex: sameSession ? saved.index : 0,
+        initialView: sameSession ? saved.view || 'list' : 'list'
+      });
+      return;
+    }
+    setWorkout(null);
+    setTab('start');
+  };
 
   return (
     <div className="min-h-screen bg-app text-slate-950">
       <main className="mx-auto min-h-screen w-full max-w-md bg-[#f4f6f1] px-4 pb-40 pt-5 text-slate-950 md:max-w-6xl md:px-8">
         {workout ? (
-          <WorkoutLogger userId={user.id} workout={workout} onClose={() => { setWorkout(null); setRefresh((v) => v + 1); }} />
+          <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={() => { setWorkout(null); setRefresh((v) => v + 1); }} />
         ) : (
           <ErrorBoundary key={tab}>
             <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); setUser(null); }} />
-            {tab === 'home' && <Dashboard userId={user.id} onStart={setWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
-            {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={setWorkout} refresh={refresh} settings={boot.settings} />}
+            {tab === 'home' && <Dashboard userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
+            {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} />}
             {tab === 'library' && <ExerciseLibrary userId={user.id} />}
-            {tab === 'builder' && <Builder userId={user.id} boot={boot} onStart={setWorkout} onChanged={() => setRefresh((v) => v + 1)} />}
+            {tab === 'builder' && <Builder userId={user.id} boot={boot} onStart={startWorkout} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'analytics' && <Analytics userId={user.id} settings={boot.settings} />}
             {tab === 'settings' && <SettingsPage userId={user.id} boot={boot} onChanged={() => setRefresh((v) => v + 1)} />}
           </ErrorBoundary>
         )}
       </main>
-      {!workout && (
-        <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md border-t border-slate-200 bg-white/95 px-3 pb-3 pt-2 backdrop-blur md:max-w-6xl">
-          <div className="grid grid-cols-6 gap-1">
-            {nav.map(([id, Icon, label]) => (
-              <button key={id} onClick={() => setTab(id)} className={`nav-btn ${tab === id ? 'active' : ''}`}>
-                <Icon size={20} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </nav>
-      )}
+      <nav className="app-taskbar">
+        <div className="grid grid-cols-6 gap-1">
+          {nav.map(([id, Icon, label]) => (
+            <button
+              key={id}
+              onClick={async () => {
+                if (id === 'start') {
+                  await continueWorkout();
+                  return;
+                }
+                if (workout && id !== 'start') setWorkout(null);
+                setTab(id);
+              }}
+              className={`nav-btn ${tab === id ? 'active' : ''}`}
+            >
+              <Icon size={20} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
@@ -335,7 +383,7 @@ function Header({ user, boot, onLogout }) {
         </button>
         {open && (
           <div className="avatar-menu">
-            <button onClick={onLogout}><LogOut size={17} /> Sign out</button>
+            <button onClick={onLogout}><LogOut size={17} /> Đăng xuất</button>
           </div>
         )}
       </div>
@@ -393,7 +441,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
 
 function BodyWeightInput({ userId, settings }) {
   const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState('kg');
+  const [unit, setUnit] = useState(settings.default_weight_unit || 'kg');
   const [history, setHistory] = useState([]);
   const loadHistory = () => api(`/api/body-weight/recent?userId=${userId}`).then(setHistory);
   useEffect(() => {
@@ -466,7 +514,6 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
             {routine.groups.map((group) => (
               <div key={group.id} className="rounded-lg border border-white/10 bg-white/6 p-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{group.icon || '💪'}</span>
                   <strong>{group.name}</strong>
                 </div>
                 <div className="mt-3 grid gap-2">
@@ -580,7 +627,11 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
               </div>
             ))}
           </div>
-          <button className="primary mt-4" onClick={() => onStart({ sessionId: activeSession.session.id })}>Tiếp tục vào bài tập</button>
+          <button className="primary mt-4" onClick={() => {
+            const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null');
+            const sameSession = saved?.sessionId === activeSession.session.id;
+            onStart({ sessionId: activeSession.session.id, initialIndex: sameSession ? saved.index : 0, initialView: sameSession ? saved.view || 'list' : 'list' });
+          }}>Tiếp tục vào bài tập</button>
         </div>
       ) : (
         <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
@@ -605,42 +656,61 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const routineById = new Map(routines.map((routine) => [routine.id, routine]));
   const fixedByDay = new Map(rules.filter((rule) => rule.mode === 'FIXED').map((rule) => [rule.day_of_week, routineById.get(rule.routine_id)]));
   const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
+  const isRolling = suggestion?.mode === 'ROLLING';
+  const dayCount = isRolling ? 3 : 7;
+  const scheduleItems = Array.from({ length: dayCount }, (_, itemIndex) => {
+    const date = new Date(isRolling ? startOfToday : monday);
+    date.setDate((isRolling ? startOfToday : monday).getDate() + itemIndex);
+    const weekdayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
+    const key = localIsoDate(date);
+    const dayHistory = historyByDay.get(key) || [];
+    const done = doneDays.has(key);
+    const mainDone = dayHistory[0];
+    const fixedRoutine = fixedByDay.get(weekdayIndex);
+    const rollingRule = isRolling && rollingRules.length
+      ? rollingRules[(Math.max(0, (suggestion?.rollingIndex || 1) - 1) + itemIndex) % rollingRules.length]
+      : null;
+    const rollingRoutine = rollingRule ? routineById.get(rollingRule.routine_id) : null;
+    const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : isRolling ? rollingRoutine : null;
+    return {
+      key,
+      label: dayLabels[weekdayIndex],
+      date,
+      isToday: date.toDateString() === today.toDateString(),
+      isPast: date < new Date(today.toDateString()),
+      done,
+      mainDone,
+      dayHistory,
+      routine,
+      title: done ? (mainDone?.routine_name || mainDone?.group_name || 'Buổi tập tự do') : routine?.name || 'Chưa gán buổi tập',
+      imageUrl: done ? mainDone?.imageUrl : routine?.exercises?.[0]?.imageUrl,
+      content: done
+        ? `${mainDone?.sets || 0} set · ${mainDone?.duration_minutes || 0} phút${dayHistory.length > 1 ? ` · +${dayHistory.length - 1} buổi khác` : ''}`
+        : routine ? `${routine.groups?.length || 0} Group Bài tập · ${routine.exercises?.length || 0} bài` : 'Vào Lịch tập để gán Group Buổi tập.'
+    };
+  });
 
   return (
     <div className="panel">
-      <h2 className="section-title">{suggestion?.mode === 'ROLLING' ? 'Lịch cuốn chiếu 3 ngày tới' : 'Lịch tập tuần này'}</h2>
-      <div className="grid grid-cols-7 gap-2">
-        {dayLabels.map((label, index) => {
-          const date = new Date(monday);
-          date.setDate(monday.getDate() + index);
-          const isToday = date.toDateString() === today.toDateString();
-          const isPast = date < new Date(today.toDateString());
-          const dayHistory = historyByDay.get(localIsoDate(date)) || [];
-          const done = doneDays.has(localIsoDate(date));
-          const mainDone = dayHistory[0];
-          const fixedRoutine = fixedByDay.get(index);
-          const rollingOffset = Math.round((date - startOfToday) / 86400000);
-          const rollingRule = rollingOffset >= 0 && rollingOffset < 3 && rollingRules.length
-            ? rollingRules[(Math.max(0, (suggestion?.rollingIndex || 1) - 1) + rollingOffset) % rollingRules.length]
-            : null;
-          const rollingRoutine = rollingRule ? routineById.get(rollingRule.routine_id) : null;
-          const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : suggestion?.mode === 'ROLLING' ? rollingRoutine : null;
-          return (
-            <div key={label} className={`week-day-card ${isToday ? 'today' : ''} ${isPast && !done ? 'past' : ''} ${done ? 'done' : ''}`}>
-              <p className="text-sm font-bold">{label}</p>
-              <p className="text-2xl font-black">{date.getDate()}</p>
-              {routine?.exercises?.[0] && !done && <img src={routine.exercises[0].imageUrl} className="mx-auto mt-1 h-8 w-8 rounded bg-white object-contain" />}
-              {done && mainDone.imageUrl && <img src={mainDone.imageUrl} className="mx-auto mt-1 h-8 w-8 rounded bg-white object-contain ring-1 ring-white/70" />}
-              <p className="mt-1 min-h-8 text-xs font-bold leading-tight">{done ? (mainDone.routine_name || mainDone.group_name || 'Buổi tập tự do') : routine?.name || ''}</p>
-              {done && (
-                <div className="mt-1 rounded-md bg-white/70 px-1.5 py-1 text-[10px] font-bold leading-tight text-slate-700">
-                  <p>{mainDone.sets || 0} set · {mainDone.duration_minutes} phút</p>
-                  {dayHistory.length > 1 && <p>+{dayHistory.length - 1} buổi khác</p>}
-                </div>
-              )}
+      <h2 className="section-title">{isRolling ? 'Lịch cuốn chiếu 3 buổi tới' : 'Lịch tập tuần này'}</h2>
+      <div className={`week-plan-grid ${isRolling ? 'rolling' : ''}`}>
+        {scheduleItems.map((item) => (
+          <div key={item.key} className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''}`}>
+            <div className="week-day-date">
+              <p>{item.label}</p>
+              <strong>{item.date.getDate()}</strong>
             </div>
-          );
-        })}
+            {item.imageUrl ? (
+              <img src={item.imageUrl} className="week-day-image" />
+            ) : (
+              <div className="week-day-image empty"><Dumbbell size={22} /></div>
+            )}
+            <div className="week-day-content">
+              <h3>{item.title}</h3>
+              <p>{item.content}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -820,14 +890,14 @@ function ExerciseLibrary({ userId }) {
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [visibleCount, setVisibleCount] = useState(60);
   const [previewGifId, setPreviewGifId] = useState(null);
-  const [pinnedGifId, setPinnedGifId] = useState(null);
+  const [pinnedGifIds, setPinnedGifIds] = useState(() => new Set());
 
   useEffect(() => { api('/api/exercises/meta').then(setMeta); api(`/api/groups?userId=${userId}`).then(setGroups); }, [userId]);
   useEffect(() => {
     setVisibleCount(60);
     setSelectedExercise(null);
     setPreviewGifId(null);
-    setPinnedGifId(null);
+    setPinnedGifIds(new Set());
     api(`/api/exercises?q=${encodeURIComponent(q)}&target=${encodeURIComponent(target)}`).then(setItems);
   }, [q, target]);
 
@@ -844,7 +914,11 @@ function ExerciseLibrary({ userId }) {
   };
   const pinSmallGif = (exercise) => {
     playSmallGif(exercise);
-    setPinnedGifId(exercise.id);
+    setPinnedGifIds((current) => {
+      const next = new Set(current);
+      next.add(exercise.id);
+      return next;
+    });
   };
 
   if (selectedExercise) {
@@ -882,14 +956,14 @@ function ExerciseLibrary({ userId }) {
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {visibleItems.map((exercise) => {
-          const isPlayingGif = previewGifId === exercise.id || pinnedGifId === exercise.id;
+          const isPlayingGif = previewGifId === exercise.id || pinnedGifIds.has(exercise.id);
           return (
           <article
             key={exercise.id}
             className="panel cursor-pointer"
             onClick={() => setSelectedExercise(exercise)}
             onMouseLeave={() => {
-              if (pinnedGifId !== exercise.id) setPreviewGifId((id) => id === exercise.id ? null : id);
+              if (!pinnedGifIds.has(exercise.id)) setPreviewGifId((id) => id === exercise.id ? null : id);
             }}
           >
             <div className="flex gap-3">
@@ -960,7 +1034,6 @@ function Builder({ userId, boot, onStart, onChanged }) {
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
   const [groupName, setGroupName] = useState('');
-  const [groupIcon, setGroupIcon] = useState('💪');
   const [routineName, setRoutineName] = useState('');
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [draggingExercise, setDraggingExercise] = useState(null);
@@ -976,16 +1049,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
 
   const createGroup = async () => {
     if (!groupName.trim()) return;
-    await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: groupName, icon: groupIcon }) });
+    await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: groupName }) });
     setGroupName('');
-    load();
-  };
-  const updateGroupIcon = async (group, icon) => {
-    await api(`/api/groups/${group.id}`, { method: 'PATCH', body: JSON.stringify({ userId, name: group.name, icon }) });
-    load();
-  };
-  const updateExerciseIcon = async (groupId, exerciseId, icon) => {
-    await api(`/api/groups/${groupId}/exercises/${exerciseId}`, { method: 'PATCH', body: JSON.stringify({ icon }) });
     load();
   };
   const moveExercise = async (groupId, exerciseId, direction) => {
@@ -1011,7 +1076,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     load();
   };
   const deleteGroup = async (groupId) => {
-    if (!confirm('Xoa Group Bai tap nay? Cac Group Buoi tap lien quan se duoc cap nhat.')) return;
+    if (!confirm('Xóa Group Bài tập này? Các Group Buổi tập liên quan sẽ được cập nhật.')) return;
     await api(`/api/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1032,7 +1097,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     onStart({ sessionId: session.id });
   };
   const deleteRoutine = async (routineId) => {
-    if (!confirm('Xoa Group Buoi tap nay? Lich gan voi no cung se bi xoa.')) return;
+    if (!confirm('Xóa Group Buổi tập này? Lịch gán với nó cũng sẽ bị xóa.')) return;
     await api(`/api/routines/${routineId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1107,9 +1172,6 @@ function Builder({ userId, boot, onStart, onChanged }) {
       <div className="builder-section">
         <h2 className="section-title">1. Tạo Group Bài tập</h2>
         <div className="flex gap-2">
-          <select className="input w-24" value={groupIcon} onChange={(e) => setGroupIcon(e.target.value)}>
-            {iconChoices.map((icon) => <option key={icon} value={icon}>{icon}</option>)}
-          </select>
           <input className="input" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Ví dụ: Ngực, Xô, Chân" />
           <button className="icon-btn" onClick={createGroup}><Plus /></button>
         </div>
@@ -1120,20 +1182,14 @@ function Builder({ userId, boot, onStart, onChanged }) {
         {groups.map((group) => (
           <div key={group.id} className="panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="font-bold">{group.icon || '💪'} {group.name} · {group.exercises.length} bài</div>
+              <div className="font-bold">{group.name} · {group.exercises.length} bài</div>
               <div className="flex flex-wrap gap-2">
-                <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> Vao tap</button>
-                <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> Xoa group</button>
+                <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> Vào tập</button>
+                <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> Xóa group</button>
               </div>
             </div>
             <details className="mt-3">
               <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách bài tập</summary>
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-sm text-teal-900">Icon group</span>
-                <select className="input w-24 py-2" value={group.icon || '💪'} onChange={(e) => updateGroupIcon(group, e.target.value)}>
-                  {iconChoices.map((icon) => <option key={icon} value={icon}>{icon}</option>)}
-                </select>
-              </div>
               <div className="mt-3 space-y-2">
                 {group.exercises.length === 0 && <p className="text-sm text-slate-600">Vào Bài tập để thêm bài vào group này.</p>}
                 {group.exercises.map((exercise) => (
@@ -1159,13 +1215,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     onDragEnd={() => { setDraggingExercise(null); setDragOverExercise(null); }}
                     className={`exercise-drag-row ${draggingExercise?.exerciseId === exercise.id ? 'dragging' : ''} ${dragOverExercise === exercise.id && draggingExercise?.exerciseId !== exercise.id ? 'drop-target' : ''}`}
                   >
-                    <span className="drag-handle" title="Kéo để đổi vị trí"><GripVertical size={18} /></span>
-                    <select className="w-14 rounded-md border border-slate-200 bg-white p-2" value={exercise.icon || '🏋️'} onChange={(e) => updateExerciseIcon(group.id, exercise.id, e.target.value)}>
-                      {iconChoices.map((icon) => <option key={icon} value={icon}>{icon}</option>)}
-                    </select>
-                    <img src={exercise.imageUrl} className="h-12 w-12 rounded bg-white object-contain" />
-                    <span className="min-w-0 flex-1 text-sm font-semibold">{exercise.name}</span>
-                    <button className="small-danger shrink-0" onClick={() => removeExercise(group.id, exercise.id)}><Trash2 size={16} /> Xoa</button>
+                    <span className="drag-handle" title="Kéo cả hàng để đổi vị trí"><GripVertical size={18} /></span>
+                    <img src={exercise.imageUrl} className="h-14 w-14 rounded bg-white object-contain" />
+                    <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
+                    <button className="small-danger shrink-0" onClick={() => removeExercise(group.id, exercise.id)}><Trash2 size={16} /> Xóa</button>
                   </div>
                 ))}
               </div>
@@ -1181,7 +1234,6 @@ function Builder({ userId, boot, onStart, onChanged }) {
           {groups.map((group) => (
             <label key={group.id} className="flex items-center gap-3 rounded-md bg-slate-50 p-3">
               <input type="checkbox" checked={selectedGroups.includes(group.id)} onChange={(e) => setSelectedGroups((prev) => e.target.checked ? [...prev, group.id] : prev.filter((id) => id !== group.id))} />
-              <span className="text-xl">{group.icon || '💪'}</span>
               <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({group.exercises.length} bài)</small></span>
               <div className="flex -space-x-2">
                 {group.exercises.slice(0, 4).map((exercise) => (
@@ -1197,7 +1249,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
       <div className="builder-section">
         <h2 className="section-title">3. Chọn kiểu lịch và gán Group Buổi tập</h2>
         <div className="mb-4 grid gap-3">
-          {routineData.routines.length === 0 && <p className="text-sm text-slate-600">Chua co Group Buoi tap.</p>}
+          {routineData.routines.length === 0 && <p className="text-sm text-slate-600">Chưa có Group Buổi tập.</p>}
           {routineData.routines.map((routine) => {
             const availableGroups = groups.filter((group) => !routine.groups.some((item) => item.id === group.id));
             return (
@@ -1206,10 +1258,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   <img src={routine.exercises[0]?.imageUrl} className="h-12 w-12 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold">{routine.name}</h3>
-                    <p className="text-sm text-slate-500">{routine.groups.length} group · {routine.exercises.length} bai tap</p>
+                    <p className="text-sm text-slate-500">{routine.groups.length} group · {routine.exercises.length} bài tập</p>
                   </div>
-                  <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> Vao tap</button>
-                  <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> Xoa</button>
+                  <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> Vào tập</button>
+                  <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> Xóa</button>
                 </div>
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách Group Bài tập trong buổi</summary>
@@ -1237,16 +1289,15 @@ function Builder({ userId, boot, onStart, onChanged }) {
                       onDragEnd={() => { setDraggingRoutineGroup(null); setDragOverRoutineGroup(null); }}
                       className={`exercise-drag-row ${draggingRoutineGroup?.groupId === group.id ? 'dragging' : ''} ${dragOverRoutineGroup === group.id && draggingRoutineGroup?.groupId !== group.id ? 'drop-target' : ''}`}
                     >
-                      <span className="drag-handle" title="Kéo để đổi vị trí"><GripVertical size={18} /></span>
-                      <span className="text-xl">{group.icon || '💪'}</span>
+                      <span className="drag-handle" title="Kéo cả hàng để đổi vị trí"><GripVertical size={18} /></span>
                       <span className="min-w-0 flex-1 text-sm font-semibold">{group.name}</span>
-                      <button className="small-danger" onClick={() => removeRoutineGroup(routine.id, group.id)}><Trash2 size={16} /> Xoa khoi buoi</button>
+                      <button className="small-danger" onClick={() => removeRoutineGroup(routine.id, group.id)}><Trash2 size={16} /> Xóa khỏi buổi</button>
                     </div>
                   ))}
                   </div>
                 </details>
                 <select className="input mt-3 py-2 text-sm" value="" onChange={(event) => addRoutineGroup(routine.id, event.target.value)}>
-                  <option value="">Them Group Bai tap vao buoi</option>
+                  <option value="">Thêm Group Bài tập vào buổi</option>
                   {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
               </article>
@@ -1296,7 +1347,7 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
                 <h3 className="font-bold">{routine.name}</h3>
                 <p className="text-xs text-slate-500">{routine.exercises.length} bài · {routine.groups.map((g) => g.name).join(' + ')}</p>
               </div>
-              <button className="small-action" onClick={() => onStart(routine)}><Play size={16} /> Vao tap</button>
+              <button className="small-action" onClick={() => onStart(routine)}><Play size={16} /> Vào tập</button>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
               <option value="">{mode === 'FIXED' ? 'Gán vào thứ' : 'Gán vào thứ tự chu kỳ'}</option>
@@ -1329,35 +1380,54 @@ function ScheduleRules({ rules, onDelete }) {
   );
 }
 
-function WorkoutLogger({ userId, workout, onClose }) {
+function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [data, setData] = useState(null);
-  const [index, setIndex] = useState(0);
-  const [view, setView] = useState('list');
+  const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
+  const restoreSaved = savedWorkout?.sessionId === workout.sessionId;
+  const [index, setIndex] = useState(() => Number(workout.initialIndex ?? (restoreSaved ? savedWorkout.index : 0) ?? 0));
+  const [view, setView] = useState(() => workout.initialView || (restoreSaved ? savedWorkout.view : 'list') || 'list');
   const [paused, setPaused] = useState(false);
   const [sets, setSets] = useState([]);
   const [previousSets, setPreviousSets] = useState([]);
   const [note, setNote] = useState('');
   const [targetSets, setTargetSets] = useState(3);
-  const [unit, setUnit] = useState('kg');
+  const [weightMode, setWeightMode] = useState('KG');
+  const [manualWeight, setManualWeight] = useState('');
   const [timer, setTimer] = useState(0);
+  const previousTimer = React.useRef(0);
+  const wakeLock = React.useRef(null);
+  const defaultWeightUnit = settings?.default_weight_unit || 'kg';
+  const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
   useEffect(() => { api(`/api/sessions/${workout.sessionId}?userId=${userId}`).then(setData); }, [workout.sessionId, userId]);
   const exercise = data?.exercises?.[index];
+  useEffect(() => {
+    if (!workout.sessionId) return;
+    localStorage.setItem(`familyGymWorkout:${userId}`, JSON.stringify({ sessionId: workout.sessionId, index, view }));
+  }, [userId, workout.sessionId, index, view]);
   useEffect(() => {
     if (!exercise) return;
     api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`).then((payload) => {
       setPreviousSets(payload.previous || []);
       setNote(payload.note || '');
+      setWeightMode(payload.weightMode || 'KG');
+      setManualWeight(payload.manualWeightKg ?? '');
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
       const current = payload.current || [];
       const buildDraftSet = (setIndex) => {
         const previous = payload.previous?.[setIndex - 1];
         const lastCurrent = current[current.length - 1];
+        const preferredManual = payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null;
+        const defaultReps = payload.defaultReps ?? 12;
+        const overloadStepKg = defaultWeightUnit === 'lb' ? lbToKg(5) : 2.5;
+        const suggestedPreviousWeight = settings?.progressive_overload && previous?.reps >= defaultReps
+          ? Number((Number(previous.weight_kg || 0) + overloadStepKg).toFixed(2))
+          : previous?.weight_kg;
         return {
           setIndex,
-          weightKg: previous?.weight_kg ?? lastCurrent?.weight_kg ?? 20,
-          reps: previous?.reps ?? lastCurrent?.reps ?? 8,
+          weightKg: preferredManual ?? suggestedPreviousWeight ?? lastCurrent?.weight_kg ?? 20,
+          reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
           done: false
         };
       };
@@ -1377,6 +1447,44 @@ function WorkoutLogger({ userId, workout, onClose }) {
     const id = setInterval(() => setTimer((value) => Math.max(0, value - 1)), 1000);
     return () => clearInterval(id);
   }, [timer]);
+  useEffect(() => {
+    if (previousTimer.current > 0 && timer === 0) {
+      if (settings?.vibrate_rest_done && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+      if (settings?.sound_rest_done) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          const audio = new AudioContextClass();
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          oscillator.frequency.value = 880;
+          gain.gain.value = 0.08;
+          oscillator.connect(gain);
+          gain.connect(audio.destination);
+          oscillator.start();
+          oscillator.stop(audio.currentTime + 0.18);
+        }
+      }
+    }
+    previousTimer.current = timer;
+  }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done]);
+  useEffect(() => {
+    let cancelled = false;
+    const requestWakeLock = async () => {
+      if (!settings?.keep_screen_awake || !navigator.wakeLock) return;
+      try {
+        wakeLock.current = await navigator.wakeLock.request('screen');
+      } catch {
+        wakeLock.current = null;
+      }
+    };
+    requestWakeLock();
+    return () => {
+      cancelled = true;
+      if (!cancelled && wakeLock.current) wakeLock.current.release();
+      else if (wakeLock.current) wakeLock.current.release();
+      wakeLock.current = null;
+    };
+  }, [settings?.keep_screen_awake, workout.sessionId]);
 
   if (!data || !exercise) return <div className="panel">Routine này chưa có bài tập.</div>;
 
@@ -1389,9 +1497,10 @@ function WorkoutLogger({ userId, workout, onClose }) {
     const updatedSet = current ? { ...current, ...patch } : null;
     setSets((old) => old.map((set) => set.setIndex === setIndex ? { ...set, ...patch } : set));
     if (updatedSet?.done && updatedSet.id) {
-      await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, reps: updatedSet.reps }) });
+      await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps }) });
     }
   };
+  const currentWeightUnit = () => weightMode === 'LB' || (weightMode === 'MANUAL' && defaultWeightUnit === 'lb') ? 'lb' : 'kg';
   const saveTargetSets = async (count) => {
     const nextCount = Math.max(1, Math.min(20, count));
     setTargetSets(nextCount);
@@ -1414,9 +1523,9 @@ function WorkoutLogger({ userId, workout, onClose }) {
   };
   const completeSet = async (set) => {
     if (set.done) return;
-    const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, reps: set.reps }) });
+    const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit: currentWeightUnit(), reps: set.reps }) });
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
-    setTimer(60);
+    setTimer(Number(settings?.rest_seconds || 60));
   };
   const saveNote = async (value) => {
     setNote(value);
@@ -1424,7 +1533,24 @@ function WorkoutLogger({ userId, workout, onClose }) {
   };
   const complete = async () => {
     await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    localStorage.removeItem(`familyGymWorkout:${userId}`);
     onClose();
+  };
+  const saveWeightPreference = async (patch) => {
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, ...patch }) });
+  };
+  const changeWeightMode = async (mode) => {
+    setWeightMode(mode);
+    if (mode === 'MANUAL' && manualWeight !== '' && Number.isFinite(Number(manualWeight))) {
+      const manualKg = defaultWeightUnit === 'lb' ? lbToKg(manualWeight) : Number(manualWeight);
+      setSets((old) => old.map((set) => set.done ? set : { ...set, weightKg: manualKg }));
+    }
+    await saveWeightPreference({ weightMode: mode });
+  };
+  const updateManualWeight = async (value) => {
+    setManualWeight(value);
+    const next = value === '' ? null : (defaultWeightUnit === 'lb' ? lbToKg(value) : Number(value));
+    await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: next });
   };
 
   return (
@@ -1460,26 +1586,45 @@ function WorkoutLogger({ userId, workout, onClose }) {
               <h1 className="text-2xl font-black">{exercise.name}</h1>
               <p className="mt-1 text-sm text-slate-500">Lần nâng trước: {previousSets[0] ? `${previousSets[0].weight_kg} kg x ${previousSets[0].reps}` : 'chưa có dữ liệu'}</p>
             </div>
-            <div className="flex gap-2">
-              <button className={`unit-btn ${unit === 'kg' ? 'active' : ''}`} onClick={() => setUnit('kg')}>kg</button>
-              <button className={`unit-btn ${unit === 'lb' ? 'active' : ''}`} onClick={() => setUnit('lb')}>lb</button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <div className="weight-mode-controls">
+              <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>Tự ghi ({manualUnitLabel})</button>
+                <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
+                <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
+              </div>
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
             </div>
           </div>
           <ExerciseInstructions exercise={exercise} />
 
-          <div className="rounded-xl border border-slate-200 bg-white p-2">
-            <div className="grid grid-cols-[52px_1fr_76px_76px_48px_48px] items-center gap-2 px-2 py-2 text-xs font-bold uppercase text-slate-400">
-              <span>Set</span><span>Previous</span><span>Kg</span><span>Reps</span><span /><span />
+          <div className="set-table">
+            <div className="set-table-header">
+              <span>Set</span><span>Previous</span><span>{weightMode === 'LB' ? 'Lb' : 'Kg'}</span><span>Reps</span><span /><span />
             </div>
             <div className="space-y-2">
               {sets.map((set) => {
                 const previous = previousSets[set.setIndex - 1];
                 return (
-                  <div key={set.setIndex} className={`grid grid-cols-[52px_1fr_76px_76px_48px_48px] items-center gap-2 rounded-lg p-2 ${set.done ? 'bg-lime-200' : 'bg-slate-50'}`}>
-                    <strong className="text-xl">{set.setIndex}</strong>
-                    <span className="text-sm text-slate-500">{previous ? `${previous.weight_kg}kg × ${previous.reps}` : '-'}</span>
-                    <WheelPicker value={set.weightKg} options={kgOptions} suffix={unit} onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                  <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''}`}>
+                    <strong className="set-number">{set.setIndex}</strong>
+                    <span className="set-previous">{previous ? `${previous.weight_kg}kg × ${previous.reps}` : '-'}</span>
+                    {weightMode === 'MANUAL' ? (
+                      <input
+                        className="manual-weight-input"
+                        type="number"
+                        step="0.1"
+                        value={defaultWeightUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
+                        onChange={(event) => {
+                          const value = Number(event.target.value || 0);
+                          updateSet(set.setIndex, { weightKg: defaultWeightUnit === 'lb' ? lbToKg(value) : value });
+                        }}
+                        onBlur={(event) => updateManualWeight(event.target.value)}
+                      />
+                    ) : weightMode === 'LB' ? (
+                      <WheelPicker value={nearestOption(kgToLb(set.weightKg), lbOptions)} options={lbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+                    ) : (
+                      <WheelPicker value={nearestOption(set.weightKg, kgOptions)} options={kgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                    )}
                     <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
                     <button className={`set-check ${set.done ? 'done' : ''}`} onClick={() => completeSet(set)}><Check size={22} /></button>
                     <button className="tiny-btn" disabled={set.done || sets.length <= 1} onClick={() => removeDraftSet(set.setIndex)}><Trash2 size={15} /></button>
@@ -1502,12 +1647,52 @@ function WorkoutLogger({ userId, workout, onClose }) {
           <button className="primary" onClick={complete}>Kết thúc buổi tập</button>
         </div>
       )}
-      {timer > 0 && <div className="timer-pop">Nghỉ {timer}s <button onClick={() => setTimer((v) => v + 30)}>+30s</button><button onClick={() => setTimer(0)}>Tắt</button></div>}
+      {timer > 0 && <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>{settings?.countdown_3s && timer <= 3 ? 'Chuẩn bị ' : 'Nghỉ '}{timer}s <button onClick={() => setTimer((v) => v + 30)}>+30s</button><button onClick={() => setTimer(0)}>Tắt</button></div>}
     </section>
   );
 }
 
 function WheelPicker({ value, options, suffix = '', onChange }) {
+  const pickerOptions = useMemo(() => options.map((item) => ({
+    value: String(item),
+    label: (
+      <span className="compact-wheel-label">
+        <strong>{item}</strong>
+        {suffix && <small>{suffix}</small>}
+      </span>
+    ),
+    textValue: `${item}${suffix}`
+  })), [options, suffix]);
+
+  const currentValue = String(value ?? options[0]);
+
+  const changeValue = (nextValue) => {
+    const matched = options.find((item) => String(item) === String(nextValue));
+    if (matched !== undefined) onChange(matched);
+  };
+
+  return (
+    <WheelPickerWrapper className="compact-wheel-picker">
+      <ReactWheelPicker
+        value={currentValue}
+        options={pickerOptions}
+        onValueChange={changeValue}
+        infinite={false}
+        visibleCount={12}
+        optionItemHeight={26}
+        dragSensitivity={3}
+        scrollSensitivity={5}
+        classNames={{
+          optionItem: 'compact-wheel-option',
+          highlightWrapper: 'compact-wheel-highlight-wrapper',
+          highlightItem: 'compact-wheel-highlight'
+        }}
+      />
+    </WheelPickerWrapper>
+  );
+}
+
+function LegacyWheelPicker({ value, options, suffix = '', onChange }) {
   const rootRef = React.useRef(null);
   const dragState = React.useRef(null);
   const wheelLock = React.useRef(false);
@@ -1663,9 +1848,20 @@ function Analytics({ userId, settings }) {
   const weightDelta = latestWeight && previousWeight ? Number(latestWeight.weight) - Number(previousWeight.weight) : 0;
   const latestBmi = latestWeight?.bmi;
   const bmiInfo = bmiFeedback(latestBmi);
-  const exerciseChartRows = filterByRange(analytics.exerciseRows, 'day', rangeKey)
-    .filter((row) => row.exercise_id === selectedExerciseId)
-    .map((row) => ({ ...row, label: formatDate(row.day, settings, { day: '2-digit', month: '2-digit' }) }));
+  const selectedExerciseRawRows = filterByRange(analytics.exerciseRows, 'day', rangeKey)
+    .filter((row) => row.exercise_id === selectedExerciseId);
+  const selectedExerciseUnits = new Set(
+    selectedExerciseRawRows.flatMap((row) => String(row.weight_units || 'kg').split(',').map((unit) => unit.trim()).filter(Boolean))
+  );
+  const exerciseChartUnit = selectedExerciseUnits.size === 1
+    ? Array.from(selectedExerciseUnits)[0]
+    : (settings.default_weight_unit || 'kg');
+  const exerciseChartRows = selectedExerciseRawRows
+    .map((row) => ({
+      ...row,
+      label: formatDate(row.day, settings, { day: '2-digit', month: '2-digit' }),
+      display_weight: displayWeight(row.max_weight, exerciseChartUnit)
+    }));
   const sessionChartRows = filterByRange(analytics.sessionRows, 'completed_at', rangeKey)
     .filter((row) => !selectedRoutineName || row.name === selectedRoutineName)
     .map((row) => ({ ...row, label: formatDateTime(row.completed_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }));
@@ -1736,7 +1932,7 @@ function Analytics({ userId, settings }) {
       </div>
       <div className="weight-history-panel">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-bold">History</h3>
+          <h3 className="font-bold">Lịch sử</h3>
           <span className="text-xs font-bold text-[#8b84ad]">{weightRows.length} lần ghi nhận</span>
         </div>
         <div className="grid gap-3">
@@ -1771,10 +1967,9 @@ function Analytics({ userId, settings }) {
               <ResponsiveContainer width="100%" height="78%">
                 <LineChart data={exerciseChartRows}>
                   <XAxis dataKey="label" stroke="#334155" />
-                  <YAxis stroke="#334155" />
+                  <YAxis stroke="#334155" label={{ value: exerciseChartUnit.toUpperCase(), angle: -90, position: 'insideLeft' }} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="max_weight" name="Max kg" stroke="#2563eb" strokeWidth={3} dot />
-                  <Line type="monotone" dataKey="volume" name="Volume" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
                 </LineChart>
               </ResponsiveContainer>
             ) : <p className="text-slate-600">{selectedExercise ? 'Chưa đủ dữ liệu cho bài này.' : 'Chưa có bài tập nào có log.'}</p>}
@@ -1790,7 +1985,7 @@ function Analytics({ userId, settings }) {
                   <XAxis dataKey="label" stroke="#334155" />
                   <YAxis stroke="#334155" />
                   <Tooltip />
-                  <Line type="monotone" dataKey="volume" name="Volume" stroke="#f97316" strokeWidth={3} dot />
+                  <Line type="monotone" dataKey="max_weight" name="KG" stroke="#2563eb" strokeWidth={3} dot />
                   <Line type="monotone" dataKey="sets" name="Set" stroke="#0f766e" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -1834,12 +2029,32 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
 }
 
 function SettingsPage({ userId, boot, onChanged }) {
+  const settings = boot.settings || {};
   const [name, setName] = useState(boot.activeUser.name);
   const [password, setPassword] = useState('');
+  const [passwordAgain, setPasswordAgain] = useState('');
   const [timezone, setTimezone] = useState(boot.settings.timezone || fallbackDisplay.timezone);
   const [locale, setLocale] = useState(boot.settings.locale || fallbackDisplay.locale);
   const [heightCm, setHeightCm] = useState(boot.settings.height_cm || '');
+  const [defaultWeightUnit, setDefaultWeightUnit] = useState(boot.settings.default_weight_unit || 'kg');
   const [avatarPreview, setAvatarPreview] = useState(boot.activeUser.avatar || '');
+  const [gender, setGender] = useState(settings.gender || '');
+  const [birthDate, setBirthDate] = useState(settings.birth_date || '');
+  const [heightUnit, setHeightUnit] = useState(settings.height_unit || 'cm');
+  const initialFtIn = cmToFeetInches(boot.settings.height_cm);
+  const [heightFeet, setHeightFeet] = useState(initialFtIn.feet);
+  const [heightInches, setHeightInches] = useState(initialFtIn.inches);
+  const [clockFormat, setClockFormat] = useState(settings.clock_format || '24h');
+  const [restSeconds, setRestSeconds] = useState(settings.rest_seconds || 60);
+  const [defaultSets, setDefaultSets] = useState(settings.default_sets || 3);
+  const [defaultReps, setDefaultReps] = useState(settings.default_reps || 12);
+  const [progressiveOverload, setProgressiveOverload] = useState(Boolean(settings.progressive_overload));
+  const [soundRestDone, setSoundRestDone] = useState(Boolean(settings.sound_rest_done));
+  const [countdown3s, setCountdown3s] = useState(Boolean(settings.countdown_3s));
+  const [autoNextSet, setAutoNextSet] = useState(Boolean(settings.auto_next_set));
+  const [themeMode, setThemeMode] = useState(settings.theme_mode || 'light');
+  const [primaryColor, setPrimaryColor] = useState(settings.primary_color || '#f05a28');
+  const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
     const name = prompt('Tên thành viên');
@@ -1849,18 +2064,44 @@ function SettingsPage({ userId, boot, onChanged }) {
     await api('/api/users', { method: 'POST', body: JSON.stringify({ userId, name, username, password }) });
     location.reload();
   };
-  const saveProfile = async () => {
+  const saveAll = async () => {
+    setSettingsError('');
+    if (password.trim() || passwordAgain.trim()) {
+      if (password !== passwordAgain) {
+        setSettingsError('Mật khẩu mới và nhập lại mật khẩu mới phải trùng nhau.');
+        return;
+      }
+    }
     const body = { userId };
     if (name.trim()) body.name = name.trim();
     if (password.trim()) body.password = password.trim();
     if (avatarPreview !== boot.activeUser.avatar) body.avatar = avatarPreview;
     const updated = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) });
+    await api('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        userId,
+        timezone,
+        locale,
+        heightCm: heightUnit === 'ft-in' ? feetInchesToCm(heightFeet, heightInches) || null : heightCm || null,
+        defaultWeightUnit,
+        gender,
+        birthDate,
+        heightUnit,
+        clockFormat,
+        restSeconds,
+        defaultSets,
+        defaultReps,
+        progressiveOverload,
+        soundRestDone,
+        countdown3s,
+        autoNextSet,
+        themeMode,
+        primaryColor
+      })
+    });
     localStorage.setItem('familyGymUser', JSON.stringify(updated));
     location.reload();
-  };
-  const saveDisplay = async () => {
-    await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ userId, timezone, locale, heightCm: heightCm || null }) });
-    onChanged?.();
   };
   const pickAvatar = (file) => {
     if (!file) return;
@@ -1870,8 +2111,7 @@ function SettingsPage({ userId, boot, onChanged }) {
   };
   return (
     <section className="space-y-4">
-      <div className="panel">
-        <h2 className="section-title">Hồ sơ của tôi</h2>
+      <SettingsGroup title="1. Hồ sơ cá nhân">
         <div className="mb-4 flex items-center gap-3">
           <div className="avatar-preview">{avatarContent(avatarPreview)}</div>
           <label className="small-action cursor-pointer">
@@ -1884,34 +2124,121 @@ function SettingsPage({ userId, boot, onChanged }) {
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         <label className="label mt-3">Mật khẩu mới</label>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Để trống nếu không đổi" />
-        <button className="primary mt-3" onClick={saveProfile}>Lưu thay đổi</button>
-      </div>
-      <div className="panel">
-        <h2 className="section-title">Thời gian và ngôn ngữ</h2>
-        <label className="label">Mốc thời gian</label>
-        <select className="input" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
-          {timezoneChoices.map((item) => <option key={item.name} value={item.name}>{item.label}</option>)}
+        <label className="label mt-3">Nhập lại mật khẩu mới</label>
+        <input className="input" type="password" value={passwordAgain} onChange={(e) => setPasswordAgain(e.target.value)} placeholder="Nhập lại mật khẩu mới" />
+        <label className="label mt-3">Giới tính</label>
+        <select className="input" value={gender} onChange={(event) => setGender(event.target.value)}>
+          <option value="">Chưa chọn</option>
+          <option value="male">Nam</option>
+          <option value="female">Nữ</option>
+          <option value="other">Khác</option>
         </select>
-        <label className="label mt-3">Ngôn ngữ / đất nước</label>
+        <label className="label mt-3">Tuổi / ngày sinh</label>
+        <input className="input" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+        <label className="label mt-3">Chiều cao để tính BMI</label>
+        {heightUnit === 'ft-in' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <input className="input" type="number" min="1" max="8" value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} placeholder="feet" />
+            <input className="input" type="number" min="0" max="11" value={heightInches} onChange={(event) => setHeightInches(event.target.value)} placeholder="inch" />
+          </div>
+        ) : (
+          <input className="input" type="number" min="50" max="260" step="0.5" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder="Ví dụ: 170" />
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup title="2. Đơn vị đo">
+        <SettingsToggle label="Cân nặng tạ" value={defaultWeightUnit} onChange={setDefaultWeightUnit} options={[['kg', 'Kg'], ['lb', 'Lb']]} />
+        <SettingsToggle label="Chiều cao" value={heightUnit} onChange={setHeightUnit} options={[['cm', 'cm'], ['ft-in', 'ft-in']]} />
+        <SettingsToggle label="Giờ" value={clockFormat} onChange={setClockFormat} options={[['12h', '12h'], ['24h', '24h']]} />
+      </SettingsGroup>
+
+      <SettingsGroup title="3. Cài đặt bài tập">
+        <NumberSetting label="Nghỉ giữa hiệp mặc định (giây)" value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
+        <NumberSetting label="Số set mặc định" value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
+        <NumberSetting label="Số reps mặc định" value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
+        <SwitchSetting label="Tự động tăng tạ / progressive overload" checked={progressiveOverload} onChange={setProgressiveOverload} />
+      </SettingsGroup>
+
+      <SettingsGroup title="4. Timer & âm thanh">
+        <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">Timer và âm thanh chạy tốt nhất khi app đang mở trên màn hình. iPhone/Android có thể khống chế âm thanh nếu app chạy nền hoặc máy đang ở chế độ im lặng.</p>
+        <SwitchSetting label="Âm báo hết giờ nghỉ" checked={soundRestDone} onChange={setSoundRestDone} />
+        <SwitchSetting label="Đếm ngược 3 giây" checked={countdown3s} onChange={setCountdown3s} />
+        <SwitchSetting label="Tự chuyển sang set tiếp theo" checked={autoNextSet} onChange={setAutoNextSet} />
+      </SettingsGroup>
+
+      <SettingsGroup title="5. Giao diện">
+        <SettingsToggle label="Dark mode / light mode" value={themeMode} onChange={setThemeMode} options={[['light', 'Light'], ['dark', 'Dark']]} />
+        <label className="label mt-3">Màu chủ đạo</label>
+        <div className="flex items-center gap-2">
+          <input className="h-12 w-16 rounded-md border border-slate-200" type="color" value={primaryColor} onChange={(event) => setPrimaryColor(event.target.value)} />
+          {['#f05a28', '#166534', '#2563eb', '#7c3aed', '#0f766e'].map((color) => (
+            <button key={color} className="h-9 w-9 rounded-full ring-1 ring-slate-200" style={{ background: color }} onClick={() => setPrimaryColor(color)} />
+          ))}
+        </div>
+        <label className="label mt-3">Ngôn ngữ</label>
         <select className="input" value={locale} onChange={(event) => setLocale(event.target.value)}>
           {localeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <label className="label mt-3">Chiều cao để tính BMI</label>
-        <input className="input" type="number" min="50" max="260" step="0.5" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder="Ví dụ: 170" />
-        <p className="mt-2 text-sm text-slate-600">Xem trước: {formatDateTime(new Date(), { timezone, locale }, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-        <button className="primary mt-3" onClick={saveDisplay}>Lưu hiển thị</button>
-      </div>
-      <div className="panel">
-        <h2 className="section-title">Dữ liệu</h2>
-        <p className="text-sm text-teal-900">{boot.exerciseCount} bài tập từ hasaneyldrm</p>
-        <button className="primary mt-3" onClick={() => window.open(`/api/export?userId=${userId}`, '_blank')}>Export JSON</button>
-      </div>
+        <label className="label mt-3">Mốc thời gian</label>
+        <select className="input" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+          {timezoneChoices.map((item) => <option key={item.name} value={item.name}>{item.label}</option>)}
+        </select>
+        <p className="mt-2 text-sm text-slate-600">Xem trước: {formatDateTime(new Date(), { timezone, locale, clock_format: clockFormat }, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+      </SettingsGroup>
+
+      <SettingsGroup title="6. Dữ liệu & đồng bộ">
+        <button className="primary" onClick={() => window.open(`/api/export?userId=${userId}`, '_blank')}>Backup dữ liệu / Export JSON</button>
+        <p className="mt-2 text-sm text-slate-600">Xuất CSV/Excel, nhập dữ liệu, xoá toàn bộ dữ liệu và khôi phục dữ liệu sẽ yêu cầu nhập lại mật khẩu người dùng.</p>
+      </SettingsGroup>
+
+      {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
+      <button className="primary" onClick={saveAll}>Lưu thay đổi</button>
       {boot.activeUser.role === 'ADMIN' && <div className="panel">
         <h2 className="section-title">Thành viên gia đình</h2>
         <button className="primary" onClick={addUser}>Thêm thành viên</button>
         <AdminUsers users={boot.users} adminId={userId} />
       </div>}
     </section>
+  );
+}
+
+function SettingsGroup({ title, children }) {
+  return (
+    <div className="panel">
+      <h2 className="section-title">{title}</h2>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function SettingsToggle({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="settings-unit-toggle">
+        {options.map(([optionValue, text]) => (
+          <button key={optionValue} className={`unit-btn ${value === optionValue ? 'active' : ''}`} onClick={() => onChange(optionValue)}>{text}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NumberSetting({ label, value, onChange, min, max }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input className="input" type="number" min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
+function SwitchSetting({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-md bg-slate-50 p-3 font-semibold">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
   );
 }
 
