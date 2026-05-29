@@ -2052,8 +2052,6 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [soundRestDone, setSoundRestDone] = useState(Boolean(settings.sound_rest_done));
   const [countdown3s, setCountdown3s] = useState(Boolean(settings.countdown_3s));
   const [autoNextSet, setAutoNextSet] = useState(Boolean(settings.auto_next_set));
-  const [themeMode, setThemeMode] = useState(settings.theme_mode || 'light');
-  const [primaryColor, setPrimaryColor] = useState(settings.primary_color || '#f05a28');
   const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
@@ -2097,9 +2095,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         progressiveOverload,
         soundRestDone,
         countdown3s,
-        autoNextSet,
-        themeMode,
-        primaryColor
+        autoNextSet
       })
     });
     localStorage.setItem('familyGymUser', JSON.stringify(updated));
@@ -2169,14 +2165,6 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title="5. Giao diện">
-        <SettingsToggle label="Dark mode / light mode" value={themeMode} onChange={setThemeMode} options={[['light', 'Light'], ['dark', 'Dark']]} />
-        <label className="label mt-3">Màu chủ đạo</label>
-        <div className="flex items-center gap-2">
-          <input className="h-12 w-16 rounded-md border border-slate-200" type="color" value={primaryColor} onChange={(event) => setPrimaryColor(event.target.value)} />
-          {['#f05a28', '#166534', '#2563eb', '#7c3aed', '#0f766e'].map((color) => (
-            <button key={color} className="h-9 w-9 rounded-full ring-1 ring-slate-200" style={{ background: color }} onClick={() => setPrimaryColor(color)} />
-          ))}
-        </div>
         <label className="label mt-3">Ngôn ngữ</label>
         <select className="input" value={locale} onChange={(event) => setLocale(event.target.value)}>
           {localeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
