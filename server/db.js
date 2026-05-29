@@ -50,6 +50,31 @@ export function migrate() {
       rest_seconds INTEGER NOT NULL DEFAULT 60,
       timezone TEXT NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
       locale TEXT NOT NULL DEFAULT 'vi-VN',
+      default_weight_unit TEXT NOT NULL DEFAULT 'kg',
+      gender TEXT,
+      birth_date TEXT,
+      height_unit TEXT NOT NULL DEFAULT 'cm',
+      distance_unit TEXT NOT NULL DEFAULT 'km',
+      energy_unit TEXT NOT NULL DEFAULT 'kcal',
+      clock_format TEXT NOT NULL DEFAULT '24h',
+      default_sets INTEGER NOT NULL DEFAULT 3,
+      default_reps INTEGER NOT NULL DEFAULT 12,
+      progressive_overload INTEGER NOT NULL DEFAULT 0,
+      sound_rest_done INTEGER NOT NULL DEFAULT 1,
+      vibrate_rest_done INTEGER NOT NULL DEFAULT 1,
+      countdown_3s INTEGER NOT NULL DEFAULT 0,
+      auto_next_set INTEGER NOT NULL DEFAULT 0,
+      keep_screen_awake INTEGER NOT NULL DEFAULT 0,
+      theme_mode TEXT NOT NULL DEFAULT 'light',
+      primary_color TEXT NOT NULL DEFAULT '#f05a28',
+      notify_workout INTEGER NOT NULL DEFAULT 0,
+      notify_weigh INTEGER NOT NULL DEFAULT 0,
+      notify_progress_photo INTEGER NOT NULL DEFAULT 0,
+      notify_water INTEGER NOT NULL DEFAULT 0,
+      notify_recovery INTEGER NOT NULL DEFAULT 0,
+      notify_missed_workout INTEGER NOT NULL DEFAULT 0,
+      privacy_pin_lock INTEGER NOT NULL DEFAULT 0,
+      privacy_hide_progress_photos INTEGER NOT NULL DEFAULT 0,
       height_cm REAL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -150,6 +175,7 @@ export function migrate() {
       exercise_id TEXT NOT NULL,
       set_index INTEGER NOT NULL,
       weight_kg REAL NOT NULL DEFAULT 0,
+      weight_unit TEXT NOT NULL DEFAULT 'kg',
       reps INTEGER NOT NULL DEFAULT 0,
       completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
@@ -162,6 +188,8 @@ export function migrate() {
       exercise_id TEXT NOT NULL,
       note TEXT NOT NULL DEFAULT '',
       target_sets INTEGER NOT NULL DEFAULT 3,
+      weight_mode TEXT NOT NULL DEFAULT 'KG',
+      manual_weight_kg REAL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, exercise_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -196,6 +224,15 @@ export function migrate() {
   if (!hasColumn('exercise_notes', 'target_sets')) {
     db.exec('ALTER TABLE exercise_notes ADD COLUMN target_sets INTEGER NOT NULL DEFAULT 3');
   }
+  if (!hasColumn('workout_logs', 'weight_unit')) {
+    db.exec("ALTER TABLE workout_logs ADD COLUMN weight_unit TEXT NOT NULL DEFAULT 'kg'");
+  }
+  if (!hasColumn('exercise_notes', 'weight_mode')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN weight_mode TEXT NOT NULL DEFAULT 'KG'");
+  }
+  if (!hasColumn('exercise_notes', 'manual_weight_kg')) {
+    db.exec('ALTER TABLE exercise_notes ADD COLUMN manual_weight_kg REAL');
+  }
   if (!hasColumn('user_settings', 'timezone')) {
     db.exec("ALTER TABLE user_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'");
   }
@@ -204,6 +241,40 @@ export function migrate() {
   }
   if (!hasColumn('user_settings', 'height_cm')) {
     db.exec('ALTER TABLE user_settings ADD COLUMN height_cm REAL');
+  }
+  if (!hasColumn('user_settings', 'default_weight_unit')) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN default_weight_unit TEXT NOT NULL DEFAULT 'kg'");
+  }
+  const userSettingColumns = [
+    ['gender', "TEXT"],
+    ['birth_date', "TEXT"],
+    ['height_unit', "TEXT NOT NULL DEFAULT 'cm'"],
+    ['distance_unit', "TEXT NOT NULL DEFAULT 'km'"],
+    ['energy_unit', "TEXT NOT NULL DEFAULT 'kcal'"],
+    ['clock_format', "TEXT NOT NULL DEFAULT '24h'"],
+    ['default_sets', 'INTEGER NOT NULL DEFAULT 3'],
+    ['default_reps', 'INTEGER NOT NULL DEFAULT 12'],
+    ['progressive_overload', 'INTEGER NOT NULL DEFAULT 0'],
+    ['sound_rest_done', 'INTEGER NOT NULL DEFAULT 1'],
+    ['vibrate_rest_done', 'INTEGER NOT NULL DEFAULT 1'],
+    ['countdown_3s', 'INTEGER NOT NULL DEFAULT 0'],
+    ['auto_next_set', 'INTEGER NOT NULL DEFAULT 0'],
+    ['keep_screen_awake', 'INTEGER NOT NULL DEFAULT 0'],
+    ['theme_mode', "TEXT NOT NULL DEFAULT 'light'"],
+    ['primary_color', "TEXT NOT NULL DEFAULT '#f05a28'"],
+    ['notify_workout', 'INTEGER NOT NULL DEFAULT 0'],
+    ['notify_weigh', 'INTEGER NOT NULL DEFAULT 0'],
+    ['notify_progress_photo', 'INTEGER NOT NULL DEFAULT 0'],
+    ['notify_water', 'INTEGER NOT NULL DEFAULT 0'],
+    ['notify_recovery', 'INTEGER NOT NULL DEFAULT 0'],
+    ['notify_missed_workout', 'INTEGER NOT NULL DEFAULT 0'],
+    ['privacy_pin_lock', 'INTEGER NOT NULL DEFAULT 0'],
+    ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0']
+  ];
+  for (const [column, definition] of userSettingColumns) {
+    if (!hasColumn('user_settings', column)) {
+      db.exec(`ALTER TABLE user_settings ADD COLUMN ${column} ${definition}`);
+    }
   }
   db.prepare('UPDATE user_settings SET rest_seconds = 60 WHERE rest_seconds = 90').run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');
@@ -219,8 +290,10 @@ export function migrate() {
       const username = user.id === 1 ? 'admin' : `user${user.id}`;
       update.run(username, hashPassword(user.id === 1 ? 'admin123' : 'family123'), username.slice(0, 2).toUpperCase(), user.id);
     }
-    db.prepare("UPDATE users SET name = 'admin', username = 'admin', password_hash = ?, avatar = 'AD', role = 'ADMIN' WHERE id = 1 AND (username = 'family' OR username = 'admin')").run(hashPassword('admin123'));
+    db.prepare("UPDATE users SET name = 'admin', username = 'admin', password_hash = ?, avatar = 'AD', role = 'ADMIN' WHERE id = 1 AND username = 'family'").run(hashPassword('admin123'));
+    db.prepare("UPDATE users SET role = 'ADMIN' WHERE id = 1").run();
   }
+  db.prepare('INSERT OR IGNORE INTO user_settings (user_id) SELECT id FROM users').run();
 }
 
 export function publicExercise(row) {

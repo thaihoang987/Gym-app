@@ -56,6 +56,34 @@ button:disabled {
   @apply rounded-lg border border-[#1f2933] bg-[#1f2933] p-4 text-white shadow-soft;
 }
 
+.app-dialog-backdrop {
+  @apply fixed inset-0 z-[100] grid place-items-center bg-slate-950/45 px-4 backdrop-blur-sm;
+}
+
+.app-dialog {
+  @apply w-full max-w-sm rounded bg-[#fffdf7] p-5 text-slate-950 shadow-soft ring-1 ring-stone-200;
+}
+
+.app-dialog-mark {
+  @apply mb-3 grid h-10 w-10 place-items-center rounded bg-[#f05a28] text-white;
+}
+
+.app-dialog h2 {
+  @apply text-xl font-black leading-tight;
+}
+
+.app-dialog p {
+  @apply mt-2 text-sm leading-relaxed text-slate-700;
+}
+
+.app-dialog-actions {
+  @apply mt-5 grid grid-cols-2 gap-2;
+}
+
+.app-dialog-actions.single {
+  @apply grid-cols-1;
+}
+
 .weight-hero-card {
   @apply grid grid-cols-[1fr_auto] items-center gap-4 rounded-[28px] p-5 text-white shadow-soft;
   background: linear-gradient(135deg, #6c63ff 0%, #8f7cf7 48%, #ff8f70 100%);
@@ -311,6 +339,7 @@ button:disabled {
 
 .drag-handle {
   @apply grid h-10 w-8 shrink-0 cursor-grab place-items-center rounded-md text-slate-500 hover:bg-white hover:text-slate-900;
+  touch-action: none;
 }
 
 .body-weight-card {
@@ -428,10 +457,6 @@ button:disabled {
 
 .set-table-header span {
   @apply text-center;
-}
-
-.set-table-header span:nth-child(2) {
-  @apply text-left;
 }
 
 .set-table-row {

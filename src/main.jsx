@@ -1,6 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   BarChart3,
   CalendarDays,
   Check,
@@ -30,6 +46,22 @@ const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
 const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+function stableColorForName(name) {
+  const colors = [
+    { dot: '#f05a28', fill: '#ffe3d3', ring: '#ffbd9a' },
+    { dot: '#166534', fill: '#dcfce7', ring: '#86efac' },
+    { dot: '#2563eb', fill: '#dbeafe', ring: '#93c5fd' },
+    { dot: '#7c3aed', fill: '#ede9fe', ring: '#c4b5fd' },
+    { dot: '#0f766e', fill: '#ccfbf1', ring: '#5eead4' },
+    { dot: '#be123c', fill: '#ffe4e6', ring: '#fda4af' },
+    { dot: '#ca8a04', fill: '#fef3c7', ring: '#fde68a' },
+    { dot: '#334155', fill: '#e2e8f0', ring: '#cbd5e1' }
+  ];
+  const text = String(name || 'Tập tự do');
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  return colors[hash % colors.length];
+}
 const cmToFeetInches = (cm) => {
   const totalInches = Math.round(Number(cm || 0) / 2.54);
   return { feet: Math.floor(totalInches / 12) || '', inches: totalInches % 12 || '' };
@@ -186,6 +218,73 @@ async function api(path, options = {}) {
   });
   if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
   return response.json();
+}
+
+const DialogContext = React.createContext(null);
+
+function useAppDialog() {
+  const dialog = React.useContext(DialogContext);
+  if (!dialog) throw new Error('DialogProvider is missing');
+  return dialog;
+}
+
+function DialogProvider({ children }) {
+  const [dialog, setDialog] = useState(null);
+
+  const openDialog = (config) => new Promise((resolve) => {
+    setDialog({ ...config, value: config.defaultValue || '', resolve });
+  });
+  const closeDialog = (value) => {
+    setDialog((current) => {
+      current?.resolve(value);
+      return null;
+    });
+  };
+  const apiValue = useMemo(() => ({
+    alert: (message, options = {}) => openDialog({ kind: 'alert', title: options.title || 'Thông báo', message, okText: options.okText || 'OK' }),
+    confirm: (message, options = {}) => openDialog({ kind: 'confirm', title: options.title || 'Xác nhận', message, okText: options.okText || 'Có', cancelText: options.cancelText || 'Không' }),
+    prompt: (message, options = {}) => openDialog({ kind: 'prompt', title: options.title || message, message: options.description || '', inputType: options.type || 'text', defaultValue: options.defaultValue || '', okText: options.okText || 'Tiếp tục', cancelText: options.cancelText || 'Huỷ' })
+  }), []);
+
+  return (
+    <DialogContext.Provider value={apiValue}>
+      {children}
+      {dialog && <AppDialog dialog={dialog} setDialog={setDialog} onClose={closeDialog} />}
+    </DialogContext.Provider>
+  );
+}
+
+function AppDialog({ dialog, setDialog, onClose }) {
+  const isPrompt = dialog.kind === 'prompt';
+  const submit = (event) => {
+    event.preventDefault();
+    if (dialog.kind === 'alert') onClose(true);
+    else if (dialog.kind === 'confirm') onClose(true);
+    else onClose(dialog.value);
+  };
+
+  return (
+    <div className="app-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose(dialog.kind === 'alert' ? true : null)}>
+      <form className="app-dialog" onSubmit={submit} role="dialog" aria-modal="true">
+        <div className="app-dialog-mark"><Dumbbell size={20} /></div>
+        <h2>{dialog.title}</h2>
+        {dialog.message && <p>{dialog.message}</p>}
+        {isPrompt && (
+          <input
+            className="input mt-3"
+            autoFocus
+            type={dialog.inputType}
+            value={dialog.value}
+            onChange={(event) => setDialog((current) => ({ ...current, value: event.target.value }))}
+          />
+        )}
+        <div className={`app-dialog-actions ${dialog.kind === 'alert' ? 'single' : ''}`}>
+          {dialog.kind !== 'alert' && <button type="button" className="ghost-btn" onClick={() => onClose(null)}>{dialog.cancelText}</button>}
+          <button type="submit" className="primary">{dialog.okText}</button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 class ErrorBoundary extends React.Component {
@@ -350,9 +449,14 @@ function Login({ onLogin }) {
 }
 
 function Header({ user, boot, onLogout }) {
-  const now = new Date();
+  const [now, setNow] = useState(new Date());
   const [open, setOpen] = useState(false);
   const menuRef = React.useRef(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -373,7 +477,7 @@ function Header({ user, boot, onLogout }) {
   return (
     <header className="mb-5 flex items-center justify-between">
       <div>
-        <p className="text-sm text-teal-950">{formatDate(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+        <p className="text-sm text-teal-950">{formatDateTime(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
         <h1 className="text-2xl font-bold">{user.name}</h1>
         <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {boot.exerciseCount} bài tập</p>
       </div>
@@ -407,9 +511,9 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
     return () => clearInterval(id);
   }, []);
 
-  const startRoutine = async (routine) => {
+  const startRoutine = async (routine, initialIndex = 0, initialView = 'list') => {
     const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, routineId: routine.id, scheduleMode: 'FREE' }) });
-    onStart({ sessionId: session.id });
+    onStart({ sessionId: session.id, initialIndex, initialView });
   };
   const startGroup = async (group) => {
     const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, groupId: group.id, scheduleMode: 'FREE' }) });
@@ -487,6 +591,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
   const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
+  const exerciseIndexById = new Map((routine?.exercises || []).map((exercise, index) => [exercise.id, index]));
 
   return (
     <div className="panel-green">
@@ -519,18 +624,26 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                 <div className="mt-3 grid gap-2">
                   {group.exercises.slice(0, 5).map((exercise) => {
                     const summary = summaryByExercise.get(exercise.id);
+                    const done = Boolean(summary);
                     return (
-                      <div key={exercise.id} className="flex items-center gap-3 rounded-md bg-black/15 p-2">
+                      <div key={exercise.id} className={`flex items-center gap-3 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
                         <img src={exercise.imageUrl} className="h-12 w-12 rounded bg-white object-contain" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold">{exercise.name}</p>
-                          <p className="text-xs text-emerald-200">
-                            {summary ? `Xong ${summary.sets} set · max ${summary.max_weight} kg · trước: ${summary.previous_best || 'chưa có'}` : 'Chưa tập hôm nay'}
+                          <p className={`text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
+                            {done ? `Đã tập ${summary.sets} set · max ${summary.max_weight} kg · trước: ${summary.previous_best || 'chưa có'}` : 'Chưa tập hôm nay'}
                           </p>
                         </div>
-                        <span className={`rounded-full px-2 py-1 text-xs font-bold ${summary ? 'bg-lime-300 text-green-950' : 'bg-white/10 text-emerald-200'}`}>
-                          {summary ? 'Xong' : 'Chờ'}
+                        <span className={`rounded px-2 py-1 text-xs font-black ${done ? 'bg-lime-300 text-green-950' : 'bg-orange-100 text-orange-900'}`}>
+                          {done ? 'Đã tập' : 'Chưa'}
                         </span>
+                        <button
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
+                          title="Vào bài tập"
+                          onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
+                        >
+                          <Play size={16} />
+                        </button>
                       </div>
                     );
                   })}
@@ -719,6 +832,16 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
 function ActivityCalendar({ calendar, history, settings }) {
   const [tip, setTip] = useState(null);
   const byDay = new Map(calendar.map((row) => [row.day, row]));
+  const historyByDay = new Map();
+  for (const row of history) {
+    const date = parseServerDate(row.completed_at);
+    if (!date) continue;
+    const key = localIsoDate(date);
+    const name = row.routine_name || row.group_name || 'Tập tự do';
+    const list = historyByDay.get(key) || [];
+    list.push({ ...row, activityName: name, color: stableColorForName(name) });
+    historyByDay.set(key, list);
+  }
   const cells = [];
   const today = new Date();
   const start = new Date(today);
@@ -728,10 +851,19 @@ function ActivityCalendar({ calendar, history, settings }) {
     const date = new Date(start);
     date.setDate(start.getDate() + i);
     const iso = localIsoDate(date);
-    cells.push({ iso, date, data: byDay.get(iso) });
+    const activities = historyByDay.get(iso) || [];
+    cells.push({ iso, date, data: byDay.get(iso), activities });
   }
   const total = calendar.reduce((sum, row) => sum + Number(row.total || 0), 0);
   const bars = history.slice(0, 3);
+  const legend = [];
+  const legendKeys = new Set();
+  for (const row of bars) {
+    const name = row.routine_name || row.group_name || 'Tập tự do';
+    if (legendKeys.has(name)) continue;
+    legendKeys.add(name);
+    legend.push({ name, color: stableColorForName(name) });
+  }
 
   return (
     <div className="panel">
@@ -749,26 +881,47 @@ function ActivityCalendar({ calendar, history, settings }) {
             {cells.map((cell) => (
               <div
                 key={cell.iso}
-                onMouseEnter={(event) => setTip({ x: event.clientX, y: event.clientY, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động` })}
+                onMouseEnter={(event) => setTip({ x: event.clientX, y: event.clientY, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
                 onMouseMove={(event) => setTip((old) => old ? { ...old, x: event.clientX, y: event.clientY } : old)}
                 onMouseLeave={() => setTip(null)}
-                onClick={() => setTip({ x: window.innerWidth / 2, y: 180, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động` })}
+                onClick={() => setTip({ x: window.innerWidth / 2, y: 180, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
                 className="grid cursor-pointer place-items-center"
               >
-                {cell.data ? <Dumbbell size={15} className="text-teal-950" /> : <span className="h-1 w-1 rounded-full bg-teal-200" />}
+                {cell.data ? <Dumbbell size={15} style={cell.activities.length === 1 ? { color: cell.activities[0].color.dot } : undefined} className={cell.activities.length === 1 ? '' : 'text-teal-950'} /> : <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
               </div>
             ))}
           </div>
         </div>
         <div className="col-span-2 space-y-3 md:col-span-1">
           {bars.length === 0 && <p className="text-sm text-slate-600">Chưa có dữ liệu lịch sử.</p>}
-          {bars.map((row) => (
-            <div key={row.id} className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-emerald-400 ring-1 ring-emerald-300" />
-              <div className="h-5 bg-emerald-100 ring-1 ring-emerald-200" style={{ width: `${Math.min(220, 60 + row.duration_minutes * 2)}px` }} />
-              <span className="text-sm font-bold">{row.duration_minutes} phút</span>
+          {legend.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1">
+              {legend.map((item) => (
+                <span key={item.name} className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <span className="h-2.5 w-2.5 rounded-full ring-1" style={{ backgroundColor: item.color.dot, borderColor: item.color.ring }} />
+                  {item.name}
+                </span>
+              ))}
             </div>
-          ))}
+          )}
+          {bars.map((row) => {
+            const color = stableColorForName(row.routine_name || row.group_name || 'Tập tự do');
+            return (
+              <div key={row.id} className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full ring-1" style={{ backgroundColor: color.dot, borderColor: color.ring }} />
+                <div
+                  className="h-5 ring-1"
+                  title={row.routine_name || row.group_name || 'Tập tự do'}
+                  style={{
+                    width: `${Math.min(220, 60 + row.duration_minutes * 2)}px`,
+                    backgroundColor: color.fill,
+                    borderColor: color.ring
+                  }}
+                />
+                <span className="text-sm font-bold">{row.duration_minutes} phút</span>
+              </div>
+            );
+          })}
         </div>
       </div>
       {tip && <div className="calendar-tip" style={{ left: tip.x + 10, top: tip.y + 10 }}>{tip.text}</div>}
@@ -777,10 +930,11 @@ function ActivityCalendar({ calendar, history, settings }) {
 }
 
 function HistoryList({ userId, history, onDeleted, settings }) {
+  const dialog = useAppDialog();
   const [openSessionId, setOpenSessionId] = useState(null);
   const [detail, setDetail] = useState(null);
   const removeSession = async (sessionId) => {
-    if (!confirm('Xoá buổi tập này? Set/log trong buổi này cũng sẽ bị xoá khỏi thống kê.')) return;
+    if (!(await dialog.confirm('Xoá buổi tập này? Set/log trong buổi này cũng sẽ bị xoá khỏi thống kê.'))) return;
     await api(`/api/sessions/${sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     if (openSessionId === sessionId) {
       setOpenSessionId(null);
@@ -1030,16 +1184,48 @@ function ExerciseInstructions({ exercise, compact = false }) {
   );
 }
 
+function SortableExerciseRow({ exercise, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: exercise.id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`exercise-drag-row ${isDragging ? 'dragging' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <button className="drag-handle" type="button" title="Kéo cả hàng để đổi vị trí" {...attributes} {...listeners}><GripVertical size={18} /></button>
+      <img src={exercise.imageUrl} className="h-14 w-14 rounded bg-white object-contain" />
+      <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
+      <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> Xóa</button>
+    </div>
+  );
+}
+
+function SortableRoutineGroupRow({ group, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: group.id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`exercise-drag-row ${isDragging ? 'dragging' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <button className="drag-handle" type="button" title="Kéo cả hàng để đổi vị trí" {...attributes} {...listeners}><GripVertical size={18} /></button>
+      <span className="min-w-0 flex-1 text-sm font-semibold">{group.name}</span>
+      <button className="small-danger" onClick={() => onRemove(group.id)}><Trash2 size={16} /> Xóa khỏi buổi</button>
+    </div>
+  );
+}
+
 function Builder({ userId, boot, onStart, onChanged }) {
+  const dialog = useAppDialog();
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
   const [groupName, setGroupName] = useState('');
   const [routineName, setRoutineName] = useState('');
   const [selectedGroups, setSelectedGroups] = useState([]);
-  const [draggingExercise, setDraggingExercise] = useState(null);
-  const [dragOverExercise, setDragOverExercise] = useState(null);
-  const [draggingRoutineGroup, setDraggingRoutineGroup] = useState(null);
-  const [dragOverRoutineGroup, setDragOverRoutineGroup] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const load = () => {
     api(`/api/groups?userId=${userId}`).then(setGroups);
@@ -1053,10 +1239,6 @@ function Builder({ userId, boot, onStart, onChanged }) {
     setGroupName('');
     load();
   };
-  const moveExercise = async (groupId, exerciseId, direction) => {
-    await api(`/api/groups/${groupId}/exercises/${exerciseId}`, { method: 'PATCH', body: JSON.stringify({ direction }) });
-    load();
-  };
   const reorderGroupExercises = async (groupId, fromExerciseId, toExerciseId) => {
     if (!fromExerciseId || !toExerciseId || fromExerciseId === toExerciseId) return;
     const group = groups.find((item) => item.id === groupId);
@@ -1065,18 +1247,21 @@ function Builder({ userId, boot, onStart, onChanged }) {
     const fromIndex = next.findIndex((exercise) => exercise.id === fromExerciseId);
     const toIndex = next.findIndex((exercise) => exercise.id === toExerciseId);
     if (fromIndex < 0 || toIndex < 0) return;
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-    setGroups((old) => old.map((item) => item.id === groupId ? { ...item, exercises: next } : item));
-    await api(`/api/groups/${groupId}/exercises-order`, { method: 'PATCH', body: JSON.stringify({ userId, exerciseIds: next.map((exercise) => exercise.id) }) });
+    const reordered = arrayMove(next, fromIndex, toIndex);
+    setGroups((old) => old.map((item) => item.id === groupId ? { ...item, exercises: reordered } : item));
+    await api(`/api/groups/${groupId}/exercises-order`, { method: 'PATCH', body: JSON.stringify({ userId, exerciseIds: reordered.map((exercise) => exercise.id) }) });
     load();
+  };
+  const handleExerciseDragEnd = ({ active, over }, groupId) => {
+    if (!over || active.id === over.id) return;
+    reorderGroupExercises(groupId, active.id, over.id);
   };
   const removeExercise = async (groupId, exerciseId) => {
     await api(`/api/groups/${groupId}/exercises/${exerciseId}`, { method: 'DELETE' });
     load();
   };
   const deleteGroup = async (groupId) => {
-    if (!confirm('Xóa Group Bài tập này? Các Group Buổi tập liên quan sẽ được cập nhật.')) return;
+    if (!(await dialog.confirm('Xóa Group Bài tập này? Các Group Buổi tập liên quan sẽ được cập nhật.'))) return;
     await api(`/api/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1097,7 +1282,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     onStart({ sessionId: session.id });
   };
   const deleteRoutine = async (routineId) => {
-    if (!confirm('Xóa Group Buổi tập này? Lịch gán với nó cũng sẽ bị xóa.')) return;
+    if (!(await dialog.confirm('Xóa Group Buổi tập này? Lịch gán với nó cũng sẽ bị xóa.'))) return;
     await api(`/api/routines/${routineId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1121,15 +1306,18 @@ function Builder({ userId, boot, onStart, onChanged }) {
     const fromIndex = next.findIndex((group) => group.id === fromGroupId);
     const toIndex = next.findIndex((group) => group.id === toGroupId);
     if (fromIndex < 0 || toIndex < 0) return;
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
+    const reordered = arrayMove(next, fromIndex, toIndex);
     setRoutineData((old) => ({
       ...old,
-      routines: old.routines.map((item) => item.id === routineId ? { ...item, groups: next } : item)
+      routines: old.routines.map((item) => item.id === routineId ? { ...item, groups: reordered } : item)
     }));
-    await api(`/api/routines/${routineId}/groups-order`, { method: 'PATCH', body: JSON.stringify({ userId, groupIds: next.map((group) => group.id) }) });
+    await api(`/api/routines/${routineId}/groups-order`, { method: 'PATCH', body: JSON.stringify({ userId, groupIds: reordered.map((group) => group.id) }) });
     load();
     onChanged();
+  };
+  const handleRoutineGroupDragEnd = ({ active, over }, routineId) => {
+    if (!over || active.id === over.id) return;
+    reorderRoutineGroups(routineId, Number(active.id), Number(over.id));
   };
   const setMode = async (mode) => {
     await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ userId, scheduleMode: mode }) });
@@ -1192,35 +1380,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
               <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách bài tập</summary>
               <div className="mt-3 space-y-2">
                 {group.exercises.length === 0 && <p className="text-sm text-slate-600">Vào Bài tập để thêm bài vào group này.</p>}
-                {group.exercises.map((exercise) => (
-                  <div
-                    key={exercise.id}
-                    draggable
-                    onDragStart={(event) => {
-                      setDraggingExercise({ groupId: group.id, exerciseId: exercise.id });
-                      event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(event) => {
-                      if (draggingExercise?.groupId === group.id) event.preventDefault();
-                    }}
-                    onDragEnter={() => {
-                      if (draggingExercise?.groupId === group.id) setDragOverExercise(exercise.id);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      reorderGroupExercises(group.id, draggingExercise?.exerciseId, exercise.id);
-                      setDraggingExercise(null);
-                      setDragOverExercise(null);
-                    }}
-                    onDragEnd={() => { setDraggingExercise(null); setDragOverExercise(null); }}
-                    className={`exercise-drag-row ${draggingExercise?.exerciseId === exercise.id ? 'dragging' : ''} ${dragOverExercise === exercise.id && draggingExercise?.exerciseId !== exercise.id ? 'drop-target' : ''}`}
-                  >
-                    <span className="drag-handle" title="Kéo cả hàng để đổi vị trí"><GripVertical size={18} /></span>
-                    <img src={exercise.imageUrl} className="h-14 w-14 rounded bg-white object-contain" />
-                    <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
-                    <button className="small-danger shrink-0" onClick={() => removeExercise(group.id, exercise.id)}><Trash2 size={16} /> Xóa</button>
-                  </div>
-                ))}
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleExerciseDragEnd(event, group.id)}>
+                  <SortableContext items={group.exercises.map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
+                    {group.exercises.map((exercise) => (
+                      <SortableExerciseRow key={exercise.id} exercise={exercise} onRemove={(exerciseId) => removeExercise(group.id, exerciseId)} />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               </div>
             </details>
           </div>
@@ -1266,34 +1432,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách Group Bài tập trong buổi</summary>
                   <div className="mt-3 grid gap-2">
-                  {routine.groups.map((group) => (
-                    <div
-                      key={group.id}
-                      draggable
-                      onDragStart={(event) => {
-                        setDraggingRoutineGroup({ routineId: routine.id, groupId: group.id });
-                        event.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(event) => {
-                        if (draggingRoutineGroup?.routineId === routine.id) event.preventDefault();
-                      }}
-                      onDragEnter={() => {
-                        if (draggingRoutineGroup?.routineId === routine.id) setDragOverRoutineGroup(group.id);
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        reorderRoutineGroups(routine.id, draggingRoutineGroup?.groupId, group.id);
-                        setDraggingRoutineGroup(null);
-                        setDragOverRoutineGroup(null);
-                      }}
-                      onDragEnd={() => { setDraggingRoutineGroup(null); setDragOverRoutineGroup(null); }}
-                      className={`exercise-drag-row ${draggingRoutineGroup?.groupId === group.id ? 'dragging' : ''} ${dragOverRoutineGroup === group.id && draggingRoutineGroup?.groupId !== group.id ? 'drop-target' : ''}`}
-                    >
-                      <span className="drag-handle" title="Kéo cả hàng để đổi vị trí"><GripVertical size={18} /></span>
-                      <span className="min-w-0 flex-1 text-sm font-semibold">{group.name}</span>
-                      <button className="small-danger" onClick={() => removeRoutineGroup(routine.id, group.id)}><Trash2 size={16} /> Xóa khỏi buổi</button>
-                    </div>
-                  ))}
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleRoutineGroupDragEnd(event, routine.id)}>
+                    <SortableContext items={routine.groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
+                      {routine.groups.map((group) => (
+                        <SortableRoutineGroupRow key={group.id} group={group} onRemove={(groupId) => removeRoutineGroup(routine.id, groupId)} />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
                   </div>
                 </details>
                 <select className="input mt-3 py-2 text-sm" value="" onChange={(event) => addRoutineGroup(routine.id, event.target.value)}>
@@ -1381,6 +1526,7 @@ function ScheduleRules({ rules, onDelete }) {
 }
 
 function WorkoutLogger({ userId, workout, settings, onClose }) {
+  const dialog = useAppDialog();
   const [data, setData] = useState(null);
   const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
   const restoreSaved = savedWorkout?.sessionId === workout.sessionId;
@@ -1532,7 +1678,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     await api(`/api/exercises/${exercise.id}/note`, { method: 'PUT', body: JSON.stringify({ userId, note: value }) });
   };
   const complete = async () => {
-    await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    const hasCompletedSet = data.exercises?.some((item) => {
+      if (item.id === exercise.id) return sets.some((set) => set.done);
+      return Number(item.completedSets || item.sets || 0) > 0;
+    });
+    if (!hasCompletedSet && !(await dialog.confirm('Không có set tập nào được ghi nhận? Bạn có muốn xoá buổi tập không?'))) return;
+    const result = await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     onClose();
   };
@@ -1565,13 +1716,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <h1 className="text-2xl font-black">{data.routine?.name || 'Buổi tập'}</h1>
           <p className="text-sm text-slate-500">Chọn bài để vào màn hình đang tập.</p>
           {data.exercises.map((item, itemIndex) => (
-            <button key={`${item.id}-${itemIndex}`} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left" onClick={() => openExercise(itemIndex)}>
+            <button key={`${item.id}-${itemIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(itemIndex)}>
               <img src={item.imageUrl || item.gifUrl} className="h-14 w-14 rounded-md bg-slate-50 object-contain" />
               <div className="min-w-0 flex-1">
                 <p className="font-bold">{item.name}</p>
-                <p className="text-sm text-slate-500">{item.groupName || item.target} · {item.equipment}</p>
+                <p className={`text-sm font-semibold ${item.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
+                  {item.completedSets ? `Đã tập ${item.completedSets} set` : 'Chưa tập'} · {item.groupName || item.target} · {item.equipment}
+                </p>
               </div>
-              <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-bold text-teal-950">Tập bài này</span>
+              <span className={`rounded px-3 py-1 text-xs font-black ${item.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                {item.completedSets ? 'Tập tiếp' : 'Tập bài này'}
+              </span>
             </button>
           ))}
           <button className="primary" onClick={complete}>Kết thúc buổi tập</button>
@@ -2029,6 +2184,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
 }
 
 function SettingsPage({ userId, boot, onChanged }) {
+  const dialog = useAppDialog();
   const settings = boot.settings || {};
   const [name, setName] = useState(boot.activeUser.name);
   const [password, setPassword] = useState('');
@@ -2055,11 +2211,11 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
-    const name = prompt('Tên thành viên');
+    const name = await dialog.prompt('Tên thành viên');
     if (!name) return;
-    const username = prompt('Tên đăng nhập');
+    const username = await dialog.prompt('Tên đăng nhập');
     if (!username) return;
-    const password = prompt('Mật khẩu');
+    const password = await dialog.prompt('Mật khẩu', { type: 'password' });
     if (!password) return;
     await api('/api/users', { method: 'POST', body: JSON.stringify({ userId, name, username, password }) });
     location.reload();
@@ -2106,6 +2262,16 @@ function SettingsPage({ userId, boot, onChanged }) {
     const reader = new FileReader();
     reader.onload = () => setAvatarPreview(String(reader.result));
     reader.readAsDataURL(file);
+  };
+  const importExcel = async (file) => {
+    if (!file) return;
+    const content = await file.text();
+    const result = await api('/api/import/excel', {
+      method: 'POST',
+      body: JSON.stringify({ userId, content })
+    });
+    await dialog.alert(`Đã nhập ${result.rows || 0} dòng dữ liệu từ Excel.`);
+    location.reload();
   };
   return (
     <section className="space-y-4">
@@ -2177,8 +2343,13 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title="6. Dữ liệu & đồng bộ">
-        <button className="primary" onClick={() => window.open(`/api/export?userId=${userId}`, '_blank')}>Backup dữ liệu / Export JSON</button>
-        <p className="mt-2 text-sm text-slate-600">Xuất CSV/Excel, nhập dữ liệu, xoá toàn bộ dữ liệu và khôi phục dữ liệu sẽ yêu cầu nhập lại mật khẩu người dùng.</p>
+        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>Xuất Excel toàn bộ dữ liệu</button>
+        <label className="ghost-btn cursor-pointer">
+          Nhập Excel
+          <input className="hidden" type="file" accept=".xls,.html,application/vnd.ms-excel,text/html" onChange={(event) => importExcel(event.target.files?.[0])} />
+        </label>
+        <button className="ghost-btn" onClick={() => window.open(`/api/export?userId=${userId}`, '_blank')}>Export JSON</button>
+        <p className="mt-2 text-sm text-slate-600">Excel xuất 1 sheet, có STT, ngày, giờ và tiêu đề rõ ràng. Phần nhập Excel dùng cho file .xls do Gym App xuất ra.</p>
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
@@ -2233,6 +2404,7 @@ function SwitchSetting({ label, checked, onChange }) {
 }
 
 function AdminUsers({ users, adminId }) {
+  const dialog = useAppDialog();
   const [drafts, setDrafts] = useState(() => Object.fromEntries(users.map((user) => [user.id, { name: user.name, password: '' }])));
 
   const save = async (targetId) => {
@@ -2243,7 +2415,7 @@ function AdminUsers({ users, adminId }) {
     location.reload();
   };
   const remove = async (targetId) => {
-    if (!confirm('Xoá thành viên này? Dữ liệu tập của thành viên cũng sẽ bị xoá.')) return;
+    if (!(await dialog.confirm('Xoá thành viên này? Dữ liệu tập của thành viên cũng sẽ bị xoá.'))) return;
     await api(`/api/users/${targetId}`, { method: 'DELETE', body: JSON.stringify({ userId: adminId }) });
     location.reload();
   };
@@ -2282,4 +2454,4 @@ function Chip({ active, children, onClick }) {
   return <button onClick={onClick} className={`chip ${active ? 'active' : ''}`}>{children}</button>;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
