@@ -323,19 +323,16 @@ button:disabled {
 }
 
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(240, 90, 40, 0.12);
 }
 
 .primary {
-  @apply flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white;
-  background: var(--accent);
+  @apply flex w-full items-center justify-center gap-2 rounded-md bg-[#f05a28] px-4 py-3 font-bold text-white;
 }
 
 .primary-light {
-  @apply flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold;
-  background: var(--accent-soft);
-  color: var(--accent);
+  @apply flex w-full items-center justify-center gap-2 rounded-md bg-[#fff1e8] px-4 py-3 font-bold text-[#8f2e12];
 }
 
 .ghost-btn {
@@ -351,8 +348,7 @@ button:disabled {
 }
 
 .small-action {
-  @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-bold text-white;
-  background: var(--accent);
+  @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-md bg-[#f05a28] px-3 py-2 text-sm font-bold text-white;
 }
 
 .small-danger {
@@ -423,8 +419,7 @@ button:disabled {
 }
 
 .nav-btn.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  @apply bg-orange-100 text-orange-800;
 }
 
 .mode-btn {
@@ -432,9 +427,7 @@ button:disabled {
 }
 
 .mode-btn.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
 }
 
 .chip {
@@ -442,9 +435,7 @@ button:disabled {
 }
 
 .chip.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
 }
 
 .range {
@@ -697,9 +688,7 @@ button:disabled {
 }
 
 .unit-btn.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  @apply border-[#f05a28] bg-[#f05a28] text-white;
 }
 
 .weight-mode-controls {
@@ -754,4 +743,26 @@ button:disabled {
 .theme-dark .avatar-menu {
   border-color: #334155;
   background: #111820;
+}
+
+.theme-dark .primary,
+.theme-dark .small-action,
+.theme-dark .mode-btn.active,
+.theme-dark .chip.active,
+.theme-dark .unit-btn.active,
+.theme-dark .range-bar button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.theme-dark .primary-light,
+.theme-dark .nav-btn.active {
+  background: var(--accent-soft);
+  color: color-mix(in srgb, var(--accent) 72%, #ffffff);
+}
+
+.theme-dark .input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
