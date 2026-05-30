@@ -1287,6 +1287,47 @@ app.post('/api/sessions/:id/logs', (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid, setIndex });
 });
 
+app.delete('/api/logs/:id', (req, res) => {
+  const userId = getUserId(req);
+  const logId = Number(req.params.id);
+  const log = one('SELECT * FROM workout_logs WHERE id = ? AND user_id = ?', [logId, userId]);
+  if (!log) return res.status(404).json({ error: 'Không tìm thấy set' });
+
+  db.transaction(() => {
+    // 1. Xoá log
+    db.prepare('DELETE FROM workout_logs WHERE id = ? AND user_id = ?').run(logId, userId);
+
+    // 2. Re-number set_index cho các log còn lại của exercise trong session (tránh gap)
+    const remaining = all(
+      'SELECT id FROM workout_logs WHERE session_id = ? AND exercise_id = ? AND user_id = ? ORDER BY set_index ASC',
+      [log.session_id, log.exercise_id, userId]
+    );
+    remaining.forEach((row, i) => {
+      db.prepare('UPDATE workout_logs SET set_index = ? WHERE id = ?').run(i + 1, row.id);
+    });
+
+    // 3. Revert exercise_notes default_reps/default_weight_kg về set liền trước (nếu còn)
+    const prevSet = remaining.length > 0
+      ? one('SELECT weight_kg, reps FROM workout_logs WHERE id = ?', [remaining[remaining.length - 1].id])
+      : null;
+
+    if (prevSet) {
+      db.prepare(`
+        UPDATE exercise_notes SET default_reps = ?, default_weight_kg = ?
+        WHERE user_id = ? AND exercise_id = ?
+      `).run(prevSet.reps, prevSet.weight_kg, userId, log.exercise_id);
+    } else {
+      // Không còn set nào trong bài này — clear default về null
+      db.prepare(`
+        UPDATE exercise_notes SET default_reps = NULL, default_weight_kg = NULL
+        WHERE user_id = ? AND exercise_id = ?
+      `).run(userId, log.exercise_id);
+    }
+  })();
+
+  res.json({ ok: true });
+});
+
 app.patch('/api/logs/:id', (req, res) => {
   const userId = getUserId(req);
   requireBody(['weightKg', 'reps'], req.body);

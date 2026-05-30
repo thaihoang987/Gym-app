@@ -24,6 +24,7 @@ import {
   GripVertical,
   Home,
   Library,
+  Lock,
   LogOut,
   Pause,
   Play,
@@ -595,10 +596,12 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
   const [clock, setClock] = useState(new Date());
 
+  const [activeSession, setActiveSession] = useState(null);
   useEffect(() => {
     api(`/api/dashboard?userId=${userId}`).then(setData);
     api(`/api/groups?userId=${userId}`).then(setGroups);
     api(`/api/routines?userId=${userId}`).then(setRoutineData);
+    api(`/api/sessions/active?userId=${userId}`).then(setActiveSession);
   }, [userId, refresh]);
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 1000);
@@ -606,10 +609,23 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   }, []);
 
   const startRoutine = async (routine, initialIndex = 0, initialView = 'list') => {
+    // Kiểm tra đã có buổi tập active cho routine này hôm nay chưa
+    const active = await api(`/api/sessions/active?userId=${userId}`);
+    const existing = active?.sessions?.find((s) => s.session.routine_id === routine.id);
+    if (existing) {
+      onStart({ sessionId: existing.session.id, initialIndex, initialView });
+      return;
+    }
     const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, routineId: routine.id, scheduleMode: 'FREE' }) });
     onStart({ sessionId: session.id, initialIndex, initialView });
   };
   const startGroup = async (group) => {
+    const active = await api(`/api/sessions/active?userId=${userId}`);
+    const existing = active?.sessions?.find((s) => s.session.group_id === group.id);
+    if (existing) {
+      onStart({ sessionId: existing.session.id });
+      return;
+    }
     const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, groupId: group.id, scheduleMode: 'FREE' }) });
     onStart({ sessionId: session.id });
   };
@@ -628,7 +644,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   return (
     <section className="space-y-5">
       <BodyWeightInput userId={userId} settings={settings} />
-      <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} />
+      <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} />
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
       <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
@@ -682,12 +698,14 @@ function BodyWeightInput({ userId, settings }) {
   );
 }
 
-function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings }) {
+function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings, activeSession }) {
   const t = useLang();
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
   const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
   const exerciseIndexById = new Map((routine?.exercises || []).map((exercise, index) => [exercise.id, index]));
+  // Có buổi tập đang dở cho routine hôm nay không?
+  const hasActiveSession = activeSession?.sessions?.some((s) => s.session.routine_id === routine?.id);
 
   return (
     <div className="panel-green">
@@ -726,30 +744,33 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
-                      <div key={exercise.id} className={`flex items-center gap-2 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/10' : 'border-orange-200/30 bg-black/20'}`}>
+                      <button
+                        key={exercise.id}
+                        className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
+                        onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
+                      >
                         {exerciseMediaUrl(exercise)
                           ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" />
                           : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold leading-tight">{exercise.name}</p>
-                          <p className={`mt-0.5 text-xs font-semibold ${done ? 'text-lime-200' : 'text-orange-200/70'}`}>
+                          <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-900' : 'text-orange-900'}`}>{exercise.name}</p>
+                          <p className={`mt-0.5 text-xs font-semibold ${done ? 'text-emerald-700' : 'text-orange-700'}`}>
                             {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
                           </p>
                         </div>
-                        <button
-                          className="shrink-0 grid h-9 w-9 place-items-center rounded-lg bg-[#f05a28] text-white"
-                          onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
-                        >
-                          <Play size={15} />
-                        </button>
-                      </div>
+                        <span className={`shrink-0 rounded px-3 py-1 text-xs font-black ${done ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                          {done ? t('continue_exercise') : t('start_exercise')}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
               </div>
             ))}
           </div>
-          <button className="primary-light" onClick={() => onStartRoutine(routine)}>{t('today_start')}</button>
+          <button className="primary-light" onClick={() => onStartRoutine(routine)}>
+            {hasActiveSession ? t('today_continue') : doneCount > 0 ? t('today_continue') : t('today_start')}
+          </button>
         </div>
       ) : (
         <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">{t('today_go_schedule')}</p>
@@ -2187,7 +2208,26 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     await saveTargetSets(nextSets.length);
   };
   const completeSet = async (set) => {
-    if (set.done) return;
+    // Untick: chỉ cho phép untick set done cuối cùng (ngược thứ tự)
+    if (set.done) {
+      const lastDone = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0];
+      if (!lastDone || lastDone.setIndex !== set.setIndex) return;
+      if (!set.id) return;
+      await api(`/api/logs/${set.id}`, { method: 'DELETE' });
+      setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: undefined, done: false } : item));
+      setData((current) => current ? {
+        ...current,
+        exercises: current.exercises.map((item) => (
+          item.id === exercise.id
+            ? { ...item, completedSets: Math.max(0, Number(item.completedSets || 0) - 1) }
+            : item
+        ))
+      } : current);
+      return;
+    }
+    // Tick: bắt buộc theo thứ tự
+    const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
+    if (prevUndone) return;
     const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit: currentWeightUnit(), reps: set.reps }) });
     await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
@@ -2311,6 +2351,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             <div className="space-y-2">
               {sets.map((set) => {
                 const previous = previousSets[set.setIndex - 1];
+                const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
+                const lockedUndone = !set.done && Boolean(prevUndone);
+                const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
+                const lockedDone = set.done && set.setIndex !== lastDoneIndex;
+                const locked = lockedUndone || lockedDone;
                 return (
                   <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''}`}>
                     <strong className="set-number">{set.setIndex}</strong>
@@ -2320,6 +2365,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                         className="manual-weight-input"
                         type="number"
                         step="0.1"
+                        disabled={set.done}
+                        style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
                         value={defaultWeightUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
                         onChange={(event) => {
                           const value = Number(event.target.value || 0);
@@ -2328,12 +2375,25 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                         onBlur={(event) => updateManualWeight(event.target.value)}
                       />
                     ) : weightMode === 'LB' ? (
-                      <WheelPicker value={nearestOption(kgToLb(set.weightKg), lbOptions)} options={lbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+                      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+                        <WheelPicker value={nearestOption(kgToLb(set.weightKg), lbOptions)} options={lbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+                      </div>
                     ) : (
-                      <WheelPicker value={nearestOption(set.weightKg, kgOptions)} options={kgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+                        <WheelPicker value={nearestOption(set.weightKg, kgOptions)} options={kgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                      </div>
                     )}
-                    <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
-                    <button className={`set-check ${set.done ? 'done' : ''}`} onClick={() => completeSet(set)}><Check size={22} /></button>
+                    <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+                      <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
+                    </div>
+                    <button
+                      className={`set-check ${set.done ? 'done' : ''}`}
+                      style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                      title={lockedUndone ? `Hoàn thành Set ${prevUndone.setIndex} trước` : lockedDone ? 'Bỏ Set sau trước' : undefined}
+                      onClick={() => completeSet(set)}
+                    >
+                      {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
+                    </button>
                     <button className="tiny-btn" disabled={set.done || sets.length <= 1} onClick={() => removeDraftSet(set.setIndex)}><Trash2 size={15} /></button>
                   </div>
                 );
