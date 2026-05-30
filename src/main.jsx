@@ -2904,7 +2904,7 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_ui')}>
-        <label className="label mt-3">{t('settings_language')}</label>
+        <label className="label mt-3">{t('settings_language')} — Language</label>
         <select className="input" value={locale} onChange={(event) => setLocale(event.target.value)}>
           {localeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
