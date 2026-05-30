@@ -382,7 +382,7 @@ function App() {
   ];
   const startWorkout = (nextWorkout) => {
     if (nextWorkout?.sessionId) setTab('start');
-    setWorkout(nextWorkout ? { ...nextWorkout, returnTab: nextWorkout.returnTab || tab } : nextWorkout);
+    setWorkout(nextWorkout ? { ...nextWorkout, returnTab: nextWorkout.returnTab || (nextWorkout.sessionId ? 'start' : tab) } : nextWorkout);
   };
   const closeWorkout = () => {
     const returnTab = workout?.returnTab;
@@ -2233,7 +2233,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   return (
     <section className="space-y-4 text-black">
       <div className="flex items-center justify-between">
-        <button className="ghost-btn" onClick={exitWorkout}>{view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}</button>
+        <button className="ghost-btn" onClick={view === 'exercise' ? () => setView('list') : exitWorkout}>{view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}</button>
         <span className="text-sm text-slate-600">{index + 1}/{data.exercises.length}</span>
       </div>
 
