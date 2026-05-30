@@ -1,8 +1,9 @@
 import cors from 'cors';
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, verifyPassword } from './db.js';
+import { db, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -17,6 +18,7 @@ if (db.prepare('SELECT COUNT(*) AS total FROM exercises').get().total === 0) {
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
 app.use('/media', express.static(path.join(rootDir, 'hasaneyldrm-exercises-dataset')));
+app.use('/uploads', express.static(uploadDir));
 
 function getUserId(req) {
   return Number(req.query.userId || req.body?.userId || req.headers['x-user-id'] || 1);
@@ -30,6 +32,12 @@ function all(sql, params = []) {
   return db.prepare(sql).all(...params);
 }
 
+function assetUrl(value) {
+  if (!value) return null;
+  if (String(value).startsWith('/')) return value;
+  return `/media/${value}`;
+}
+
 function requireBody(fields, body) {
   for (const field of fields) {
     if (body[field] === undefined || body[field] === null || body[field] === '') {
@@ -40,6 +48,29 @@ function requireBody(fields, body) {
   }
 }
 
+function saveUploadedDataUrl(dataUrl, prefix) {
+  if (!dataUrl) return null;
+  if (typeof dataUrl === 'string' && dataUrl.startsWith('/uploads/')) return dataUrl;
+  const match = String(dataUrl).match(/^data:(image\/(?:png|jpe?g|gif|webp));base64,(.+)$/i);
+  if (!match) {
+    const error = new Error('File upload không hợp lệ');
+    error.status = 400;
+    throw error;
+  }
+  const ext = match[1].split('/')[1].replace('jpeg', 'jpg');
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length > 8 * 1024 * 1024) {
+    const error = new Error('Ảnh/GIF tối đa 8MB');
+    error.status = 400;
+    throw error;
+  }
+  const dir = path.join(uploadDir, 'exercises');
+  fs.mkdirSync(dir, { recursive: true });
+  const filename = `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+  fs.writeFileSync(path.join(dir, filename), bytes);
+  return `/uploads/exercises/${filename}`;
+}
+
 function htmlEscape(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -47,6 +78,109 @@ function htmlEscape(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+const crcTable = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  return value >>> 0;
+});
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function zipStored(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name);
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, name, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += local.length + name.length + data.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function buildXlsx(headers, rows) {
+  const sheetRows = [headers.map(([, label]) => label), ...rows.map((row) => headers.map(([key]) => row[key] ?? ''))];
+  const cell = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return `<c><v>${value}</v></c>`;
+    return `<c t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
+  };
+  const sheetData = sheetRows.map((row, index) => `<row r="${index + 1}">${row.map(cell).join('')}</row>`).join('');
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetData}</sheetData></worksheet>`;
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Workout Log" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const types = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+  return zipStored([
+    { name: '[Content_Types].xml', data: types },
+    { name: '_rels/.rels', data: rootRels },
+    { name: 'xl/workbook.xml', data: workbook },
+    { name: 'xl/_rels/workbook.xml.rels', data: workbookRels },
+    { name: 'xl/worksheets/sheet1.xml', data: sheet }
+  ]);
 }
 
 function htmlUnescape(value) {
@@ -83,6 +217,7 @@ function readExportTables(userId) {
   return {
     user: one('SELECT id, username, name, avatar, role, created_at FROM users WHERE id = ?', [userId]),
     settings: one('SELECT * FROM user_settings WHERE user_id = ?', [userId]),
+    customExercises: all('SELECT * FROM exercises WHERE custom_user_id = ? AND is_custom = 1 ORDER BY name', [userId]),
     groups: all('SELECT * FROM custom_groups WHERE user_id = ? ORDER BY id', [userId]),
     groupExercises: all('SELECT ge.* FROM group_exercises ge JOIN custom_groups cg ON cg.id = ge.group_id WHERE cg.user_id = ? ORDER BY ge.group_id, ge.order_index', [userId]),
     routines: all('SELECT * FROM routines WHERE user_id = ? ORDER BY id', [userId]),
@@ -109,43 +244,31 @@ function readExportTables(userId) {
 }
 
 function excelRowsForUser(userId) {
-  const data = readExportTables(userId);
-  const rows = [];
-  let index = 1;
-  if (data.user) {
-    rows.push(makeExcelRow(index++, 'Người dùng', data.user.name || data.user.username || `User ${data.user.id}`, `Username: ${data.user.username || ''}; Role: ${data.user.role || ''}`, data.user.created_at, data.user, { id: data.user.id }));
-  }
-  if (data.settings) {
-    rows.push(makeExcelRow(index++, 'Cài đặt', 'Cài đặt người dùng', `Timezone: ${data.settings.timezone || ''}; Locale: ${data.settings.locale || ''}`, '', data.settings, { id: data.settings.user_id }));
-  }
-  for (const group of data.groups) {
-    rows.push(makeExcelRow(index++, 'Group bài tập', group.name, `${group.icon || ''} ${group.exercises_count || ''}`, group.created_at, group, { id: group.id }));
-  }
-  for (const item of data.groupExercises) {
-    rows.push(makeExcelRow(index++, 'Bài trong group', item.exercise_id, `Group ID ${item.group_id}; thứ tự ${item.order_index}`, '', item, { id: item.id, parentId: item.group_id, exerciseId: item.exercise_id }));
-  }
-  for (const routine of data.routines) {
-    rows.push(makeExcelRow(index++, 'Group buổi tập', routine.name, `Màu: ${routine.color_hex || ''}`, routine.created_at, routine, { id: routine.id }));
-  }
-  for (const item of data.routineGroups) {
-    rows.push(makeExcelRow(index++, 'Group bài trong buổi', `Routine ${item.routine_id}`, `Group ID ${item.group_id}; thứ tự ${item.order_index}`, '', item, { id: item.id, parentId: item.routine_id }));
-  }
-  for (const rule of data.scheduleRules) {
-    rows.push(makeExcelRow(index++, 'Lịch tập', rule.mode, rule.mode === 'FIXED' ? `Thứ ${rule.day_of_week}` : `Buổi ${rule.order_index}`, '', rule, { id: rule.id, parentId: rule.routine_id }));
-  }
-  for (const session of data.sessions) {
-    rows.push(makeExcelRow(index++, 'Buổi tập', session.routine_name || session.group_name || 'Buổi tập tự do', `Trạng thái: ${session.status}; chế độ: ${session.schedule_mode}`, session.started_at, session, { id: session.id, parentId: session.routine_id || session.group_id || '', duration: session.completed_at || '' }));
-  }
-  for (const log of data.logs) {
-    rows.push(makeExcelRow(index++, 'Set tập', log.exercise_name || log.exercise_id, `Set ${log.set_index}: ${log.weight_kg} ${log.weight_unit || 'kg'} x ${log.reps}`, log.completed_at, log, { id: log.id, parentId: log.session_id, exerciseId: log.exercise_id, setIndex: log.set_index, weight: log.weight_kg, unit: log.weight_unit || 'kg', reps: log.reps }));
-  }
-  for (const note of data.exerciseNotes) {
-    rows.push(makeExcelRow(index++, 'Ghi chú bài tập', note.exercise_id, note.note || '', note.updated_at, note, { exerciseId: note.exercise_id, setIndex: note.target_sets }));
-  }
-  for (const weight of data.bodyWeights) {
-    rows.push(makeExcelRow(index++, 'Cân nặng cơ thể', `${weight.weight} ${weight.unit}`, 'Ghi nhận cân nặng', weight.logged_at, weight, { id: weight.id, weight: weight.weight, unit: weight.unit }));
-  }
-  return rows;
+  return all(`
+    SELECT
+      e.name AS exercise_name,
+      COALESCE(e.target, e.body_part, e.muscle_group, 'Khác') AS muscle_group,
+      date(wl.completed_at) AS log_date,
+      wl.set_index,
+      wl.weight_kg AS kg,
+      wl.weight_kg * 2.2046226218 AS lb,
+      wl.reps AS reps,
+      COALESCE(en.note, '') AS note
+    FROM workout_logs wl
+    JOIN exercises e ON e.id = wl.exercise_id
+    LEFT JOIN exercise_notes en ON en.user_id = wl.user_id AND en.exercise_id = wl.exercise_id
+    WHERE wl.user_id = ?
+    ORDER BY muscle_group, e.name, log_date, wl.set_index, wl.id
+  `, [userId]).map((row) => ({
+    exerciseName: row.exercise_name,
+    date: row.log_date,
+    sets: row.set_index,
+    kg: row.kg === null ? '' : Number(row.kg).toFixed(1),
+    lb: row.lb === null ? '' : Number(row.lb).toFixed(1),
+    reps: row.reps,
+    note: row.note,
+    muscleGroup: row.muscle_group
+  }));
 }
 
 function parseExcelHtmlRows(content) {
@@ -180,6 +303,19 @@ function importExcelRows(userId, rows) {
       } else if (type === 'Người dùng') {
         db.prepare('UPDATE users SET name = ?, username = COALESCE(?, username), avatar = COALESCE(?, avatar) WHERE id = ?').run(data.name || data.username || 'User', data.username || null, data.avatar || null, userId);
         bump(type);
+      } else if (type === 'Bài tập riêng') {
+        db.prepare(`
+          INSERT OR REPLACE INTO exercises (
+            id, name, category, body_part, equipment, target, muscle_group,
+            secondary_muscles_json, instructions_en, instruction_steps_json,
+            image_path, gif_path, custom_user_id, is_custom, is_hidden, custom_icon, display_media, source_created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+        `).run(
+          data.id, data.name, data.category || 'custom', data.body_part, data.equipment, data.target, data.muscle_group,
+          data.secondary_muscles_json || '[]', data.instructions_en || '', data.instruction_steps_json || '[]',
+          data.image_path || null, data.gif_path || null, userId, data.is_hidden ? 1 : 0, data.custom_icon || '🏋️', data.display_media || 'auto', data.source_created_at || null
+        );
+        bump(type);
       } else if (type === 'Group bài tập') {
         db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.icon, data.color_hex, data.created_at);
         bump(type);
@@ -202,7 +338,7 @@ function importExcelRows(userId, rows) {
         db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, data.session_id, userId, data.exercise_id, data.set_index, data.weight_kg, data.weight_unit || 'kg', data.reps, data.completed_at);
         bump(type);
       } else if (type === 'Ghi chú bài tập') {
-        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.updated_at);
+        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, data.updated_at);
         bump(type);
       } else if (type === 'Cân nặng cơ thể') {
         db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(data.id, userId, data.weight, data.unit || 'kg', data.logged_at);
@@ -485,10 +621,11 @@ app.patch('/api/settings', (req, res) => {
 });
 
 app.get('/api/exercises', (req, res) => {
+  const userId = getUserId(req);
   const search = `%${String(req.query.q || '').trim()}%`;
   const target = req.query.target;
-  const params = [];
-  const where = [];
+  const params = [userId];
+  const where = ['COALESCE(is_hidden, 0) = 0', '(custom_user_id IS NULL OR custom_user_id = ?)'];
   if (req.query.q) {
     where.push('(name LIKE ? OR equipment LIKE ? OR target LIKE ? OR body_part LIKE ?)');
     params.push(search, search, search, search);
@@ -500,17 +637,92 @@ app.get('/api/exercises', (req, res) => {
   const rows = all(`
     SELECT * FROM exercises
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY name
+    ORDER BY is_custom DESC, name
   `, params);
   res.json(rows.map(publicExercise));
 });
 
 app.get('/api/exercises/meta', (req, res) => {
+  const userId = getUserId(req);
   res.json({
-    targets: all('SELECT DISTINCT target AS value FROM exercises WHERE target IS NOT NULL ORDER BY target').map((r) => r.value),
-    equipment: all('SELECT DISTINCT equipment AS value FROM exercises WHERE equipment IS NOT NULL ORDER BY equipment').map((r) => r.value),
-    bodyParts: all('SELECT DISTINCT body_part AS value FROM exercises WHERE body_part IS NOT NULL ORDER BY body_part').map((r) => r.value)
+    targets: all('SELECT DISTINCT target AS value FROM exercises WHERE target IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY target', [userId]).map((r) => r.value),
+    equipment: all('SELECT DISTINCT equipment AS value FROM exercises WHERE equipment IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY equipment', [userId]).map((r) => r.value),
+    bodyParts: all('SELECT DISTINCT body_part AS value FROM exercises WHERE body_part IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY body_part', [userId]).map((r) => r.value)
   });
+});
+
+function normalizeCustomExerciseBody(req, existing = {}) {
+  requireBody(['name', 'target', 'equipment'], req.body);
+  const steps = Array.isArray(req.body.steps)
+    ? req.body.steps.map((step) => String(step || '').trim()).filter(Boolean)
+    : String(req.body.instructions || '').split(/\n+/).map((step) => step.trim()).filter(Boolean);
+  const secondary = Array.isArray(req.body.secondaryMuscles)
+    ? req.body.secondaryMuscles
+    : String(req.body.secondaryMuscles || '').split(',').map((item) => item.trim()).filter(Boolean);
+  return {
+    name: String(req.body.name).trim(),
+    category: 'custom',
+    body_part: String(req.body.bodyPart || req.body.target || '').trim(),
+    equipment: String(req.body.equipment || '').trim(),
+    target: String(req.body.target || '').trim(),
+    muscle_group: String(req.body.muscleGroup || req.body.target || '').trim(),
+    secondary_muscles_json: JSON.stringify(secondary),
+    instructions_en: String(req.body.instructions || steps.join('\n') || '').trim(),
+    instruction_steps_json: JSON.stringify(steps),
+    custom_icon: String(req.body.customIcon || existing.custom_icon || '🏋️').slice(0, 8),
+    display_media: ['auto', 'image', 'gif', 'icon'].includes(req.body.displayMedia) ? req.body.displayMedia : (existing.display_media || 'auto'),
+    image_path: req.body.imageDataUrl !== undefined ? saveUploadedDataUrl(req.body.imageDataUrl, 'image') : existing.image_path,
+    gif_path: req.body.gifDataUrl !== undefined ? saveUploadedDataUrl(req.body.gifDataUrl, 'gif') : existing.gif_path
+  };
+}
+
+app.post('/api/exercises/custom', (req, res) => {
+  const userId = getUserId(req);
+  const data = normalizeCustomExerciseBody(req);
+  const id = `custom-${userId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  db.prepare(`
+    INSERT INTO exercises (
+      id, name, category, body_part, equipment, target, muscle_group,
+      secondary_muscles_json, instructions_en, instruction_steps_json,
+      image_path, gif_path, custom_user_id, is_custom, is_hidden, custom_icon, display_media
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
+  `).run(
+    id, data.name, data.category, data.body_part, data.equipment, data.target, data.muscle_group,
+    data.secondary_muscles_json, data.instructions_en, data.instruction_steps_json,
+    data.image_path, data.gif_path, userId, data.custom_icon, data.display_media
+  );
+  res.status(201).json(publicExercise(one('SELECT * FROM exercises WHERE id = ?', [id])));
+});
+
+app.patch('/api/exercises/:id/custom', (req, res) => {
+  const userId = getUserId(req);
+  const current = one('SELECT * FROM exercises WHERE id = ? AND custom_user_id = ? AND is_custom = 1', [req.params.id, userId]);
+  if (!current) return res.status(404).json({ error: 'Không tìm thấy bài tập tự tạo' });
+  const data = normalizeCustomExerciseBody(req, current);
+  db.prepare(`
+    UPDATE exercises
+    SET name = ?, body_part = ?, equipment = ?, target = ?, muscle_group = ?,
+        secondary_muscles_json = ?, instructions_en = ?, instruction_steps_json = ?,
+        image_path = ?, gif_path = ?, custom_icon = ?, display_media = ?
+    WHERE id = ? AND custom_user_id = ?
+  `).run(
+    data.name, data.body_part, data.equipment, data.target, data.muscle_group,
+    data.secondary_muscles_json, data.instructions_en, data.instruction_steps_json,
+    data.image_path, data.gif_path, data.custom_icon, data.display_media, req.params.id, userId
+  );
+  res.json(publicExercise(one('SELECT * FROM exercises WHERE id = ?', [req.params.id])));
+});
+
+app.delete('/api/exercises/:id/custom', (req, res) => {
+  const userId = getUserId(req);
+  const current = one('SELECT * FROM exercises WHERE id = ? AND custom_user_id = ? AND is_custom = 1', [req.params.id, userId]);
+  if (!current) return res.status(404).json({ error: 'Không tìm thấy bài tập tự tạo' });
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM group_exercises WHERE exercise_id = ? AND group_id IN (SELECT id FROM custom_groups WHERE user_id = ?)').run(req.params.id, userId);
+    db.prepare('UPDATE exercises SET is_hidden = 1 WHERE id = ? AND custom_user_id = ?').run(req.params.id, userId);
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 app.get('/api/groups', (req, res) => {
@@ -717,20 +929,8 @@ app.delete('/api/schedule-rules/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/dashboard', (req, res) => {
-  const userId = getUserId(req);
-  const calendar = all(`
-    SELECT
-      date(completed_at) AS day,
-      COUNT(*) AS total,
-      CAST(SUM((julianday(completed_at) - julianday(started_at)) * 86400) AS INTEGER) AS duration_seconds
-    FROM workout_sessions
-    WHERE user_id = ? AND status = 'COMPLETED' AND completed_at >= date('now', '-27 days')
-    GROUP BY date(completed_at)
-    ORDER BY day ASC
-  `, [userId]);
-
-  const recentHistory = all(`
+function getRecentHistory(userId, limit = 20, offset = 0) {
+  return all(`
     SELECT
       ws.id,
       ws.schedule_mode,
@@ -740,6 +940,7 @@ app.get('/api/dashboard', (req, res) => {
       r.name AS routine_name,
       cg.name AS group_name,
       COUNT(wl.id) AS sets,
+      COUNT(DISTINCT wl.exercise_id) AS exercises,
       (
         SELECT e.image_path
         FROM workout_logs wl2
@@ -755,12 +956,28 @@ app.get('/api/dashboard', (req, res) => {
     WHERE ws.user_id = ? AND ws.status = 'COMPLETED'
     GROUP BY ws.id
     ORDER BY ws.completed_at DESC
-    LIMIT 30
-  `, [userId]).map((row) => ({
+    LIMIT ? OFFSET ?
+  `, [userId, limit, offset]).map((row) => ({
     ...row,
-    imageUrl: row.image_path ? `/media/${row.image_path}` : null,
+    imageUrl: assetUrl(row.image_path),
     duration_minutes: formatMinutes(row.duration_seconds)
   }));
+}
+
+app.get('/api/dashboard', (req, res) => {
+  const userId = getUserId(req);
+  const calendar = all(`
+    SELECT
+      date(completed_at) AS day,
+      COUNT(*) AS total,
+      CAST(SUM((julianday(completed_at) - julianday(started_at)) * 86400) AS INTEGER) AS duration_seconds
+    FROM workout_sessions
+    WHERE user_id = ? AND status = 'COMPLETED' AND completed_at >= date('now', '-27 days')
+    GROUP BY date(completed_at)
+    ORDER BY day ASC
+  `, [userId]);
+
+  const recentHistory = getRecentHistory(userId, 20, 0);
 
   const todaySummary = all(`
     SELECT
@@ -787,6 +1004,14 @@ app.get('/api/dashboard', (req, res) => {
   res.json({ suggestion: smartSuggestion(userId), activityCalendar: calendar, recentHistory, todaySummary });
 });
 
+app.get('/api/history', (req, res) => {
+  const userId = getUserId(req);
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit || 20)));
+  const offset = Math.max(0, Number(req.query.offset || 0));
+  const rows = getRecentHistory(userId, limit, offset);
+  res.json({ rows, hasMore: rows.length === limit });
+});
+
 app.post('/api/sessions', (req, res) => {
   const userId = getUserId(req);
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
@@ -800,20 +1025,26 @@ app.post('/api/sessions', (req, res) => {
 
 app.get('/api/sessions/active', (req, res) => {
   const userId = getUserId(req);
-  const session = one(`
+  const sessions = all(`
     SELECT *
     FROM workout_sessions
     WHERE user_id = ? AND status = 'ACTIVE' AND date(started_at) = date('now')
     ORDER BY started_at DESC
-    LIMIT 1
   `, [userId]);
-  if (!session) return res.json(null);
-  const routine = session.routine_id ? getRoutine(session.routine_id, userId) : null;
-  const group = session.group_id ? { exercises: getGroupExercises(session.group_id) } : null;
-  const counts = all('SELECT exercise_id, COUNT(*) AS completed_sets FROM workout_logs WHERE session_id = ? AND user_id = ? GROUP BY exercise_id', [session.id, userId]);
-  const countByExercise = new Map(counts.map((row) => [row.exercise_id, row.completed_sets]));
-  const exercises = (routine?.exercises || group?.exercises || []).map((exercise) => ({ ...exercise, completedSets: countByExercise.get(exercise.id) || 0 }));
-  res.json({ session, routine, exercises });
+  if (!sessions.length) return res.json(null);
+  const payload = sessions.map((session) => {
+    const routine = session.routine_id ? getRoutine(session.routine_id, userId) : null;
+    const group = session.group_id ? {
+      id: session.group_id,
+      name: one('SELECT name FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId])?.name,
+      exercises: getGroupExercises(session.group_id)
+    } : null;
+    const counts = all('SELECT exercise_id, COUNT(*) AS completed_sets FROM workout_logs WHERE session_id = ? AND user_id = ? GROUP BY exercise_id', [session.id, userId]);
+    const countByExercise = new Map(counts.map((row) => [row.exercise_id, row.completed_sets]));
+    const exercises = (routine?.exercises || group?.exercises || []).map((exercise) => ({ ...exercise, completedSets: countByExercise.get(exercise.id) || 0 }));
+    return { session, routine, group, exercises };
+  });
+  res.json({ session: payload[0].session, routine: payload[0].routine, group: payload[0].group, exercises: payload[0].exercises, sessions: payload });
 });
 
 app.get('/api/sessions/:id', (req, res) => {
@@ -891,8 +1122,8 @@ app.get('/api/sessions/:id/detail', (req, res) => {
         name: row.name,
         target: row.target,
         equipment: row.equipment,
-        imageUrl: row.image_path ? `/media/${row.image_path}` : null,
-        gifUrl: row.gif_path ? `/media/${row.gif_path}` : null,
+        imageUrl: assetUrl(row.image_path),
+        gifUrl: assetUrl(row.gif_path),
         sets: [],
         previous,
         previousCompletedAt: previousSession?.completed_at || null
@@ -997,14 +1228,15 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       )
     ORDER BY wl.set_index
   `, [userId, exerciseId, sessionId, sessionId]);
-  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
+  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
   res.json({
     current,
     previous,
     note: preference?.note || '',
     targetSets: preference?.target_sets || settings.default_sets || 3,
-    defaultReps: settings.default_reps || 12,
+    defaultReps: preference?.default_reps || settings.default_reps || 12,
+    defaultWeightKg: preference?.default_weight_kg ?? null,
     weightMode: preference?.weight_mode || 'KG',
     manualWeightKg: preference?.manual_weight_kg ?? null
   });
@@ -1013,38 +1245,48 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
 app.put('/api/exercises/:id/note', (req, res) => {
   const userId = getUserId(req);
   db.prepare(`
-    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, updated_at)
+    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at)
     VALUES (
       ?, ?, ?,
       COALESCE((SELECT target_sets FROM exercise_notes WHERE user_id = ? AND exercise_id = ?), 3),
       COALESCE((SELECT weight_mode FROM exercise_notes WHERE user_id = ? AND exercise_id = ?), 'KG'),
       (SELECT manual_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?),
+      (SELECT default_reps FROM exercise_notes WHERE user_id = ? AND exercise_id = ?),
+      (SELECT default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?),
       CURRENT_TIMESTAMP
     )
     ON CONFLICT(user_id, exercise_id) DO UPDATE SET note = excluded.note, updated_at = CURRENT_TIMESTAMP
-  `).run(userId, req.params.id, req.body.note || '', userId, req.params.id, userId, req.params.id, userId, req.params.id);
+  `).run(userId, req.params.id, req.body.note || '', userId, req.params.id, userId, req.params.id, userId, req.params.id, userId, req.params.id, userId, req.params.id);
   res.json({ ok: true });
 });
 
 app.put('/api/exercises/:id/preferences', (req, res) => {
   const userId = getUserId(req);
-  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
+  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
   const targetSets = req.body.targetSets === undefined ? Number(previous.target_sets || 3) : Math.max(1, Math.min(20, Number(req.body.targetSets || 3)));
   const requestedMode = String(req.body.weightMode || previous.weight_mode || 'KG').toUpperCase();
   const weightMode = ['KG', 'LB', 'MANUAL'].includes(requestedMode) ? requestedMode : 'KG';
   const manualWeightKg = req.body.manualWeightKg === undefined
     ? previous.manual_weight_kg ?? null
     : (req.body.manualWeightKg === null || req.body.manualWeightKg === '' ? null : Number(req.body.manualWeightKg));
+  const defaultReps = req.body.defaultReps === undefined
+    ? (previous.default_reps ?? null)
+    : Math.max(1, Math.min(100, Number(req.body.defaultReps || 12)));
+  const defaultWeightKg = req.body.defaultWeightKg === undefined
+    ? (previous.default_weight_kg ?? null)
+    : (req.body.defaultWeightKg === null || req.body.defaultWeightKg === '' ? null : Number(req.body.defaultWeightKg));
   db.prepare(`
-    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, updated_at)
-    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at)
+    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id, exercise_id) DO UPDATE SET
       target_sets = excluded.target_sets,
       weight_mode = excluded.weight_mode,
       manual_weight_kg = excluded.manual_weight_kg,
+      default_reps = excluded.default_reps,
+      default_weight_kg = excluded.default_weight_kg,
       updated_at = CURRENT_TIMESTAMP
-  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg);
-  res.json({ ok: true, targetSets, weightMode, manualWeightKg });
+  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, defaultReps, defaultWeightKg);
+  res.json({ ok: true, targetSets, weightMode, manualWeightKg, defaultReps, defaultWeightKg });
 });
 
 app.get('/api/exercises/:id/last-log', (req, res) => {
@@ -1131,7 +1373,7 @@ app.get('/api/analytics', (req, res) => {
     JOIN exercises e ON e.id = wl.exercise_id
     WHERE wl.user_id = ?
     ORDER BY e.name
-  `, [userId]).map((row) => ({ id: row.id, name: row.name, imageUrl: row.image_path ? `/media/${row.image_path}` : null }));
+  `, [userId]).map((row) => ({ id: row.id, name: row.name, imageUrl: assetUrl(row.image_path) }));
   const routines = all(`
     SELECT DISTINCT COALESCE(r.id, -ws.group_id, 0) AS id, COALESCE(r.name, cg.name, 'Buổi tập tự do') AS name
     FROM workout_sessions ws
@@ -1173,78 +1415,111 @@ app.post('/api/body-weight', (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.get('/api/export', (req, res) => {
-  const userId = getUserId(req);
-  res.json({
-    user: one('SELECT * FROM users WHERE id = ?', [userId]),
-    settings: one('SELECT * FROM user_settings WHERE user_id = ?', [userId]),
-    groups: all('SELECT * FROM custom_groups WHERE user_id = ?', [userId]),
-    groupExercises: all('SELECT ge.* FROM group_exercises ge JOIN custom_groups cg ON cg.id = ge.group_id WHERE cg.user_id = ?', [userId]),
-    routines: all('SELECT * FROM routines WHERE user_id = ?', [userId]),
-    routineGroups: all('SELECT rg.* FROM routine_groups rg JOIN routines r ON r.id = rg.routine_id WHERE r.user_id = ?', [userId]),
-    scheduleRules: all('SELECT * FROM routine_schedule_rules WHERE user_id = ?', [userId]),
-    sessions: all('SELECT * FROM workout_sessions WHERE user_id = ?', [userId]),
-    logs: all('SELECT * FROM workout_logs WHERE user_id = ?', [userId])
+function importBackupData(userId, backup) {
+  const data = backup?.data || backup;
+  if (!data || typeof data !== 'object') {
+    const error = new Error('File backup không hợp lệ');
+    error.status = 400;
+    throw error;
+  }
+  const settingColumns = new Set(all('PRAGMA table_info(user_settings)').map((column) => column.name));
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM workout_logs WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM workout_sessions WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM body_weight_logs WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM exercise_notes WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM routine_schedule_rules WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM routine_groups WHERE routine_id IN (SELECT id FROM routines WHERE user_id = ?)').run(userId);
+    db.prepare('DELETE FROM routines WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM group_exercises WHERE group_id IN (SELECT id FROM custom_groups WHERE user_id = ?)').run(userId);
+    db.prepare('DELETE FROM custom_groups WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM exercises WHERE custom_user_id = ? AND is_custom = 1').run(userId);
+
+    if (data.user) {
+      db.prepare('UPDATE users SET name = COALESCE(?, name), avatar = COALESCE(?, avatar) WHERE id = ?').run(data.user.name || null, data.user.avatar || null, userId);
+    }
+    if (data.settings) {
+      const columns = Object.keys(data.settings).filter((key) => key !== 'user_id' && settingColumns.has(key) && /^[a-z0-9_]+$/i.test(key));
+      if (columns.length) {
+        db.prepare(`UPDATE user_settings SET ${columns.map((key) => `"${key}" = ?`).join(', ')} WHERE user_id = ?`).run(...columns.map((key) => data.settings[key]), userId);
+      }
+    }
+    for (const exercise of data.customExercises || []) {
+      db.prepare(`
+        INSERT OR REPLACE INTO exercises (
+          id, name, category, body_part, equipment, target, muscle_group,
+          secondary_muscles_json, instructions_en, instruction_steps_json,
+          image_path, gif_path, custom_user_id, is_custom, is_hidden, custom_icon, display_media, source_created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+      `).run(
+        exercise.id, exercise.name, exercise.category || 'custom', exercise.body_part, exercise.equipment, exercise.target, exercise.muscle_group,
+        exercise.secondary_muscles_json || '[]', exercise.instructions_en || '', exercise.instruction_steps_json || '[]',
+        exercise.image_path || null, exercise.gif_path || null, userId, exercise.is_hidden ? 1 : 0, exercise.custom_icon || '🏋️', exercise.display_media || 'auto', exercise.source_created_at || null
+      );
+    }
+    for (const group of data.groups || []) {
+      db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at);
+    }
+    for (const item of data.groupExercises || []) {
+      db.prepare('INSERT OR REPLACE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(item.id, item.group_id, item.exercise_id, item.icon || '🏋️', item.order_index || 1);
+    }
+    for (const routine of data.routines || []) {
+      db.prepare('INSERT OR REPLACE INTO routines (id, user_id, name, color_hex, created_at) VALUES (?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at);
+    }
+    for (const item of data.routineGroups || []) {
+      db.prepare('INSERT OR REPLACE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1);
+    }
+    for (const rule of data.scheduleRules || []) {
+      db.prepare('INSERT OR REPLACE INTO routine_schedule_rules (id, user_id, routine_id, mode, day_of_week, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(rule.id, userId, rule.routine_id, rule.mode, rule.day_of_week, rule.order_index);
+    }
+    for (const session of data.sessions || []) {
+      db.prepare('INSERT OR REPLACE INTO workout_sessions (id, user_id, routine_id, group_id, schedule_mode, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(session.id, userId, session.routine_id, session.group_id, session.schedule_mode, session.status, session.started_at, session.completed_at);
+    }
+    for (const log of data.logs || []) {
+      db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, log.completed_at);
+    }
+    for (const note of data.exerciseNotes || []) {
+      db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, note.updated_at);
+    }
+    for (const weight of data.bodyWeights || []) {
+      db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);
+    }
   });
+  tx();
+}
+
+app.get('/api/backup', (req, res) => {
+  const userId = getUserId(req);
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="gym-app-backup-${userId}-${today}.json"`);
+  res.json({ app: 'Gym App', version: 1, userId, exportedAt: new Date().toISOString(), data: readExportTables(userId) });
+});
+
+app.post('/api/backup/import', (req, res) => {
+  const userId = getUserId(req);
+  requireBody(['backup'], req.body);
+  importBackupData(userId, req.body.backup);
+  res.json({ ok: true });
 });
 
 app.get('/api/export/excel', (req, res) => {
   const userId = getUserId(req);
   const headers = [
-    ['stt', 'STT'],
-    ['date', 'Ngày'],
-    ['time', 'Giờ'],
-    ['type', 'Loại dữ liệu'],
-    ['title', 'Tiêu đề'],
-    ['detail', 'Chi tiết'],
-    ['id', 'ID'],
-    ['parentId', 'ID cha'],
-    ['exerciseId', 'Bài tập'],
-    ['setIndex', 'Set'],
-    ['weight', 'Cân nặng'],
-    ['unit', 'Đơn vị'],
-    ['reps', 'Reps'],
-    ['duration', 'Thời lượng/Hoàn thành'],
-    ['json', 'Dữ liệu JSON']
+    ['exerciseName', 'Bài tập'],
+    ['date', 'Ngày tháng năm'],
+    ['sets', 'Số sets'],
+    ['kg', 'Số kg'],
+    ['lb', 'Số lb'],
+    ['reps', 'Số reps'],
+    ['note', 'Ghi chú bài'],
+    ['muscleGroup', 'Nhóm cơ']
   ];
   const rows = excelRowsForUser(userId);
-  const tableHeaders = headers.map(([, label]) => `<th>${htmlEscape(label)}</th>`).join('');
-  const tableRows = rows.map((row) => (
-    `<tr>${headers.map(([key]) => `<td>${htmlEscape(row[key])}</td>`).join('')}</tr>`
-  )).join('');
   const today = new Date().toISOString().slice(0, 10);
-  const workbook = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <style>
-    table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
-    th { background: #166534; color: #fff; font-weight: 700; }
-    th, td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; mso-number-format:"\\@"; }
-  </style>
-</head>
-<body>
-  <table>
-    <thead><tr>${tableHeaders}</tr></thead>
-    <tbody>${tableRows}</tbody>
-  </table>
-</body>
-</html>`;
-  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="gym-app-export-${today}.xls"`);
+  const workbook = buildXlsx(headers, rows);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="gym-app-workout-log-${today}.xlsx"`);
   res.send(workbook);
-});
-
-app.post('/api/import/excel', (req, res) => {
-  const userId = getUserId(req);
-  requireBody(['content'], req.body);
-  const rows = parseExcelHtmlRows(req.body.content);
-  if (!rows.length) {
-    res.status(400).json({ error: 'File Excel không đúng định dạng xuất từ Gym App.' });
-    return;
-  }
-  const counts = importExcelRows(userId, rows);
-  res.json({ ok: true, rows: rows.length, counts });
 });
 
 app.use(express.static(path.join(rootDir, 'dist')));

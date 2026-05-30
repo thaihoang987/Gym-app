@@ -32,7 +32,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/media/'),
+            urlPattern: ({ url }) => url.pathname.startsWith('/media/') || url.pathname.startsWith('/uploads/'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'exercise-media',
@@ -68,7 +68,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:3001',
-      '/media': 'http://localhost:3001'
+      '/media': 'http://localhost:3001',
+      '/uploads': 'http://localhost:3001'
     }
   }
 });

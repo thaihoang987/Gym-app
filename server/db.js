@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(rootDir, 'data');
+export const uploadDir = path.join(dataDir, 'uploads');
 const dbPath = path.join(dataDir, 'gym.sqlite');
 
 fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(uploadDir, { recursive: true });
 
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
@@ -92,6 +94,11 @@ export function migrate() {
       instruction_steps_json TEXT NOT NULL DEFAULT '[]',
       image_path TEXT,
       gif_path TEXT,
+      custom_user_id INTEGER,
+      is_custom INTEGER NOT NULL DEFAULT 0,
+      is_hidden INTEGER NOT NULL DEFAULT 0,
+      custom_icon TEXT,
+      display_media TEXT NOT NULL DEFAULT 'auto',
       source_created_at TEXT
     );
 
@@ -190,6 +197,8 @@ export function migrate() {
       target_sets INTEGER NOT NULL DEFAULT 3,
       weight_mode TEXT NOT NULL DEFAULT 'KG',
       manual_weight_kg REAL,
+      default_reps INTEGER,
+      default_weight_kg REAL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, exercise_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -232,6 +241,24 @@ export function migrate() {
   }
   if (!hasColumn('exercise_notes', 'manual_weight_kg')) {
     db.exec('ALTER TABLE exercise_notes ADD COLUMN manual_weight_kg REAL');
+  }
+  if (!hasColumn('exercise_notes', 'default_reps')) {
+    db.exec('ALTER TABLE exercise_notes ADD COLUMN default_reps INTEGER');
+  }
+  if (!hasColumn('exercise_notes', 'default_weight_kg')) {
+    db.exec('ALTER TABLE exercise_notes ADD COLUMN default_weight_kg REAL');
+  }
+  const exerciseColumns = [
+    ['custom_user_id', 'INTEGER'],
+    ['is_custom', 'INTEGER NOT NULL DEFAULT 0'],
+    ['is_hidden', 'INTEGER NOT NULL DEFAULT 0'],
+    ['custom_icon', 'TEXT'],
+    ['display_media', "TEXT NOT NULL DEFAULT 'auto'"]
+  ];
+  for (const [column, definition] of exerciseColumns) {
+    if (!hasColumn('exercises', column)) {
+      db.exec(`ALTER TABLE exercises ADD COLUMN ${column} ${definition}`);
+    }
   }
   if (!hasColumn('user_settings', 'timezone')) {
     db.exec("ALTER TABLE user_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'");
@@ -298,6 +325,11 @@ export function migrate() {
 
 export function publicExercise(row) {
   if (!row) return null;
+  const assetUrl = (value) => {
+    if (!value) return null;
+    if (String(value).startsWith('/')) return value;
+    return `/media/${value}`;
+  };
   return {
     id: row.id,
     name: row.name,
@@ -309,8 +341,13 @@ export function publicExercise(row) {
     secondaryMuscles: JSON.parse(row.secondary_muscles_json || '[]'),
     instructions: row.instructions_en,
     steps: JSON.parse(row.instruction_steps_json || '[]'),
-    imageUrl: row.image_path ? `/media/${row.image_path}` : null,
-    gifUrl: row.gif_path ? `/media/${row.gif_path}` : null
+    imageUrl: assetUrl(row.image_path),
+    gifUrl: assetUrl(row.gif_path),
+    isCustom: Boolean(row.is_custom),
+    isHidden: Boolean(row.is_hidden),
+    customUserId: row.custom_user_id,
+    customIcon: row.custom_icon || '🏋️',
+    displayMedia: row.display_media || 'auto'
   };
 }
 

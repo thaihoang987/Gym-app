@@ -42,6 +42,9 @@ const modeLabels = { FREE: 'Tự do', FIXED: 'Cố định', ROLLING: 'Cuốn ch
 const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const lbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
+const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
+const customTargetOptions = ['Ngực', 'Lưng/Xô', 'Vai', 'Tay trước', 'Tay sau', 'Chân', 'Mông', 'Bụng', 'Cardio', 'Khác'];
+const customEquipmentOptions = ['body weight', 'dumbbell', 'barbell', 'machine', 'cable', 'band', 'kettlebell', 'other'];
 const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
@@ -168,6 +171,14 @@ function filterByRange(rows, field, rangeKey) {
   });
 }
 
+function chartRangeDomain(rangeKey) {
+  const option = rangeOptions.find(([key]) => key === rangeKey);
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - (option?.[2] || 30));
+  return [start.getTime(), end.getTime()];
+}
+
 function displayPrefs(settings = {}) {
   return {
     locale: settings.locale || fallbackDisplay.locale,
@@ -178,6 +189,7 @@ function displayPrefs(settings = {}) {
 
 function parseServerDate(value) {
   if (!value) return null;
+  if (typeof value === 'number') return new Date(value);
   if (value instanceof Date) return value;
   const text = String(value);
   return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text.replace(' ', 'T')}Z`);
@@ -316,7 +328,7 @@ class ErrorBoundary extends React.Component {
 }
 
 function App() {
-  const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || 'null');
+  const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
   const [tab, setTab] = useState('home');
   const [boot, setBoot] = useState(null);
@@ -327,6 +339,7 @@ function App() {
     if (!user) return;
     api(`/api/bootstrap?userId=${user.id}`).then(setBoot).catch(() => {
       localStorage.removeItem('familyGymUser');
+      sessionStorage.removeItem('familyGymUser');
       setUser(null);
     });
   }, [user, refresh]);
@@ -344,24 +357,54 @@ function App() {
   ];
   const startWorkout = (nextWorkout) => {
     if (nextWorkout?.sessionId) setTab('start');
-    setWorkout(nextWorkout);
+    setWorkout(nextWorkout ? { ...nextWorkout, returnTab: nextWorkout.returnTab || tab } : nextWorkout);
+  };
+  const closeWorkout = () => {
+    const returnTab = workout?.returnTab;
+    setWorkout(null);
+    if (returnTab) setTab(returnTab);
+    setRefresh((v) => v + 1);
+  };
+  const cleanupWorkoutBeforeLeaving = async (nextTab) => {
+    if (!workout?.sessionId) {
+      setWorkout(null);
+      setTab(nextTab);
+      return;
+    }
+    const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${user.id}`) || 'null');
+    const sameSession = saved?.sessionId === workout.sessionId;
+    const savedView = sameSession ? saved.view : workout.initialView;
+    if (savedView !== 'exercise') {
+      const sessionData = await api(`/api/sessions/${workout.sessionId}?userId=${user.id}`);
+      const totalSets = sessionData.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+      if (!totalSets) {
+        await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId: user.id }) });
+        localStorage.removeItem(`familyGymWorkout:${user.id}`);
+      }
+    }
+    setWorkout(null);
+    setTab(nextTab);
+    setRefresh((v) => v + 1);
   };
   const continueWorkout = async () => {
     if (workout) {
       setTab('start');
       return;
     }
-    const activeSession = await api(`/api/sessions/active?userId=${user.id}`);
-    if (activeSession?.session?.id) {
-      const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${user.id}`) || 'null');
-      const sameSession = saved?.sessionId === activeSession.session.id;
-      setTab('start');
-      setWorkout({
-        sessionId: activeSession.session.id,
-        initialIndex: sameSession ? saved.index : 0,
-        initialView: sameSession ? saved.view || 'list' : 'list'
-      });
-      return;
+    const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${user.id}`) || 'null');
+    if (saved?.sessionId && saved.view === 'exercise') {
+      const active = await api(`/api/sessions/active?userId=${user.id}`);
+      const savedStillActive = (active?.sessions || []).some((item) => item.session.id === saved.sessionId);
+      if (savedStillActive) {
+        setTab('start');
+        setWorkout({
+          sessionId: saved.sessionId,
+          initialIndex: saved.index || 0,
+          initialView: 'exercise',
+          returnTab: 'start'
+        });
+        return;
+      }
     }
     setWorkout(null);
     setTab('start');
@@ -371,10 +414,10 @@ function App() {
     <div className="min-h-screen bg-app text-slate-950">
       <main className="mx-auto min-h-screen w-full max-w-md bg-[#f4f6f1] px-4 pb-40 pt-5 text-slate-950 md:max-w-6xl md:px-8">
         {workout ? (
-          <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={() => { setWorkout(null); setRefresh((v) => v + 1); }} />
+          <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={closeWorkout} />
         ) : (
           <ErrorBoundary key={tab}>
-            <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); setUser(null); }} />
+            <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); sessionStorage.removeItem('familyGymUser'); setUser(null); }} />
             {tab === 'home' && <Dashboard userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} />}
             {tab === 'library' && <ExerciseLibrary userId={user.id} />}
@@ -394,7 +437,10 @@ function App() {
                   await continueWorkout();
                   return;
                 }
-                if (workout && id !== 'start') setWorkout(null);
+                if (workout && id !== 'start') {
+                  await cleanupWorkoutBeforeLeaving(id);
+                  return;
+                }
                 setTab(id);
               }}
               className={`nav-btn ${tab === id ? 'active' : ''}`}
@@ -410,8 +456,9 @@ function App() {
 }
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async (event) => {
@@ -419,7 +466,10 @@ function Login({ onLogin }) {
     setError('');
     try {
       const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-      localStorage.setItem('familyGymUser', JSON.stringify(result.user));
+      const storage = remember ? localStorage : sessionStorage;
+      localStorage.removeItem('familyGymUser');
+      sessionStorage.removeItem('familyGymUser');
+      storage.setItem('familyGymUser', JSON.stringify(result.user));
       onLogin(result.user);
     } catch (err) {
       setError(err.message);
@@ -440,6 +490,15 @@ function Login({ onLogin }) {
         <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
         <label className="label mt-4">Mật khẩu</label>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <label className="mt-4 flex items-center gap-2 text-sm font-bold text-teal-950">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-orange-600"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          <span>Nhớ tài khoản trên thiết bị này</span>
+        </label>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <button className="primary mt-5">Đăng nhập</button>
         <p className="mt-4 text-xs text-teal-950">Mặc định lần đầu: admin / admin123</p>
@@ -627,7 +686,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                     const done = Boolean(summary);
                     return (
                       <div key={exercise.id} className={`flex items-center gap-3 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
-                        <img src={exercise.imageUrl} className="h-12 w-12 rounded bg-white object-contain" />
+                        {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold">{exercise.name}</p>
                           <p className={`text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
@@ -703,14 +762,15 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
 }
 
 function StartWorkoutPage({ userId, onStart, refresh, settings }) {
+  const dialog = useAppDialog();
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [] });
-  const [activeSession, setActiveSession] = useState(null);
+  const [activeSessions, setActiveSessions] = useState([]);
 
   useEffect(() => {
     api(`/api/groups?userId=${userId}`).then(setGroups);
     api(`/api/routines?userId=${userId}`).then(setRoutineData);
-    api(`/api/sessions/active?userId=${userId}`).then(setActiveSession);
+    api(`/api/sessions/active?userId=${userId}`).then((payload) => setActiveSessions(payload?.sessions || (payload?.session ? [payload] : [])));
   }, [userId, refresh]);
 
   const startRoutine = async (routine) => {
@@ -721,30 +781,68 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
     const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, groupId: group.id, scheduleMode: 'FREE' }) });
     onStart({ sessionId: session.id });
   };
-
+  const completeActiveSession = async (active) => {
+    const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+    if (!totalSets && !(await dialog.confirm('Không có set tập nào được ghi nhận? Bạn có muốn xoá buổi tập không?'))) return;
+    await api(`/api/sessions/${active.session.id}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    localStorage.removeItem(`familyGymWorkout:${userId}`);
+    setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
+  };
+  const deleteActiveSession = async (active) => {
+    if (!(await dialog.confirm('Bạn có muốn xoá buổi tập này không?'))) return;
+    await api(`/api/sessions/${active.session.id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+    localStorage.removeItem(`familyGymWorkout:${userId}`);
+    setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
+  };
   return (
     <section className="space-y-5">
       <div className="panel-green">
-        <h1 className="text-2xl font-black">{activeSession ? 'Tiếp tục tập' : 'Bắt đầu tập'}</h1>
-        <p className="mt-2 text-sm text-emerald-100">{activeSession ? 'Tiếp tục buổi tập đang dang dở hôm nay.' : 'Chưa có buổi đang tập. Chọn Group Buổi tập hoặc Group Bài tập để bắt đầu.'}</p>
+        <h1 className="text-2xl font-black">{activeSessions.length ? 'Tiếp tục tập' : 'Bắt đầu tập'}</h1>
+        <p className="mt-2 text-sm text-emerald-100">{activeSessions.length ? `${activeSessions.length} buổi/bài/group đang tập chưa kết thúc.` : 'Chưa có buổi đang tập. Chọn Group Buổi tập hoặc Group Bài tập để bắt đầu.'}</p>
       </div>
-      {activeSession ? (
-        <div className="workout-card">
-          <h2 className="text-xl font-black">{activeSession.routine?.name || 'Buổi tập đang tập'}</h2>
-          <p className="mt-1 text-sm text-slate-500">{activeSession.exercises.length} bài · bắt đầu {formatTime(activeSession.session.started_at, settings)}</p>
-          <div className="mt-4 grid gap-2">
-            {activeSession.exercises.slice(0, 6).map((exercise) => (
-              <div key={exercise.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2">
-                <img src={exercise.imageUrl} className="h-12 w-12 rounded bg-white object-contain" />
-                <span className="min-w-0 flex-1 truncate font-semibold">{exercise.name}</span>
-              </div>
-            ))}
-          </div>
-          <button className="primary mt-4" onClick={() => {
-            const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null');
-            const sameSession = saved?.sessionId === activeSession.session.id;
-            onStart({ sessionId: activeSession.session.id, initialIndex: sameSession ? saved.index : 0, initialView: sameSession ? saved.view || 'list' : 'list' });
-          }}>Tiếp tục vào bài tập</button>
+      {activeSessions.length ? (
+        <div className="grid gap-3">
+          {activeSessions.map((active) => {
+            const title = active.routine?.name || active.group?.name || 'Buổi tập tự do';
+            const doneCount = active.exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
+            const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+            return (
+              <article key={active.session.id} className="workout-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black">{title}</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {active.exercises.length} bài · {doneCount}/{active.exercises.length} bài đã có log · {totalSets} set · bắt đầu {formatTime(active.session.started_at, settings)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {active.exercises.map((exercise, exerciseIndex) => (
+                    <button
+                      key={`${active.session.id}-${exercise.id}-${exerciseIndex}`}
+                      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
+                      onClick={() => onStart({ sessionId: active.session.id, initialIndex: exerciseIndex, initialView: 'exercise' })}
+                    >
+                      {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold">{exercise.name}</p>
+                        <p className={`text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
+                          {exercise.completedSets ? `Đã tập ${exercise.completedSets} set` : 'Chưa tập'} · {exercise.groupName || exercise.target} · {exercise.equipment}
+                        </p>
+                      </div>
+                      <span className={`rounded px-3 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                        {exercise.completedSets ? 'Tập tiếp' : 'Tập bài này'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  <button className="primary" onClick={() => completeActiveSession(active)}>Kết thúc buổi tập</button>
+                  <button className="danger-btn" onClick={() => deleteActiveSession(active)}>Xoá buổi tập</button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
@@ -933,6 +1031,13 @@ function HistoryList({ userId, history, onDeleted, settings }) {
   const dialog = useAppDialog();
   const [openSessionId, setOpenSessionId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [loadedHistory, setLoadedHistory] = useState(history.slice(0, 20));
+  const [hasMore, setHasMore] = useState(history.length >= 20);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    setLoadedHistory(history.slice(0, 20));
+    setHasMore(history.length >= 20);
+  }, [history]);
   const removeSession = async (sessionId) => {
     if (!(await dialog.confirm('Xoá buổi tập này? Set/log trong buổi này cũng sẽ bị xoá khỏi thống kê.'))) return;
     await api(`/api/sessions/${sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -940,7 +1045,21 @@ function HistoryList({ userId, history, onDeleted, settings }) {
       setOpenSessionId(null);
       setDetail(null);
     }
+    setLoadedHistory((current) => current.filter((row) => row.id !== sessionId));
     onDeleted(sessionId);
+  };
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const payload = await api(`/api/history?userId=${userId}&offset=${loadedHistory.length}&limit=20`);
+      setLoadedHistory((current) => {
+        const seen = new Set(current.map((row) => row.id));
+        return [...current, ...(payload.rows || []).filter((row) => !seen.has(row.id))];
+      });
+      setHasMore(Boolean(payload.hasMore));
+    } finally {
+      setLoadingMore(false);
+    }
   };
   const toggleDetail = async (sessionId) => {
     if (openSessionId === sessionId) {
@@ -956,26 +1075,52 @@ function HistoryList({ userId, history, onDeleted, settings }) {
     <div>
       <h2 className="section-title">Lịch sử gần đây</h2>
       <div className="space-y-2">
-        {history.map((row) => (
-          <div key={row.id} className="panel">
-            <div className="flex items-center justify-between gap-3">
-              <button className="min-w-0 flex-1 text-left" onClick={() => toggleDetail(row.id)}>
-                <p className="font-bold">{row.routine_name || row.group_name || 'Buổi tập tự do'}</p>
-                <p className="text-sm text-teal-900">
-                  {formatDateTime(row.completed_at, settings)} · {row.sets} set · {row.duration_minutes} phút
-                </p>
-              </button>
-              <div className="flex items-center gap-2">
-                <Dumbbell className="text-teal-900" />
-                <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> Xoá</button>
+        {loadedHistory.map((row) => {
+          const activityName = row.routine_name || row.group_name || 'Buổi tập tự do';
+          const color = stableColorForName(activityName);
+          return (
+            <div key={row.id} className="panel">
+              <div className="flex items-center justify-between gap-3">
+                <button className="min-w-0 flex-1 text-left" onClick={() => toggleDetail(row.id)}>
+                  <p className="font-bold">{activityName}</p>
+                  <p className="text-sm text-teal-900">
+                    {formatDateTime(row.completed_at, settings)} · {row.exercises || 0} bài · {row.sets} set · {row.duration_minutes} phút
+                  </p>
+                </button>
+                <div className="flex items-center gap-2">
+                  <Dumbbell style={{ color: color.dot }} />
+                  <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> Xoá</button>
+                </div>
               </div>
+              {openSessionId === row.id && <SessionDetail detail={detail} settings={settings} />}
             </div>
-            {openSessionId === row.id && <SessionDetail detail={detail} settings={settings} />}
-          </div>
-        ))}
+          );
+        })}
+        {hasMore && (
+          <button className="ghost-btn w-full" disabled={loadingMore} onClick={loadMore}>
+            {loadingMore ? 'Đang tải...' : 'Tải thêm lịch sử gần đây'}
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+function fileToDataUrl(file) {
+  if (!file) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function exerciseMediaUrl(exercise) {
+  if (exercise?.displayMedia === 'icon') return '';
+  if (exercise?.displayMedia === 'image') return exercise?.imageUrl || '';
+  if (exercise?.displayMedia === 'gif') return exercise?.gifUrl || '';
+  return exercise?.imageUrl || exercise?.gifUrl || '';
 }
 
 function SessionDetail({ detail, settings }) {
@@ -1036,30 +1181,39 @@ function SessionDetail({ detail, settings }) {
 }
 
 function ExerciseLibrary({ userId }) {
+  const dialog = useAppDialog();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ targets: [] });
   const [q, setQ] = useState('');
   const [target, setTarget] = useState('');
   const [groups, setGroups] = useState([]);
   const [selectedExercise, setSelectedExercise] = useState(null);
+  const [editingExercise, setEditingExercise] = useState(null);
+  const [showCustomForm, setShowCustomForm] = useState(false);
   const [visibleCount, setVisibleCount] = useState(60);
   const [previewGifId, setPreviewGifId] = useState(null);
   const [pinnedGifIds, setPinnedGifIds] = useState(() => new Set());
 
-  useEffect(() => { api('/api/exercises/meta').then(setMeta); api(`/api/groups?userId=${userId}`).then(setGroups); }, [userId]);
-  useEffect(() => {
+  const refreshLibrary = () => {
     setVisibleCount(60);
-    setSelectedExercise(null);
     setPreviewGifId(null);
     setPinnedGifIds(new Set());
-    api(`/api/exercises?q=${encodeURIComponent(q)}&target=${encodeURIComponent(target)}`).then(setItems);
-  }, [q, target]);
+    api(`/api/exercises?userId=${userId}&q=${encodeURIComponent(q)}&target=${encodeURIComponent(target)}`).then(setItems);
+    api(`/api/exercises/meta?userId=${userId}`).then(setMeta);
+  };
+
+  useEffect(() => { api(`/api/exercises/meta?userId=${userId}`).then(setMeta); api(`/api/groups?userId=${userId}`).then(setGroups); }, [userId]);
+  useEffect(() => {
+    setSelectedExercise(null);
+    refreshLibrary();
+  }, [q, target, userId]);
 
   const addToGroup = async (groupId, exerciseId) => {
     await api(`/api/groups/${groupId}/exercises`, { method: 'POST', body: JSON.stringify({ exerciseId }) });
     api(`/api/groups?userId=${userId}`).then(setGroups);
   };
   const playSmallGif = (exercise) => {
+    if (exercise.displayMedia === 'icon' || exercise.displayMedia === 'image') return;
     if (exercise.gifUrl) {
       const image = new Image();
       image.src = exercise.gifUrl;
@@ -1074,14 +1228,37 @@ function ExerciseLibrary({ userId }) {
       return next;
     });
   };
+  const saveCustomExercise = async (payload) => {
+    const method = payload.id ? 'PATCH' : 'POST';
+    const path = payload.id ? `/api/exercises/${payload.id}/custom` : '/api/exercises/custom';
+    const saved = await api(path, { method, body: JSON.stringify({ ...payload, userId }) });
+    setShowCustomForm(false);
+    setEditingExercise(null);
+    setSelectedExercise(saved);
+    refreshLibrary();
+  };
+  const hideCustomExercise = async (exercise) => {
+    if (!(await dialog.confirm('Ẩn bài tập tự tạo này? Lịch sử log cũ vẫn được giữ lại.'))) return;
+    await api(`/api/exercises/${exercise.id}/custom`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+    setSelectedExercise(null);
+    refreshLibrary();
+  };
 
   if (selectedExercise) {
     return (
       <section className="space-y-4">
         <button className="ghost-btn" onClick={() => setSelectedExercise(null)}>Trở về danh mục thư viện</button>
         <article className="panel">
-          <img src={selectedExercise.gifUrl || selectedExercise.imageUrl} alt={selectedExercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl rounded-lg bg-white object-contain md:h-[360px]" />
+          {selectedExercise.gifUrl || selectedExercise.imageUrl ? (
+            <img src={selectedExercise.gifUrl || selectedExercise.imageUrl} alt={selectedExercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl rounded-lg bg-white object-contain md:h-[360px]" />
+          ) : (
+            <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center rounded-lg bg-white text-7xl ring-1 ring-slate-200 md:h-[360px]">{selectedExercise.customIcon || '🏋️'}</div>
+          )}
           <h2 className="mt-4 text-2xl font-black">{selectedExercise.name}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {selectedExercise.isCustom && <span className="rounded bg-orange-100 px-2 py-1 text-xs font-black text-orange-900">Tự tạo</span>}
+            {!selectedExercise.imageUrl && !selectedExercise.gifUrl && <span className="text-2xl">{selectedExercise.customIcon || '🏋️'}</span>}
+          </div>
           <p className="mt-2 text-sm font-semibold text-teal-950">
             Nhóm chính: {selectedExercise.target || 'Không rõ'} · Vùng: {selectedExercise.bodyPart || 'Không rõ'} · Dụng cụ: {selectedExercise.equipment || 'Không rõ'}
           </p>
@@ -1093,8 +1270,24 @@ function ExerciseLibrary({ userId }) {
             <option value="">Thêm vào group</option>
             {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
+          {selectedExercise.isCustom && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <button className="ghost-btn" onClick={() => { setEditingExercise(selectedExercise); setShowCustomForm(true); setSelectedExercise(null); }}>Sửa bài tự tạo</button>
+              <button className="danger-btn" onClick={() => hideCustomExercise(selectedExercise)}>Ẩn bài tự tạo</button>
+            </div>
+          )}
         </article>
       </section>
+    );
+  }
+
+  if (showCustomForm) {
+    return (
+      <CustomExerciseForm
+        initial={editingExercise}
+        onCancel={() => { setShowCustomForm(false); setEditingExercise(null); }}
+        onSave={saveCustomExercise}
+      />
     );
   }
 
@@ -1102,7 +1295,10 @@ function ExerciseLibrary({ userId }) {
   return (
     <section className="space-y-4">
       <div className="sticky top-0 z-10 bg-[#f4f6f1]/95 py-2 backdrop-blur">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm bài tập..." className="input" />
+        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm bài tập..." className="input" />
+          <button className="primary md:w-auto" onClick={() => { setEditingExercise(null); setShowCustomForm(true); }}>+ Bài tập riêng</button>
+        </div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           <Chip active={!target} onClick={() => setTarget('')}>Tất cả</Chip>
           {meta.targets.slice(0, 18).map((value) => <Chip key={value} active={target === value} onClick={() => setTarget(value)}>{value}</Chip>)}
@@ -1121,23 +1317,30 @@ function ExerciseLibrary({ userId }) {
             }}
           >
             <div className="flex gap-3">
-              <img
-                src={isPlayingGif ? exercise.gifUrl || exercise.imageUrl : exercise.imageUrl}
-                alt={exercise.name}
-                className="h-24 w-24 rounded-md bg-white object-contain"
-                loading={isPlayingGif ? 'eager' : 'lazy'}
-                onPointerEnter={() => playSmallGif(exercise)}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  playSmallGif(exercise);
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  pinSmallGif(exercise);
-                }}
-              />
+              {exercise.imageUrl || exercise.gifUrl ? (
+                <img
+                  src={isPlayingGif && exercise.displayMedia !== 'image' ? exercise.gifUrl || exerciseMediaUrl(exercise) : exerciseMediaUrl(exercise)}
+                  alt={exercise.name}
+                  className="h-24 w-24 rounded-md bg-white object-contain"
+                  loading={isPlayingGif ? 'eager' : 'lazy'}
+                  onPointerEnter={() => playSmallGif(exercise)}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    playSmallGif(exercise);
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    pinSmallGif(exercise);
+                  }}
+                />
+              ) : (
+                <div className="grid h-24 w-24 place-items-center rounded-md bg-white text-4xl ring-1 ring-slate-200">{exercise.customIcon || '🏋️'}</div>
+              )}
               <div className="min-w-0 flex-1">
-                <h3 className="font-bold leading-tight">{exercise.name}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-bold leading-tight">{exercise.name}</h3>
+                  {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-900">Tự tạo</span>}
+                </div>
                 <p className="mt-1 text-sm text-teal-900">{exercise.target} · {exercise.equipment}</p>
                 <select onClick={(event) => event.stopPropagation()} onChange={(e) => e.target.value && addToGroup(e.target.value, exercise.id)} className="input mt-3 py-2 text-sm">
                   <option value="">Thêm vào group</option>
@@ -1155,6 +1358,158 @@ function ExerciseLibrary({ userId }) {
         </button>
       )}
     </section>
+  );
+}
+
+function CustomExerciseForm({ initial, onCancel, onSave }) {
+  const [name, setName] = useState(initial?.name || '');
+  const [target, setTarget] = useState(initial?.target || customTargetOptions[0]);
+  const [bodyPart, setBodyPart] = useState(initial?.bodyPart || initial?.target || customTargetOptions[0]);
+  const [secondaryMuscles, setSecondaryMuscles] = useState(initial?.secondaryMuscles?.join(', ') || '');
+  const [equipment, setEquipment] = useState(initial?.equipment || customEquipmentOptions[0]);
+  const [instructions, setInstructions] = useState(initial?.steps?.length ? initial.steps.join('\n') : initial?.instructions || '');
+  const [customIcon, setCustomIcon] = useState(initial?.customIcon || customExerciseIcons[0]);
+  const [displayMedia, setDisplayMedia] = useState(initial?.displayMedia || 'auto');
+  const [imageDataUrl, setImageDataUrl] = useState(undefined);
+  const [gifDataUrl, setGifDataUrl] = useState(undefined);
+  const [imagePreview, setImagePreview] = useState(initial?.imageUrl || '');
+  const [gifPreview, setGifPreview] = useState(initial?.gifUrl || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const pickImage = async (file) => {
+    const dataUrl = await fileToDataUrl(file);
+    setImageDataUrl(dataUrl || '');
+    setImagePreview(dataUrl || '');
+  };
+  const pickGif = async (file) => {
+    const dataUrl = await fileToDataUrl(file);
+    setGifDataUrl(dataUrl || '');
+    setGifPreview(dataUrl || '');
+  };
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    if (!name.trim()) {
+      setError('Nhập tên bài tập trước.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        id: initial?.id,
+        name,
+        target,
+        bodyPart,
+        muscleGroup: target,
+        secondaryMuscles,
+        equipment,
+        instructions,
+        customIcon,
+        displayMedia,
+        imageDataUrl,
+        gifDataUrl
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="space-y-4" onSubmit={submit}>
+      <button type="button" className="ghost-btn" onClick={onCancel}>Trở về thư viện</button>
+      <div className="panel space-y-4">
+        <div>
+          <h2 className="section-title">{initial ? 'Sửa bài tập riêng' : 'Bài tập riêng'}</h2>
+          <p className="text-sm text-slate-600">Tạo bài riêng khi thư viện chưa có bài bạn cần.</p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">Tên bài tập</label>
+            <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ví dụ: incline cable fly riêng" />
+          </div>
+          <div>
+            <label className="label">Nhóm cơ chính</label>
+            <select className="input" value={target} onChange={(event) => { setTarget(event.target.value); setBodyPart(event.target.value); }}>
+              {customTargetOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Nhóm cơ phụ</label>
+            <input className="input" value={secondaryMuscles} onChange={(event) => setSecondaryMuscles(event.target.value)} placeholder="Vai trước, tay sau..." />
+          </div>
+          <div>
+            <label className="label">Dụng cụ</label>
+            <select className="input" value={equipment} onChange={(event) => setEquipment(event.target.value)}>
+              {customEquipmentOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Hiển thị bằng</label>
+          <div className="mt-2 grid grid-cols-4 overflow-hidden rounded-md border border-slate-200 bg-white">
+            {[
+              ['auto', 'Tự động'],
+              ['image', 'Ảnh'],
+              ['gif', 'GIF'],
+              ['icon', 'Icon']
+            ].map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={`px-2 py-3 text-sm font-black ${displayMedia === value ? 'bg-orange-600 text-white' : 'text-slate-600'}`}
+                onClick={() => setDisplayMedia(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Icon mặc định</label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {customExerciseIcons.map((icon) => (
+              <button
+                type="button"
+                key={icon}
+                className={`grid h-11 w-11 place-items-center rounded-lg border bg-white text-2xl ${customIcon === icon ? 'border-orange-500 ring-2 ring-orange-200' : 'border-slate-200'}`}
+                onClick={() => setCustomIcon(icon)}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <span className="label">Ảnh bài tập</span>
+            <input className="mt-2 block w-full text-sm" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => pickImage(event.target.files?.[0])} />
+            {imagePreview && <img src={imagePreview} className="mt-3 h-32 w-full rounded-md bg-white object-contain" />}
+          </label>
+          <label className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <span className="label">GIF bài tập</span>
+            <input className="mt-2 block w-full text-sm" type="file" accept="image/gif,image/webp" onChange={(event) => pickGif(event.target.files?.[0])} />
+            {gifPreview && <img src={gifPreview} className="mt-3 h-32 w-full rounded-md bg-white object-contain" />}
+          </label>
+        </div>
+
+        <div>
+          <label className="label">Hướng dẫn tập</label>
+          <textarea className="input min-h-36" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Mỗi dòng là một bước hướng dẫn." />
+        </div>
+        {error && <p className="text-sm font-bold text-red-600">{error}</p>}
+        <div className="grid gap-2 md:grid-cols-2">
+          <button type="submit" className="primary" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu bài tập'}</button>
+          <button type="button" className="ghost-btn" onClick={onCancel}>Huỷ</button>
+        </div>
+      </div>
+    </form>
   );
 }
 
@@ -1566,13 +1921,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const lastCurrent = current[current.length - 1];
         const preferredManual = payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null;
         const defaultReps = payload.defaultReps ?? 12;
+        const defaultWeightKg = payload.defaultWeightKg ?? null;
         const overloadStepKg = defaultWeightUnit === 'lb' ? lbToKg(5) : 2.5;
         const suggestedPreviousWeight = settings?.progressive_overload && previous?.reps >= defaultReps
           ? Number((Number(previous.weight_kg || 0) + overloadStepKg).toFixed(2))
           : previous?.weight_kg;
         return {
           setIndex,
-          weightKg: preferredManual ?? suggestedPreviousWeight ?? lastCurrent?.weight_kg ?? 20,
+          weightKg: preferredManual ?? defaultWeightKg ?? suggestedPreviousWeight ?? lastCurrent?.weight_kg ?? 20,
           reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
           done: false
         };
@@ -1632,7 +1988,23 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     };
   }, [settings?.keep_screen_awake, workout.sessionId]);
 
-  if (!data || !exercise) return <div className="panel">Routine này chưa có bài tập.</div>;
+  if (!data) return <div className="panel">Đang tải buổi tập...</div>;
+  if (!exercise) {
+    const closeEmptySession = async () => {
+      await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+      localStorage.removeItem(`familyGymWorkout:${userId}`);
+      onClose();
+    };
+    return (
+      <div className="panel space-y-4">
+        <div>
+          <h2 className="section-title">Routine này chưa có bài tập.</h2>
+          <p className="text-sm text-slate-600">Thêm bài tập vào group trước khi vào tập.</p>
+        </div>
+        <button className="ghost-btn w-full" onClick={closeEmptySession}>Thoát</button>
+      </div>
+    );
+  }
 
   const openExercise = (nextIndex) => {
     setIndex(nextIndex);
@@ -1642,6 +2014,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const current = sets.find((set) => set.setIndex === setIndex);
     const updatedSet = current ? { ...current, ...patch } : null;
     setSets((old) => old.map((set) => set.setIndex === setIndex ? { ...set, ...patch } : set));
+    const preferencePatch = {};
+    if (patch.reps !== undefined) preferencePatch.defaultReps = patch.reps;
+    if (patch.weightKg !== undefined) preferencePatch.defaultWeightKg = patch.weightKg;
+    if (Object.keys(preferencePatch).length) {
+      await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, ...preferencePatch }) });
+    }
     if (updatedSet?.done && updatedSet.id) {
       await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps }) });
     }
@@ -1670,7 +2048,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const completeSet = async (set) => {
     if (set.done) return;
     const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit: currentWeightUnit(), reps: set.reps }) });
+    await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
+    setData((current) => current ? {
+      ...current,
+      exercises: current.exercises.map((item) => (
+        item.id === exercise.id
+          ? { ...item, completedSets: Number(item.completedSets || 0) + 1 }
+          : item
+      ))
+    } : current);
     setTimer(Number(settings?.rest_seconds || 60));
   };
   const saveNote = async (value) => {
@@ -1703,13 +2090,34 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const next = value === '' ? null : (defaultWeightUnit === 'lb' ? lbToKg(value) : Number(value));
     await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: next });
   };
+  const exitWorkout = async () => {
+    const hasAnySet = data.exercises?.some((item) => {
+      if (item.id === exercise.id) return sets.some((set) => set.done) || Number(item.completedSets || 0) > 0;
+      return Number(item.completedSets || 0) > 0;
+    });
+    if (!hasAnySet) {
+      await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+      localStorage.removeItem(`familyGymWorkout:${userId}`);
+    }
+    onClose();
+  };
 
   return (
     <section className="space-y-4 text-black">
       <div className="flex items-center justify-between">
-        <button className="ghost-btn" onClick={view === 'exercise' ? () => setView('list') : onClose}>{view === 'exercise' ? 'Danh sách' : 'Thoát'}</button>
+        <button className="ghost-btn" onClick={exitWorkout}>{view === 'exercise' ? 'Danh sách' : 'Thoát'}</button>
         <span className="text-sm text-slate-600">{index + 1}/{data.exercises.length}</span>
       </div>
+
+      {view === 'list' && (
+        <div className="panel-green">
+          <h1 className="text-2xl font-black">Tiếp tục tập</h1>
+          <p className="mt-2 text-sm text-emerald-100">
+            Tiếp tục buổi tập đang dang dở hôm nay
+            {data.session?.started_at ? ` · bắt đầu ${formatTime(data.session.started_at, settings)}` : ''}.
+          </p>
+        </div>
+      )}
 
       {view === 'list' ? (
         <div className="workout-card space-y-3">
@@ -1717,7 +2125,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <p className="text-sm text-slate-500">Chọn bài để vào màn hình đang tập.</p>
           {data.exercises.map((item, itemIndex) => (
             <button key={`${item.id}-${itemIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(itemIndex)}>
-              <img src={item.imageUrl || item.gifUrl} className="h-14 w-14 rounded-md bg-slate-50 object-contain" />
+              {exerciseMediaUrl(item) ? <img src={exerciseMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
               <div className="min-w-0 flex-1">
                 <p className="font-bold">{item.name}</p>
                 <p className={`text-sm font-semibold ${item.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
@@ -1734,7 +2142,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       ) : (
         <div className="workout-card space-y-4">
           <div className="overflow-hidden rounded-xl bg-slate-50">
-            <img src={paused ? exercise.imageUrl : exercise.gifUrl} alt={exercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]" />
+            {exerciseMediaUrl(exercise) ? (
+              <img src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exercise.gifUrl || exerciseMediaUrl(exercise)} alt={exercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]" />
+            ) : (
+              <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
+            )}
           </div>
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -1992,11 +2404,13 @@ function Analytics({ userId, settings }) {
 
   const weightRows = weights.map((row) => ({
     ...row,
+    ts: parseServerDate(row.logged_at)?.getTime(),
     day: formatDate(row.logged_at, settings),
     time: formatTime(row.logged_at, settings),
     label: formatDateTime(row.logged_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
     bmi: settings.height_cm ? Number((Number(row.weight) / ((Number(settings.height_cm) / 100) ** 2)).toFixed(1)) : null
   }));
+  const chartDomain = chartRangeDomain(rangeKey);
   const rangedWeightRows = filterByRange(weightRows, 'logged_at', rangeKey);
   const latestWeight = weightRows[weightRows.length - 1];
   const previousWeight = weightRows[weightRows.length - 2];
@@ -2014,12 +2428,13 @@ function Analytics({ userId, settings }) {
   const exerciseChartRows = selectedExerciseRawRows
     .map((row) => ({
       ...row,
+      ts: parseServerDate(row.day)?.getTime(),
       label: formatDate(row.day, settings, { day: '2-digit', month: '2-digit' }),
       display_weight: displayWeight(row.max_weight, exerciseChartUnit)
     }));
   const sessionChartRows = filterByRange(analytics.sessionRows, 'completed_at', rangeKey)
     .filter((row) => !selectedRoutineName || row.name === selectedRoutineName)
-    .map((row) => ({ ...row, label: formatDateTime(row.completed_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }));
+    .map((row) => ({ ...row, ts: parseServerDate(row.completed_at)?.getTime(), label: formatDateTime(row.completed_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }));
   const selectedExercise = analytics.exercises.find((exercise) => exercise.id === selectedExerciseId);
 
   return (
@@ -2063,9 +2478,17 @@ function Analytics({ userId, settings }) {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="label" stroke="#6b668a" tickMargin={14} minTickGap={22} />
+              <XAxis
+                dataKey="ts"
+                type="number"
+                domain={chartDomain}
+                stroke="#6b668a"
+                tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
+                tickMargin={14}
+                minTickGap={22}
+              />
               <YAxis stroke="#6b668a" tickMargin={10} />
-              <Tooltip />
+              <Tooltip labelFormatter={(value) => formatDateTime(value, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} />
               <Area type="monotone" dataKey="weight" name="Cân nặng" stroke="#2563eb" strokeWidth={3} fill="url(#weightFill)" dot />
             </AreaChart>
           </ResponsiveContainer>
@@ -2077,9 +2500,17 @@ function Analytics({ userId, settings }) {
           <ResponsiveContainer width="100%" height="85%">
             <LineChart data={rangedWeightRows.filter((row) => row.bmi)} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="label" stroke="#6b668a" tickMargin={14} minTickGap={22} />
+              <XAxis
+                dataKey="ts"
+                type="number"
+                domain={chartDomain}
+                stroke="#6b668a"
+                tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
+                tickMargin={14}
+                minTickGap={22}
+              />
               <YAxis stroke="#6b668a" tickMargin={10} domain={['dataMin - 1', 'dataMax + 1']} />
-              <Tooltip />
+              <Tooltip labelFormatter={(value) => formatDateTime(value, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} />
               <Line type="monotone" dataKey="bmi" name="BMI" stroke="#f97316" strokeWidth={3} dot />
             </LineChart>
           </ResponsiveContainer>
@@ -2121,9 +2552,15 @@ function Analytics({ userId, settings }) {
             {exerciseChartRows.length ? (
               <ResponsiveContainer width="100%" height="78%">
                 <LineChart data={exerciseChartRows}>
-                  <XAxis dataKey="label" stroke="#334155" />
+                  <XAxis
+                    dataKey="ts"
+                    type="number"
+                    domain={chartDomain}
+                    stroke="#334155"
+                    tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
+                  />
                   <YAxis stroke="#334155" label={{ value: exerciseChartUnit.toUpperCase(), angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
+                  <Tooltip labelFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
                   <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
                 </LineChart>
               </ResponsiveContainer>
@@ -2137,9 +2574,15 @@ function Analytics({ userId, settings }) {
             {sessionChartRows.length ? (
               <ResponsiveContainer width="100%" height="78%">
                 <LineChart data={sessionChartRows}>
-                  <XAxis dataKey="label" stroke="#334155" />
+                  <XAxis
+                    dataKey="ts"
+                    type="number"
+                    domain={chartDomain}
+                    stroke="#334155"
+                    tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
+                  />
                   <YAxis stroke="#334155" />
-                  <Tooltip />
+                  <Tooltip labelFormatter={(value) => formatDateTime(value, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} />
                   <Line type="monotone" dataKey="max_weight" name="KG" stroke="#2563eb" strokeWidth={3} dot />
                   <Line type="monotone" dataKey="sets" name="Set" stroke="#0f766e" strokeWidth={2} dot={false} />
                 </LineChart>
@@ -2158,7 +2601,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
   return (
     <div className="exercise-picker">
       <button type="button" className="exercise-picker-button" onClick={() => setOpen((current) => !current)}>
-        {selected?.imageUrl && <img src={selected.imageUrl} alt="" />}
+        {exerciseMediaUrl(selected) && <img src={exerciseMediaUrl(selected)} alt="" />}
         <span>{selected?.name || 'Chọn bài tập'}</span>
       </button>
       {open && (
@@ -2173,7 +2616,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
                 setOpen(false);
               }}
             >
-              {exercise.imageUrl && <img src={exercise.imageUrl} alt="" />}
+              {exerciseMediaUrl(exercise) && <img src={exerciseMediaUrl(exercise)} alt="" />}
               <span>{exercise.name}</span>
             </button>
           ))}
@@ -2263,14 +2706,15 @@ function SettingsPage({ userId, boot, onChanged }) {
     reader.onload = () => setAvatarPreview(String(reader.result));
     reader.readAsDataURL(file);
   };
-  const importExcel = async (file) => {
+  const importBackup = async (file) => {
     if (!file) return;
-    const content = await file.text();
-    const result = await api('/api/import/excel', {
+    const backup = JSON.parse(await file.text());
+    if (!(await dialog.confirm('Nhập backup sẽ thay thế dữ liệu hiện tại của người dùng này. Tiếp tục?'))) return;
+    await api('/api/backup/import', {
       method: 'POST',
-      body: JSON.stringify({ userId, content })
+      body: JSON.stringify({ userId, backup })
     });
-    await dialog.alert(`Đã nhập ${result.rows || 0} dòng dữ liệu từ Excel.`);
+    await dialog.alert('Đã nhập data backup.');
     location.reload();
   };
   return (
@@ -2343,13 +2787,13 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title="6. Dữ liệu & đồng bộ">
-        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>Xuất Excel toàn bộ dữ liệu</button>
+        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>Xuất Excel lịch sử tập</button>
+        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>Xuất data backup</button>
         <label className="ghost-btn cursor-pointer">
-          Nhập Excel
-          <input className="hidden" type="file" accept=".xls,.html,application/vnd.ms-excel,text/html" onChange={(event) => importExcel(event.target.files?.[0])} />
+          Nhập data backup
+          <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0])} />
         </label>
-        <button className="ghost-btn" onClick={() => window.open(`/api/export?userId=${userId}`, '_blank')}>Export JSON</button>
-        <p className="mt-2 text-sm text-slate-600">Excel xuất 1 sheet, có STT, ngày, giờ và tiêu đề rõ ràng. Phần nhập Excel dùng cho file .xls do Gym App xuất ra.</p>
+        <p className="mt-2 text-sm text-slate-600">Excel chỉ để xem lịch sử tập. Data backup dùng để sao lưu/khôi phục toàn bộ dữ liệu của người dùng hiện tại.</p>
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
