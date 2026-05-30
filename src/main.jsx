@@ -2551,7 +2551,7 @@ function Analytics({ userId, settings }) {
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
-  const [rangeKey, setRangeKey] = useState('1m');
+  const [rangeKey, setRangeKey] = useState('1y');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
   const [selectedRoutineName, setSelectedRoutineName] = useState('');
 
@@ -2563,6 +2563,17 @@ function Analytics({ userId, settings }) {
     });
     api(`/api/body-weight?userId=${userId}`).then(setWeights);
   }, [userId]);
+
+  // Khi đổi exercise, tự tìm range có data nếu range hiện tại trống
+  useEffect(() => {
+    if (!selectedExerciseId || !analytics.exerciseRows?.length) return;
+    const hasDataInRange = filterByRange(analytics.exerciseRows, 'day', rangeKey)
+      .some((row) => row.exercise_id === selectedExerciseId);
+    if (!hasDataInRange) {
+      const hasAnyData = analytics.exerciseRows.some((row) => row.exercise_id === selectedExerciseId);
+      if (hasAnyData) setRangeKey('5y'); // mở rộng ra toàn bộ
+    }
+  }, [selectedExerciseId, analytics.exerciseRows]);
 
   const weightRows = weights.map((row) => ({
     ...row,
@@ -2705,7 +2716,14 @@ function Analytics({ userId, settings }) {
                   <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-slate-600 mt-4">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>}
+            ) : (
+              <div className="mt-4">
+                <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>
+                {selectedExercise && rangeKey !== '5y' && (
+                  <button className="small-action mt-2" onClick={() => setRangeKey('5y')}>Xem toàn bộ lịch sử</button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div>
