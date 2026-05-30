@@ -12,7 +12,7 @@
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
 
   <!-- PORT -->
