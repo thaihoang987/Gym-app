@@ -1517,31 +1517,12 @@ function importBackupData(userId, backup) {
     error.status = 400;
     throw error;
   }
-  const settingColumns = new Set(all('PRAGMA table_info(user_settings)').map((column) => column.name));
+  // Bỏ qua data.user (tên/avatar/pass) — giữ nguyên thông tin user hiện tại
+  // Chỉ THÊM training data, không xóa dữ liệu cũ (INSERT OR IGNORE)
   const tx = db.transaction(() => {
-    db.prepare('DELETE FROM workout_logs WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM workout_sessions WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM body_weight_logs WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM exercise_notes WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM routine_schedule_rules WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM routine_groups WHERE routine_id IN (SELECT id FROM routines WHERE user_id = ?)').run(userId);
-    db.prepare('DELETE FROM routines WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM group_exercises WHERE group_id IN (SELECT id FROM custom_groups WHERE user_id = ?)').run(userId);
-    db.prepare('DELETE FROM custom_groups WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM exercises WHERE custom_user_id = ? AND is_custom = 1').run(userId);
-
-    if (data.user) {
-      db.prepare('UPDATE users SET name = COALESCE(?, name), avatar = COALESCE(?, avatar) WHERE id = ?').run(data.user.name || null, data.user.avatar || null, userId);
-    }
-    if (data.settings) {
-      const columns = Object.keys(data.settings).filter((key) => key !== 'user_id' && settingColumns.has(key) && /^[a-z0-9_]+$/i.test(key));
-      if (columns.length) {
-        db.prepare(`UPDATE user_settings SET ${columns.map((key) => `"${key}" = ?`).join(', ')} WHERE user_id = ?`).run(...columns.map((key) => data.settings[key]), userId);
-      }
-    }
     for (const exercise of data.customExercises || []) {
       db.prepare(`
-        INSERT OR REPLACE INTO exercises (
+        INSERT OR IGNORE INTO exercises (
           id, name, category, body_part, equipment, target, muscle_group,
           secondary_muscles_json, instructions_en, instruction_steps_json,
           image_path, gif_path, custom_user_id, is_custom, is_hidden, custom_icon, display_media, source_created_at
@@ -1553,31 +1534,31 @@ function importBackupData(userId, backup) {
       );
     }
     for (const group of data.groups || []) {
-      db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at);
+      db.prepare('INSERT OR IGNORE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at);
     }
     for (const item of data.groupExercises || []) {
-      db.prepare('INSERT OR REPLACE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(item.id, item.group_id, item.exercise_id, item.icon || '🏋️', item.order_index || 1);
+      db.prepare('INSERT OR IGNORE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(item.id, item.group_id, item.exercise_id, item.icon || '🏋️', item.order_index || 1);
     }
     for (const routine of data.routines || []) {
-      db.prepare('INSERT OR REPLACE INTO routines (id, user_id, name, color_hex, created_at) VALUES (?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at);
+      db.prepare('INSERT OR IGNORE INTO routines (id, user_id, name, color_hex, created_at) VALUES (?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at);
     }
     for (const item of data.routineGroups || []) {
-      db.prepare('INSERT OR REPLACE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1);
+      db.prepare('INSERT OR IGNORE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1);
     }
     for (const rule of data.scheduleRules || []) {
-      db.prepare('INSERT OR REPLACE INTO routine_schedule_rules (id, user_id, routine_id, mode, day_of_week, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(rule.id, userId, rule.routine_id, rule.mode, rule.day_of_week, rule.order_index);
+      db.prepare('INSERT OR IGNORE INTO routine_schedule_rules (id, user_id, routine_id, mode, day_of_week, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(rule.id, userId, rule.routine_id, rule.mode, rule.day_of_week, rule.order_index);
     }
     for (const session of data.sessions || []) {
-      db.prepare('INSERT OR REPLACE INTO workout_sessions (id, user_id, routine_id, group_id, schedule_mode, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(session.id, userId, session.routine_id, session.group_id, session.schedule_mode, session.status, session.started_at, session.completed_at);
+      db.prepare('INSERT OR IGNORE INTO workout_sessions (id, user_id, routine_id, group_id, schedule_mode, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(session.id, userId, session.routine_id, session.group_id, session.schedule_mode, session.status, session.started_at, session.completed_at);
     }
     for (const log of data.logs || []) {
-      db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, log.completed_at);
+      db.prepare('INSERT OR IGNORE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, log.completed_at);
     }
     for (const note of data.exerciseNotes || []) {
-      db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, note.updated_at);
+      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, note.updated_at);
     }
     for (const weight of data.bodyWeights || []) {
-      db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);
+      db.prepare('INSERT OR IGNORE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);
     }
   });
   tx();

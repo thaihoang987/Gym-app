@@ -1,4 +1,4 @@
-const translations = {
+﻿const translations = {
   'en-US': {
     // nav
     nav_home: 'Home', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
@@ -186,7 +186,7 @@ const translations = {
     settings_import: 'Import backup',
     settings_import_data: 'Import data backup',
     settings_import_confirm: 'Importing a backup will replace all current data for this user. Continue?',
-    settings_import_done: 'Backup data imported.',
+    settings_import_done: 'Backup imported successfully. New data has been merged into your account.',
     settings_data_note: 'Excel is for viewing training history only. Backup is for full data backup/restore of the current user.',
     settings_preview: 'Preview:',
     settings_save_user: 'Save member',
@@ -1964,3 +1964,4 @@ export function createT(locale) {
     return val;
   };
 }
+
