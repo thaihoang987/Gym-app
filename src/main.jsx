@@ -38,7 +38,7 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 
-const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('mode_fixed'), ROLLING: t('mode_rolling') });
+const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('schedule_rolling_panel_title') });
 const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const lbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
