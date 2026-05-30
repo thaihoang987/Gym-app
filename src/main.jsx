@@ -106,17 +106,18 @@ const localeOptions = [
   ['fr-FR', 'Français (French)'],
   ['ru-RU', 'Русский (Russian)'],
 ];
-const rangeOptionsDays = { '1d': 1, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825, 'all': null };
+const rangeOptionsDays = { '3d': 3, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825, 'all': null };
 const getRangeOptions = (t) => [
+  ['3d', t('range_3d'), 3],
   ['7d', t('range_7d'), 7],
   ['14d', t('range_14d'), 14],
   ['1m', t('range_1m'), 30],
-  ['3m', '3 tháng', 90],
+  ['3m', t('range_3m'), 90],
   ['6m', t('range_6m'), 183],
   ['1y', t('range_1y'), 365],
   ['2y', t('range_2y'), 730],
   ['5y', t('range_5y'), 1825],
-  ['all', 'Tất cả', null]
+  ['all', t('range_all'), null]
 ];
 
 function supportedTimezones() {
