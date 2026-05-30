@@ -1634,8 +1634,7 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 }
 
 function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
-  const translatedSteps = languageKey(settings) !== 'en-US' && exercise.stepsVi?.length ? exercise.stepsVi : null;
-  const rawSteps = translatedSteps || (exercise.steps?.length
+  const rawSteps = (exercise.steps?.length
     ? exercise.steps
     : exercise.instructions
       ? String(exercise.instructions).split(/\n+/)
