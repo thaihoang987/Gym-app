@@ -13,8 +13,7 @@ FROM node:22-alpine AS dataset
 RUN apk add --no-cache git
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset.git hasaneyldrm-exercises-dataset \
-    && rm -rf hasaneyldrm-exercises-dataset/.git \
-    && rm -rf hasaneyldrm-exercises-dataset/videos
+    && rm -rf hasaneyldrm-exercises-dataset/.git
 
 FROM node:22-alpine
 WORKDIR /app
