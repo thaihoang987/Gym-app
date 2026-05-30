@@ -914,8 +914,10 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
   const isRolling = suggestion?.mode === 'ROLLING';
 
-  // Today-centered: -3 … today … +3 (7 days), shifted by offset
-  const dayCount = 7;
+  // Rolling: 3 ngày lịch sử + đúng số buổi đăng ký (hôm nay trở đi)
+  // Fixed/Free: 7 ngày, today ở giữa
+  const rollingCount = rollingRules.length || 1;
+  const dayCount = isRolling ? 3 + rollingCount : 7;
   const centerOffset = -3; // today at index 3
 
   // For rolling: count future sessions from rolling index
