@@ -2,4 +2,6 @@ node_modules/
 dist/
 .env
 hasaneyldrm-exercises-dataset/
-data/uploads/
+data/
+Gym-app/
+Gym-app-github/
