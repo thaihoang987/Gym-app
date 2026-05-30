@@ -892,11 +892,11 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
 
 function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const t = useLang();
+  const [offset, setOffset] = useState(0); // offset in days from today-centered view
+
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const monday = new Date(today);
-  const offset = today.getDay() === 0 ? -6 : 1 - today.getDay();
-  monday.setDate(today.getDate() + offset);
+
   const historyByDay = new Map();
   for (const row of history) {
     const key = localIsoDate(parseServerDate(row.completed_at));
@@ -908,10 +908,14 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const fixedByDay = new Map(rules.filter((rule) => rule.mode === 'FIXED').map((rule) => [rule.day_of_week, routineById.get(rule.routine_id)]));
   const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
   const isRolling = suggestion?.mode === 'ROLLING';
+
+  // Today-centered: -3 … today … +3 (7 days), shifted by offset
   const dayCount = isRolling ? 3 : 7;
+  const centerOffset = isRolling ? 0 : -3; // today at index 3 for fixed/free
+
   const scheduleItems = Array.from({ length: dayCount }, (_, itemIndex) => {
-    const date = new Date(isRolling ? startOfToday : monday);
-    date.setDate((isRolling ? startOfToday : monday).getDate() + itemIndex);
+    const date = new Date(startOfToday);
+    date.setDate(startOfToday.getDate() + centerOffset + itemIndex + offset);
     const weekdayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
     const key = localIsoDate(date);
     const dayHistory = historyByDay.get(key) || [];
@@ -928,7 +932,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
       label: t('days')[weekdayIndex],
       date,
       isToday: date.toDateString() === today.toDateString(),
-      isPast: date < new Date(today.toDateString()),
+      isPast: date < startOfToday,
       done,
       mainDone,
       dayHistory,
@@ -941,9 +945,40 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
     };
   });
 
+  // Date range label for header
+  const firstDate = scheduleItems[0]?.date;
+  const lastDate = scheduleItems[scheduleItems.length - 1]?.date;
+  const rangeLabel = firstDate && lastDate
+    ? `${firstDate.getDate()}/${firstDate.getMonth() + 1} – ${lastDate.getDate()}/${lastDate.getMonth() + 1}`
+    : '';
+
   return (
     <div className="panel">
-      <h2 className="section-title">{isRolling ? t('rolling_title') : t('week_title')}</h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="section-title mb-0">{isRolling ? t('rolling_title') : t('week_title')}</h2>
+        {!isRolling && (
+          <div className="flex items-center gap-2">
+            <button
+              className="tiny-btn"
+              onClick={() => setOffset((v) => v - 3)}
+              title="Lui 3 ngày"
+            >‹‹</button>
+            {offset !== 0 && (
+              <button
+                className="ghost-btn px-2 py-1 text-xs"
+                onClick={() => setOffset(0)}
+                title="Về hôm nay"
+              >↩</button>
+            )}
+            <span className="text-xs text-slate-500 font-semibold">{rangeLabel}</span>
+            <button
+              className="tiny-btn"
+              onClick={() => setOffset((v) => v + 3)}
+              title="Tới 3 ngày"
+            >››</button>
+          </div>
+        )}
+      </div>
       <div className={`week-plan-grid ${isRolling ? 'rolling' : ''}`}>
         {scheduleItems.map((item) => (
           <div key={item.key} className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''}`}>
@@ -2858,7 +2893,7 @@ function SettingsPage({ userId, boot, onChanged }) {
       <button
         onClick={saveAll}
         className="flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white"
-        style={{background:'linear-gradient(135deg,#f05a28,#e8430f)', boxShadow:'0 4px 14px rgba(240,90,40,0.4)'}}
+        style={{background:'linear-gradient(135deg,#2563eb,#7c3aed)', boxShadow:'0 4px 14px rgba(124,58,237,0.4)'}}
       >
         {t('settings_save')} · Save changes
       </button>
