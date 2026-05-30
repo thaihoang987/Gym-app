@@ -1310,7 +1310,7 @@ function ExerciseLibrary({ userId }) {
           return (
           <article
             key={exercise.id}
-            className="panel cursor-pointer"
+            className="panel cursor-pointer" style={{background:'#fff'}}
             onClick={() => setSelectedExercise(exercise)}
             onMouseLeave={() => {
               if (!pinnedGifIds.has(exercise.id)) setPreviewGifId((id) => id === exercise.id ? null : id);
@@ -1339,9 +1339,9 @@ function ExerciseLibrary({ userId }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-bold leading-tight">{exercise.name}</h3>
-                  {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-900">Tự tạo</span>}
+                  {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-600">Tự tạo</span>}
                 </div>
-                <p className="mt-1 text-sm text-teal-900">{exercise.target} · {exercise.equipment}</p>
+                <p className="mt-1 text-sm text-slate-500">{exercise.target} · {exercise.equipment}</p>
                 <select onClick={(event) => event.stopPropagation()} onChange={(e) => e.target.value && addToGroup(e.target.value, exercise.id)} className="input mt-3 py-2 text-sm">
                   <option value="">Thêm vào group</option>
                   {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}

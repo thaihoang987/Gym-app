@@ -1,4 +1,5 @@
 import cors from 'cors';
+import ExcelJS from 'exceljs';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -1502,24 +1503,93 @@ app.post('/api/backup/import', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/export/excel', (req, res) => {
+app.get('/api/export/excel', async (req, res) => {
   const userId = getUserId(req);
-  const headers = [
-    ['exerciseName', 'Bài tập'],
-    ['date', 'Ngày tháng năm'],
-    ['sets', 'Số sets'],
-    ['kg', 'Số kg'],
-    ['lb', 'Số lb'],
-    ['reps', 'Số reps'],
-    ['note', 'Ghi chú bài'],
-    ['muscleGroup', 'Nhóm cơ']
-  ];
   const rows = excelRowsForUser(userId);
   const today = new Date().toISOString().slice(0, 10);
-  const workbook = buildXlsx(headers, rows);
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Workout Log');
+
+  // Columns: Nhóm cơ | Bài tập | Ngày | Set# | Kg | Lb | Reps | Ghi chú
+  ws.columns = [
+    { key: 'muscleGroup', width: 22 },
+    { key: 'exerciseName', width: 30 },
+    { key: 'date', width: 14 },
+    { key: 'sets', width: 8 },
+    { key: 'kg', width: 8 },
+    { key: 'lb', width: 8 },
+    { key: 'reps', width: 8 },
+    { key: 'note', width: 35 },
+  ];
+
+  // Header row
+  const headerRow = ws.addRow(['Nhóm cơ', 'Bài tập', 'Ngày', 'Set #', 'Kg', 'Lb', 'Reps', 'Ghi chú']);
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D6A4F' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = { bottom: { style: 'thin', color: { argb: 'FF1B4332' } } };
+  });
+  ws.getRow(1).height = 22;
+
+  // Colors: alternating light blue / white per (exercise+date) block
+  const COLOR_A = 'FFE8F4FD'; // xanh dương nhạt
+  const COLOR_B = 'FFFFFFFF'; // trắng
+
+  let colorToggle = false;
+  let lastGroupKey = null;
+
+  const dataStartRow = 2;
+  rows.forEach((row) => {
+    const groupKey = row.exerciseName + '||' + row.date;
+    if (groupKey !== lastGroupKey) {
+      colorToggle = !colorToggle;
+      lastGroupKey = groupKey;
+    }
+    const bgColor = colorToggle ? COLOR_A : COLOR_B;
+    const excelRow = ws.addRow([row.muscleGroup, row.exerciseName, row.date, row.sets, row.kg === '' ? null : Number(row.kg), row.lb === '' ? null : Number(row.lb), row.reps, row.note]);
+    excelRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } } };
+    });
+    // note left-align
+    excelRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'left' };
+  });
+
+  // Merge same consecutive values for muscleGroup (col 1), exerciseName (col 2), date (col 3)
+  const totalRows = rows.length;
+  const mergeCols = [
+    { colIdx: 1, keyFn: (r) => r.muscleGroup },
+    { colIdx: 2, keyFn: (r) => r.muscleGroup + '||' + r.exerciseName },
+    { colIdx: 3, keyFn: (r) => r.muscleGroup + '||' + r.exerciseName + '||' + r.date },
+  ];
+  for (const { colIdx, keyFn } of mergeCols) {
+    let startRow = dataStartRow;
+    let currentKey = rows.length ? keyFn(rows[0]) : null;
+    for (let i = 1; i <= totalRows; i++) {
+      const key = i < totalRows ? keyFn(rows[i]) : null;
+      if (key !== currentKey) {
+        if (i - 1 > startRow - dataStartRow) {
+          // có nhiều hơn 1 row → merge
+          ws.mergeCells(startRow, colIdx, startRow + (i - 1 - (startRow - dataStartRow)), colIdx);
+          const cell = ws.getCell(startRow, colIdx);
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        }
+        startRow = dataStartRow + i;
+        currentKey = key;
+      }
+    }
+  }
+
+  // Freeze header
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const buf = await wb.xlsx.writeBuffer();
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="gym-app-workout-log-${today}.xlsx"`);
-  res.send(workbook);
+  res.setHeader('Content-Disposition', `attachment; filename="gym-workout-${today}.xlsx"`);
+  res.send(buf);
 });
 
 app.use(express.static(path.join(rootDir, 'dist')));

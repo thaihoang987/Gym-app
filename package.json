@@ -21,6 +21,7 @@
     "better-sqlite3": "^12.4.1",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
