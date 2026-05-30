@@ -53,7 +53,7 @@ button:disabled {
 }
 
 .panel-green {
-  @apply rounded-lg border border-[#1f2933] bg-[#1f2933] p-4 text-white shadow-soft;
+  @apply rounded-lg border border-[#1f2933] bg-[#1f2933] p-4 text-white shadow-soft overflow-hidden;
 }
 
 .app-dialog-backdrop {

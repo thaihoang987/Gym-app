@@ -728,23 +728,20 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
-                      <div key={exercise.id} className={`flex items-center gap-3 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
-                        {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                      <div key={exercise.id} className={`flex items-center gap-2 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
+                        {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-10 w-10 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-white text-xl">{exercise.customIcon || '🏋️'}</span>}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold">{exercise.name}</p>
                           <p className={`text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
                             {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
                           </p>
                         </div>
-                        <span className={`rounded px-2 py-1 text-xs font-black ${done ? 'bg-lime-300 text-green-950' : 'bg-orange-100 text-orange-900'}`}>
-                          {done ? t('today_done') : t('today_not_done')}
-                        </span>
                         <button
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
                           title="Vào bài tập"
                           onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
                         >
-                          <Play size={16} />
+                          <Play size={14} />
                         </button>
                       </div>
                     );
