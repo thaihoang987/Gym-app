@@ -1971,7 +1971,6 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
                 <h3 className="font-bold">{routine.name}</h3>
                 <p className="text-xs text-slate-500">{t('builder_exercises_count', routine.exercises.length)} · {routine.groups.map((g) => g.name).join(' + ')}</p>
               </div>
-              <button className="small-action" onClick={() => onStart(routine)}><Play size={16} /> {t('schedule_go')}</button>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
               <option value="">{mode === 'FIXED' ? t('schedule_assign_fixed') : t('schedule_assign_rolling')}</option>
