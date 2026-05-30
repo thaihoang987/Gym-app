@@ -7,12 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-icon.svg'],
+      includeAssets: ['favicon.ico', 'pwa-192.png', 'pwa-512.png'],
       manifest: {
         name: 'Family Gym',
         short_name: 'Gym',
         description: 'Ứng dụng quản lý tập gym gia đình self-hosted.',
-        theme_color: '#166534',
+        theme_color: '#1e3a5f',
         background_color: '#f4f6f1',
         display: 'standalone',
         orientation: 'portrait',
@@ -20,9 +20,15 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/pwa-icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/pwa-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/pwa-512.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'any maskable'
           }
         ]
