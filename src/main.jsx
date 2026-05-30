@@ -96,15 +96,15 @@ const timezoneOptions = [
 ];
 const localeOptions = [
   ['en-US', 'English'],
-  ['vi-VN', 'Tiếng Việt'],
-  ['zh-CN', '简体中文'],
-  ['es-ES', 'Español'],
-  ['pt-BR', 'Português (Brasil)'],
-  ['ja-JP', '日本語'],
-  ['ko-KR', '한국어'],
-  ['de-DE', 'Deutsch'],
-  ['fr-FR', 'Français'],
-  ['ru-RU', 'Русский'],
+  ['vi-VN', 'Tiếng Việt (Vietnamese)'],
+  ['zh-CN', '简体中文 (Chinese Simplified)'],
+  ['es-ES', 'Español (Spanish)'],
+  ['pt-BR', 'Português Brasil (Portuguese)'],
+  ['ja-JP', '日本語 (Japanese)'],
+  ['ko-KR', '한국어 (Korean)'],
+  ['de-DE', 'Deutsch (German)'],
+  ['fr-FR', 'Français (French)'],
+  ['ru-RU', 'Русский (Russian)'],
 ];
 const rangeOptionsDays = { '1d': 1, '7d': 7, '14d': 14, '1m': 30, '6m': 183, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825 };
 const getRangeOptions = (t) => [
@@ -689,7 +689,13 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-emerald-200">{formatTime(clock, settings)}</p>
-          <h2 className="mt-1 text-2xl font-bold">{suggestion?.title || t('today_title')}</h2>
+          <h2 className="mt-1 text-2xl font-bold">{
+            !suggestion ? t('today_title') :
+            suggestion.mode === 'FREE' ? t('mode_free') :
+            suggestion.routine ? t('today_title') :
+            suggestion.mode === 'ROLLING' ? t('schedule_rolling') :
+            t('no_session')
+          }</h2>
           <p className="mt-2 text-sm text-emerald-200">
             {routine ? `${routine.name} · ${routine.groups.length} Group · ${routine.exercises.length} ${t('bài')}` : t('today_no_routine')}
           </p>
@@ -2849,7 +2855,13 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
-      <button className="primary" onClick={saveAll}>{t('settings_save')}</button>
+      <button
+        onClick={saveAll}
+        className="flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white"
+        style={{background:'linear-gradient(135deg,#f05a28,#e8430f)', boxShadow:'0 4px 14px rgba(240,90,40,0.4)'}}
+      >
+        {t('settings_save')} · Save changes
+      </button>
       {boot.activeUser.role === 'ADMIN' && <div className="panel">
         <h2 className="section-title">{t('settings_users')}</h2>
         <button className="primary" onClick={addUser}>{t('settings_add_user')}</button>
