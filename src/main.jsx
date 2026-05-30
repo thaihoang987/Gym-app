@@ -2692,7 +2692,6 @@ function Analytics({ userId, settings }) {
           </ResponsiveContainer>
         ) : <p className="text-slate-600">{t('analytics_no_bmi_chart')}</p>}
       </div>
-      <WeightHistoryPanel weightRows={weightRows} t={t} settings={settings} />
       <div className="panel">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold">{t('analytics_progress_section')}</h3>
@@ -2753,6 +2752,7 @@ function Analytics({ userId, settings }) {
           </div>
         )}
       </div>
+      <WeightHistoryPanel weightRows={weightRows} t={t} settings={settings} />
     </section>
   );
 }
