@@ -884,14 +884,14 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                       className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
                       onClick={() => onStart({ sessionId: active.session.id, initialIndex: exerciseIndex, initialView: 'exercise' })}
                     >
-                      {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                      {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold">{exercise.name}</p>
-                        <p className={`text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
-                          {exercise.completedSets ? t('exercise_set_done', exercise.completedSets) : t('exercise_not_done')} · {exercise.groupName || exercise.target} · {exercise.equipment}
+                        <p className="break-words font-bold leading-snug">{exercise.name}</p>
+                        <p className={`mt-0.5 text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
+                          {exercise.completedSets ? t('exercise_set_done', exercise.completedSets) : t('exercise_not_done')} · {exercise.groupName || exercise.target}
                         </p>
                       </div>
-                      <span className={`rounded px-3 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                      <span className={`shrink-0 rounded px-2 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
                         {exercise.completedSets ? t('continue_exercise') : t('start_exercise')}
                       </span>
                     </button>
