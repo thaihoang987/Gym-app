@@ -38,13 +38,12 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 
-const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-const modeLabels = { FREE: 'Tự do', FIXED: 'Cố định', ROLLING: 'Cuốn chiếu' };
+const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('mode_fixed'), ROLLING: t('mode_rolling') });
 const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const lbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
-const customTargetOptions = ['Ngực', 'Lưng/Xô', 'Vai', 'Tay trước', 'Tay sau', 'Chân', 'Mông', 'Bụng', 'Cardio', 'Khác'];
+const getCustomTargetOptions = (t) => t('custom_targets');
 const customEquipmentOptions = ['body weight', 'dumbbell', 'barbell', 'machine', 'cable', 'band', 'kettlebell', 'other'];
 const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
@@ -73,7 +72,7 @@ function stableColorForName(name) {
     { dot: '#ca8a04', fill: '#fef3c7', ring: '#fde68a' },
     { dot: '#334155', fill: '#e2e8f0', ring: '#cbd5e1' }
   ];
-  const text = String(name || 'Tập tự do');
+  const text = String(name || 'Free workout');
   let hash = 0;
   for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
   return colors[hash % colors.length];
@@ -107,16 +106,17 @@ const localeOptions = [
   ['fr-FR', 'Français'],
   ['ru-RU', 'Русский'],
 ];
-const rangeOptions = [
-  ['1d', '1 ngày', 1],
-  ['7d', '7 ngày', 7],
-  ['14d', '2 tuần', 14],
-  ['1m', '1 tháng', 30],
-  ['6m', '6 tháng', 183],
-  ['1y', '1 năm', 365],
-  ['2y', '2 năm', 730],
-  ['3y', '3 năm', 1095],
-  ['5y', '5 năm', 1825]
+const rangeOptionsDays = { '1d': 1, '7d': 7, '14d': 14, '1m': 30, '6m': 183, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825 };
+const getRangeOptions = (t) => [
+  ['1d', t('range_1d'), 1],
+  ['7d', t('range_7d'), 7],
+  ['14d', t('range_14d'), 14],
+  ['1m', t('range_1m'), 30],
+  ['6m', t('range_6m'), 183],
+  ['1y', t('range_1y'), 365],
+  ['2y', t('range_2y'), 730],
+  ['3y', t('range_3y'), 1095],
+  ['5y', t('range_5y'), 1825]
 ];
 
 function supportedTimezones() {
@@ -169,21 +169,21 @@ function timezoneSelectOptions() {
     .sort((a, b) => a.offset - b.offset || a.name.localeCompare(b.name));
 }
 
-function bmiFeedback(bmi) {
-  if (!bmi) return { label: 'Chưa đủ dữ liệu', tone: 'neutral', text: 'Nhập chiều cao và cân nặng để app tính BMI cho bạn.' };
-  if (bmi < 16) return { label: 'Rất thấp', tone: 'danger', text: 'BMI đang quá thấp, nên ưu tiên phục hồi dinh dưỡng và theo dõi sức khoẻ sát hơn.' };
-  if (bmi < 18.5) return { label: 'Thấp', tone: 'warning', text: 'Bạn đang hơi thiếu cân, tăng cơ chậm rãi cùng ăn đủ protein sẽ hợp lý hơn.' };
-  if (bmi < 23) return { label: 'Rất tốt', tone: 'good', text: 'BMI nằm trong vùng rất tốt, tiếp tục giữ nhịp tập và cân nặng ổn định.' };
-  if (bmi < 25) return { label: 'Tốt', tone: 'ok', text: 'BMI vẫn ổn, nếu mục tiêu là nét hơn thì giảm mỡ nhẹ và giữ sức mạnh là hướng đẹp.' };
-  if (bmi < 30) return { label: 'Cần cải thiện', tone: 'warning', text: 'BMI hơi cao, nên theo dõi vòng eo, volume tập và giảm cân từ từ để bền hơn.' };
-  return { label: 'Rủi ro cao', tone: 'danger', text: 'BMI đang cao, nên ưu tiên thói quen ăn uống, vận động đều và cân nhắc tư vấn chuyên môn.' };
+function bmiFeedback(bmi, t) {
+  if (!bmi) return { label: t('bmi_no_data_label'), tone: 'neutral', text: t('bmi_no_data_text') };
+  if (bmi < 16) return { label: t('bmi_very_low_label'), tone: 'danger', text: t('bmi_very_low_text') };
+  if (bmi < 18.5) return { label: t('bmi_low_label'), tone: 'warning', text: t('bmi_low_text') };
+  if (bmi < 23) return { label: t('bmi_great_label'), tone: 'good', text: t('bmi_great_text') };
+  if (bmi < 25) return { label: t('bmi_ok_label'), tone: 'ok', text: t('bmi_ok_text') };
+  if (bmi < 30) return { label: t('bmi_warning_label'), tone: 'warning', text: t('bmi_warning_text') };
+  return { label: t('bmi_danger_label'), tone: 'danger', text: t('bmi_danger_text') };
 }
 
 function filterByRange(rows, field, rangeKey) {
-  const option = rangeOptions.find(([key]) => key === rangeKey);
-  if (!option) return rows;
+  const days = rangeOptionsDays[rangeKey];
+  if (!days) return rows;
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - option[2]);
+  cutoff.setDate(cutoff.getDate() - days);
   return rows.filter((row) => {
     const date = parseServerDate(row[field]);
     return date && date >= cutoff;
@@ -191,10 +191,10 @@ function filterByRange(rows, field, rangeKey) {
 }
 
 function chartRangeDomain(rangeKey) {
-  const option = rangeOptions.find(([key]) => key === rangeKey);
+  const days = rangeOptionsDays[rangeKey];
   const end = new Date();
   const start = new Date(end);
-  start.setDate(start.getDate() - (option?.[2] || 30));
+  start.setDate(start.getDate() - (days || 30));
   return [start.getTime(), end.getTime()];
 }
 
@@ -334,11 +334,12 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.error) {
+      const t = this.props.t || ((k) => k);
       return (
         <div className="panel">
-          <h2 className="section-title">Có lỗi hiển thị</h2>
+          <h2 className="section-title">{t('error_display')}</h2>
           <p className="text-sm text-slate-700">{this.state.error.message}</p>
-          <button className="primary mt-3" onClick={() => this.setState({ error: null })}>Thử lại</button>
+          <button className="primary mt-3" onClick={() => this.setState({ error: null })}>{t('error_retry')}</button>
         </div>
       );
     }
@@ -367,7 +368,7 @@ function App() {
   }, [user, refresh]);
 
   if (!user) return <Login onLogin={setUser} />;
-  if (!boot) return <div className="min-h-screen bg-app grid place-items-center text-slate-950">Đang tải...</div>;
+  if (!boot) { const tBoot = createT(savedUser?.locale); return <div className="min-h-screen bg-app grid place-items-center text-slate-950">{tBoot('loading')}</div>; }
 
   const t = createT(boot.settings?.locale);
 
@@ -441,7 +442,7 @@ function App() {
         {workout ? (
           <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={closeWorkout} />
         ) : (
-          <ErrorBoundary key={tab}>
+          <ErrorBoundary key={tab} t={t}>
             <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); sessionStorage.removeItem('familyGymUser'); setUser(null); }} />
             {tab === 'home' && <Dashboard userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} />}
@@ -482,6 +483,8 @@ function App() {
 }
 
 function Login({ onLogin }) {
+  const savedLocale = (() => { try { const u = JSON.parse(localStorage.getItem('familyGymUser') || 'null'); return u?.locale || 'vi-VN'; } catch { return 'vi-VN'; } })();
+  const t = createT(savedLocale);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
@@ -509,12 +512,12 @@ function Login({ onLogin }) {
           <div className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-green-950"><Dumbbell /></div>
           <div>
             <h1 className="text-2xl font-bold">Gym App</h1>
-            <p className="text-sm text-teal-950">Đăng nhập thành viên</p>
+            <p className="text-sm text-teal-950">{t('login_subtitle')}</p>
           </div>
         </div>
-        <label className="label">Tên đăng nhập</label>
+        <label className="label">{t('login_username')}</label>
         <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <label className="label mt-4">Mật khẩu</label>
+        <label className="label mt-4">{t('login_password')}</label>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         <label className="mt-4 flex items-center gap-2 text-sm font-bold text-teal-950">
           <input
@@ -523,11 +526,11 @@ function Login({ onLogin }) {
             checked={remember}
             onChange={(event) => setRemember(event.target.checked)}
           />
-          <span>Nhớ tài khoản trên thiết bị này</span>
+          <span>{t('login_remember')}</span>
         </label>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        <button className="primary mt-5">Đăng nhập</button>
-        <p className="mt-4 text-xs text-teal-950">Mặc định lần đầu: admin / admin123</p>
+        <button className="primary mt-5">{t('login_btn')}</button>
+        <p className="mt-4 text-xs text-teal-950">{t('login_hint')}</p>
       </form>
     </div>
   );
@@ -565,7 +568,7 @@ function Header({ user, boot, onLogout }) {
       <div>
         <p className="text-sm text-teal-950">{formatDateTime(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
         <h1 className="text-2xl font-bold">{user.name}</h1>
-        <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
+        <p className="text-sm text-teal-950">{getModeLabels(t)[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
       </div>
       <div className="relative" ref={menuRef}>
         <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
@@ -857,7 +860,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-bold">{exercise.name}</p>
                         <p className={`text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
-                          {exercise.completedSets ? `Đã tập ${exercise.completedSets} set` : 'Chưa tập'} · {exercise.groupName || exercise.target} · {exercise.equipment}
+                          {exercise.completedSets ? t('exercise_set_done', exercise.completedSets) : t('exercise_not_done')} · {exercise.groupName || exercise.target} · {exercise.equipment}
                         </p>
                       </div>
                       <span className={`rounded px-3 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
@@ -916,7 +919,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
     const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : isRolling ? rollingRoutine : null;
     return {
       key,
-      label: dayLabels[weekdayIndex],
+      label: t('days')[weekdayIndex],
       date,
       isToday: date.toDateString() === today.toDateString(),
       isPast: date < new Date(today.toDateString()),
@@ -962,12 +965,13 @@ function ActivityCalendar({ calendar, history, settings }) {
   const t = useLang();
   const [tip, setTip] = useState(null);
   const byDay = new Map(calendar.map((row) => [row.day, row]));
+  const freeSessionName = t('history_free_session');
   const historyByDay = new Map();
   for (const row of history) {
     const date = parseServerDate(row.completed_at);
     if (!date) continue;
     const key = localIsoDate(date);
-    const name = row.routine_name || row.group_name || 'Tập tự do';
+    const name = row.routine_name || row.group_name || freeSessionName;
     const list = historyByDay.get(key) || [];
     list.push({ ...row, activityName: name, color: stableColorForName(name) });
     historyByDay.set(key, list);
@@ -989,7 +993,7 @@ function ActivityCalendar({ calendar, history, settings }) {
   const legend = [];
   const legendKeys = new Set();
   for (const row of bars) {
-    const name = row.routine_name || row.group_name || 'Tập tự do';
+    const name = row.routine_name || row.group_name || freeSessionName;
     if (legendKeys.has(name)) continue;
     legendKeys.add(name);
     legend.push({ name, color: stableColorForName(name) });
@@ -1005,16 +1009,16 @@ function ActivityCalendar({ calendar, history, settings }) {
         </div>
         <div>
           <div className="grid grid-cols-7 text-center text-sm font-bold">
-            {dayLabels.map((d) => <span key={d}>{d}</span>)}
+            {t('days').map((d) => <span key={d}>{d}</span>)}
           </div>
           <div className="mt-3 grid grid-cols-7 gap-y-3 text-center">
             {cells.map((cell) => (
               <div
                 key={cell.iso}
-                onMouseEnter={(event) => setTip({ x: event.clientX, y: event.clientY, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
+                onMouseEnter={(event) => setTip({ x: event.clientX, y: event.clientY, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} ${t('cal_activity')}${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
                 onMouseMove={(event) => setTip((old) => old ? { ...old, x: event.clientX, y: event.clientY } : old)}
                 onMouseLeave={() => setTip(null)}
-                onClick={() => setTip({ x: window.innerWidth / 2, y: 180, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} hoạt động${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
+                onClick={() => setTip({ x: window.innerWidth / 2, y: 180, text: `${formatDate(cell.date, settings)} · ${cell.data?.total || 0} ${t('cal_activity')}${cell.activities.length ? ` · ${cell.activities.map((item) => item.activityName).join(', ')}` : ''}` })}
                 className="grid cursor-pointer place-items-center"
               >
                 {cell.data ? <Dumbbell size={15} style={cell.activities.length === 1 ? { color: cell.activities[0].color.dot } : undefined} className={cell.activities.length === 1 ? '' : 'text-teal-950'} /> : <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
@@ -1035,13 +1039,13 @@ function ActivityCalendar({ calendar, history, settings }) {
             </div>
           )}
           {bars.map((row) => {
-            const color = stableColorForName(row.routine_name || row.group_name || 'Tập tự do');
+            const color = stableColorForName(row.routine_name || row.group_name || freeSessionName);
             return (
               <div key={row.id} className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full ring-1" style={{ backgroundColor: color.dot, borderColor: color.ring }} />
                 <div
                   className="h-5 ring-1"
-                  title={row.routine_name || row.group_name || 'Tập tự do'}
+                  title={row.routine_name || row.group_name || freeSessionName}
                   style={{
                     width: `${Math.min(220, 60 + row.duration_minutes * 2)}px`,
                     backgroundColor: color.fill,
@@ -1109,7 +1113,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
       <h2 className="section-title">{t('history_title')}</h2>
       <div className="space-y-2">
         {loadedHistory.map((row) => {
-          const activityName = row.routine_name || row.group_name || 'Buổi tập tự do';
+          const activityName = row.routine_name || row.group_name || t('history_free_session');
           const color = stableColorForName(activityName);
           return (
             <div key={row.id} className="panel">
@@ -1117,7 +1121,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
                 <button className="min-w-0 flex-1 text-left" onClick={() => toggleDetail(row.id)}>
                   <p className="font-bold">{activityName}</p>
                   <p className="text-sm text-teal-900">
-                    {formatDateTime(row.completed_at, settings)} · {row.exercises || 0} bài · {row.sets} set · {row.duration_minutes} phút
+                    {formatDateTime(row.completed_at, settings)} · {row.exercises || 0} {t('bài')} · {row.sets} {t('set')} · {row.duration_minutes} {t('min')}
                   </p>
                 </button>
                 <div className="flex items-center gap-2">
@@ -1167,7 +1171,7 @@ function SessionDetail({ detail, settings }) {
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-stone-200 bg-white p-3">
       <div className="rounded-md bg-slate-50 p-2 text-sm text-slate-700">
-        <strong>{t('detail_time')}:</strong> {formatTime(detail.session.started_at, settings)} - {formatTime(detail.session.completed_at, settings)} · {detail.session.duration_minutes} phút
+        <strong>{t('detail_time')}:</strong> {formatTime(detail.session.started_at, settings)} - {formatTime(detail.session.completed_at, settings)} · {detail.session.duration_minutes} {t('min')}
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_exercises')}</p><strong>{detail.summary.exerciseCount}</strong></div>
@@ -1187,7 +1191,7 @@ function SessionDetail({ detail, settings }) {
                   <p className="font-bold">{exercise.name}</p>
                   <p className="text-xs text-slate-600">{exercise.sets.length} set · max {exercise.maxWeight} kg · volume {Math.round(exercise.volume)}</p>
                   <p className={`text-xs font-bold ${volumeDiff > 0 || weightDiff > 0 ? 'text-green-700' : 'text-slate-500'}`}>
-                    So với lần trước: volume {volumeDiff >= 0 ? '+' : ''}{Math.round(volumeDiff)}, max {weightDiff >= 0 ? '+' : ''}{weightDiff} kg
+                    {t('detail_vs_prev', `${volumeDiff >= 0 ? '+' : ''}${Math.round(volumeDiff)}`, `${weightDiff >= 0 ? '+' : ''}${weightDiff}`)}
                   </p>
                 </div>
               </div>
@@ -1215,6 +1219,7 @@ function SessionDetail({ detail, settings }) {
 }
 
 function ExerciseLibrary({ userId, settings }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ targets: [] });
@@ -1272,7 +1277,7 @@ function ExerciseLibrary({ userId, settings }) {
     refreshLibrary();
   };
   const hideCustomExercise = async (exercise) => {
-    if (!(await dialog.confirm('Ẩn bài tập tự tạo này? Lịch sử log cũ vẫn được giữ lại.'))) return;
+    if (!(await dialog.confirm(t('lib_hide_confirm')))) return;
     await api(`/api/exercises/${exercise.id}/custom`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     setSelectedExercise(null);
     refreshLibrary();
@@ -1281,7 +1286,7 @@ function ExerciseLibrary({ userId, settings }) {
   if (selectedExercise) {
     return (
       <section className="space-y-4">
-        <button className="ghost-btn" onClick={() => setSelectedExercise(null)}>Trở về danh mục thư viện</button>
+        <button className="ghost-btn" onClick={() => setSelectedExercise(null)}>{t('lib_back')}</button>
         <article className="panel">
           {selectedExercise.gifUrl || selectedExercise.imageUrl ? (
             <img src={selectedExercise.gifUrl || selectedExercise.imageUrl} alt={selectedExercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl rounded-lg bg-white object-contain md:h-[360px]" />
@@ -1290,24 +1295,24 @@ function ExerciseLibrary({ userId, settings }) {
           )}
           <h2 className="mt-4 text-2xl font-black">{exerciseDisplayName(selectedExercise, settings)}</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {selectedExercise.isCustom && <span className="rounded bg-orange-100 px-2 py-1 text-xs font-black text-orange-900">Tự tạo</span>}
+            {selectedExercise.isCustom && <span className="rounded bg-orange-100 px-2 py-1 text-xs font-black text-orange-900">{t('lib_custom_badge')}</span>}
             {!selectedExercise.imageUrl && !selectedExercise.gifUrl && <span className="text-2xl">{selectedExercise.customIcon || '🏋️'}</span>}
           </div>
           <p className="mt-2 text-sm font-semibold text-teal-950">
-            Nhóm chính: {selectedExercise.target || 'Không rõ'} · Vùng: {selectedExercise.bodyPart || 'Không rõ'} · Dụng cụ: {selectedExercise.equipment || 'Không rõ'}
+            {t('lib_detail_main')} {selectedExercise.target || t('lib_unknown')} · {t('lib_detail_area')} {selectedExercise.bodyPart || t('lib_unknown')} · {t('lib_detail_equipment')} {selectedExercise.equipment || t('lib_unknown')}
           </p>
           {selectedExercise.secondaryMuscles?.length > 0 && (
-            <p className="mt-1 text-sm text-slate-600">Nhóm phụ: {selectedExercise.secondaryMuscles.join(', ')}</p>
+            <p className="mt-1 text-sm text-slate-600">{t('lib_detail_secondary')} {selectedExercise.secondaryMuscles.join(', ')}</p>
           )}
           <ExerciseInstructions exercise={selectedExercise} settings={settings} />
           <select onChange={(e) => e.target.value && addToGroup(e.target.value, selectedExercise.id)} className="input mt-4 py-2 text-sm">
-            <option value="">Thêm vào group</option>
+            <option value="">{t('lib_add_to_group_option')}</option>
             {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
           {selectedExercise.isCustom && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              <button className="ghost-btn" onClick={() => { setEditingExercise(selectedExercise); setShowCustomForm(true); setSelectedExercise(null); }}>Sửa bài tự tạo</button>
-              <button className="danger-btn" onClick={() => hideCustomExercise(selectedExercise)}>Ẩn bài tự tạo</button>
+              <button className="ghost-btn" onClick={() => { setEditingExercise(selectedExercise); setShowCustomForm(true); setSelectedExercise(null); }}>{t('lib_edit_custom')}</button>
+              <button className="danger-btn" onClick={() => hideCustomExercise(selectedExercise)}>{t('lib_hide_custom')}</button>
             </div>
           )}
         </article>
@@ -1330,11 +1335,11 @@ function ExerciseLibrary({ userId, settings }) {
     <section className="space-y-4">
       <div className="sticky top-0 z-10 bg-[#f4f6f1]/95 py-2 backdrop-blur">
         <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm bài tập..." className="input" />
-          <button className="primary md:w-auto" onClick={() => { setEditingExercise(null); setShowCustomForm(true); }}>+ Bài tập riêng</button>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('lib_search')} className="input" />
+          <button className="primary md:w-auto" onClick={() => { setEditingExercise(null); setShowCustomForm(true); }}>{t('lib_add_custom')}</button>
         </div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          <Chip active={!target} onClick={() => setTarget('')}>Tất cả</Chip>
+          <Chip active={!target} onClick={() => setTarget('')}>{t('lib_all')}</Chip>
           {meta.targets.slice(0, 18).map((value) => <Chip key={value} active={target === value} onClick={() => setTarget(value)}>{value}</Chip>)}
         </div>
       </div>
@@ -1373,11 +1378,11 @@ function ExerciseLibrary({ userId, settings }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-bold leading-tight">{exerciseDisplayName(exercise, settings)}</h3>
-                  {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-600">Tự tạo</span>}
+                  {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-600">{t('lib_custom_badge')}</span>}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">{exercise.target} · {exercise.equipment}</p>
                 <select onClick={(event) => event.stopPropagation()} onChange={(e) => e.target.value && addToGroup(e.target.value, exercise.id)} className="input mt-3 py-2 text-sm">
-                  <option value="">Thêm vào group</option>
+                  <option value="">{t('lib_add_to_group_option')}</option>
                   {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
               </div>
@@ -1388,7 +1393,7 @@ function ExerciseLibrary({ userId, settings }) {
       </div>
       {visibleCount < items.length && (
         <button className="ghost-btn w-full" onClick={() => setVisibleCount((count) => count + 60)}>
-          Xem thêm {Math.min(60, items.length - visibleCount)} bài ({visibleCount}/{items.length})
+          {t('lib_show_more', Math.min(60, items.length - visibleCount), visibleCount, items.length)}
         </button>
       )}
     </section>
@@ -1396,6 +1401,8 @@ function ExerciseLibrary({ userId, settings }) {
 }
 
 function CustomExerciseForm({ initial, onCancel, onSave }) {
+  const t = useLang();
+  const customTargetOptions = getCustomTargetOptions(t);
   const [name, setName] = useState(initial?.name || '');
   const [target, setTarget] = useState(initial?.target || customTargetOptions[0]);
   const [bodyPart, setBodyPart] = useState(initial?.bodyPart || initial?.target || customTargetOptions[0]);
@@ -1425,7 +1432,7 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
     event.preventDefault();
     setError('');
     if (!name.trim()) {
-      setError('Nhập tên bài tập trước.');
+      setError(t('custom_error_name'));
       return;
     }
     setSaving(true);
@@ -1453,30 +1460,30 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 
   return (
     <form className="space-y-4" onSubmit={submit}>
-      <button type="button" className="ghost-btn" onClick={onCancel}>Trở về thư viện</button>
+      <button type="button" className="ghost-btn" onClick={onCancel}>{t('custom_back')}</button>
       <div className="panel space-y-4">
         <div>
-          <h2 className="section-title">{initial ? 'Sửa bài tập riêng' : 'Bài tập riêng'}</h2>
-          <p className="text-sm text-slate-600">Tạo bài riêng khi thư viện chưa có bài bạn cần.</p>
+          <h2 className="section-title">{initial ? t('custom_title_edit') : t('custom_title_new')}</h2>
+          <p className="text-sm text-slate-600">{t('custom_subtitle')}</p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="label">Tên bài tập</label>
-            <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ví dụ: incline cable fly riêng" />
+            <label className="label">{t('custom_name')}</label>
+            <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('custom_name_placeholder')} />
           </div>
           <div>
-            <label className="label">Nhóm cơ chính</label>
+            <label className="label">{t('custom_target')}</label>
             <select className="input" value={target} onChange={(event) => { setTarget(event.target.value); setBodyPart(event.target.value); }}>
               {customTargetOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">Nhóm cơ phụ</label>
-            <input className="input" value={secondaryMuscles} onChange={(event) => setSecondaryMuscles(event.target.value)} placeholder="Vai trước, tay sau..." />
+            <label className="label">{t('custom_secondary')}</label>
+            <input className="input" value={secondaryMuscles} onChange={(event) => setSecondaryMuscles(event.target.value)} placeholder={t('custom_secondary_placeholder')} />
           </div>
           <div>
-            <label className="label">Dụng cụ</label>
+            <label className="label">{t('custom_equipment')}</label>
             <select className="input" value={equipment} onChange={(event) => setEquipment(event.target.value)}>
               {customEquipmentOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
@@ -1484,13 +1491,13 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
         </div>
 
         <div>
-          <label className="label">Hiển thị bằng</label>
+          <label className="label">{t('custom_display')}</label>
           <div className="mt-2 grid grid-cols-4 overflow-hidden rounded-md border border-slate-200 bg-white">
             {[
-              ['auto', 'Tự động'],
-              ['image', 'Ảnh'],
-              ['gif', 'GIF'],
-              ['icon', 'Icon']
+              ['auto', t('custom_display_auto')],
+              ['image', t('custom_display_image')],
+              ['gif', t('custom_display_gif')],
+              ['icon', t('custom_display_icon')]
             ].map(([value, label]) => (
               <button
                 type="button"
@@ -1505,7 +1512,7 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
         </div>
 
         <div>
-          <label className="label">Icon mặc định</label>
+          <label className="label">{t('custom_icon_label')}</label>
           <div className="mt-2 flex flex-wrap gap-2">
             {customExerciseIcons.map((icon) => (
               <button
@@ -1522,25 +1529,25 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <span className="label">Ảnh bài tập</span>
+            <span className="label">{t('custom_image_label')}</span>
             <input className="mt-2 block w-full text-sm" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => pickImage(event.target.files?.[0])} />
             {imagePreview && <img src={imagePreview} className="mt-3 h-32 w-full rounded-md bg-white object-contain" />}
           </label>
           <label className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <span className="label">GIF bài tập</span>
+            <span className="label">{t('custom_gif_label')}</span>
             <input className="mt-2 block w-full text-sm" type="file" accept="image/gif,image/webp" onChange={(event) => pickGif(event.target.files?.[0])} />
             {gifPreview && <img src={gifPreview} className="mt-3 h-32 w-full rounded-md bg-white object-contain" />}
           </label>
         </div>
 
         <div>
-          <label className="label">Hướng dẫn tập</label>
-          <textarea className="input min-h-36" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Mỗi dòng là một bước hướng dẫn." />
+          <label className="label">{t('custom_instructions')}</label>
+          <textarea className="input min-h-36" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder={t('custom_instructions_placeholder')} />
         </div>
         {error && <p className="text-sm font-bold text-red-600">{error}</p>}
         <div className="grid gap-2 md:grid-cols-2">
-          <button type="submit" className="primary" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu bài tập'}</button>
-          <button type="button" className="ghost-btn" onClick={onCancel}>Huỷ</button>
+          <button type="submit" className="primary" disabled={saving}>{saving ? t('custom_saving') : t('custom_save')}</button>
+          <button type="button" className="ghost-btn" onClick={onCancel}>{t('custom_cancel')}</button>
         </div>
       </div>
     </form>
@@ -1564,9 +1571,10 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
     .filter(Boolean);
   if (!steps.length) return null;
 
+  const t = useLang();
   return (
     <details className={`mt-3 rounded-md border border-stone-200 bg-stone-50 ${compact ? 'p-2' : 'p-3'}`}>
-      <summary className="cursor-pointer text-sm font-bold text-slate-900">Hướng dẫn tập</summary>
+      <summary className="cursor-pointer text-sm font-bold text-slate-900">{t('lib_instructions_summary')}</summary>
       <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-slate-700">
         {steps.map((step, index) => <li key={`${exercise.id}-step-${index}`}>{step}</li>)}
       </ol>
@@ -1575,6 +1583,7 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
 }
 
 function SortableExerciseRow({ exercise, onRemove }) {
+  const t = useLang();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: exercise.id });
   return (
     <div
@@ -1582,15 +1591,16 @@ function SortableExerciseRow({ exercise, onRemove }) {
       className={`exercise-drag-row ${isDragging ? 'dragging' : ''}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      <button className="drag-handle" type="button" title="Kéo cả hàng để đổi vị trí" {...attributes} {...listeners}><GripVertical size={18} /></button>
+      <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
       <img src={exercise.imageUrl} className="h-14 w-14 rounded bg-white object-contain" />
       <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
-      <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> Xóa</button>
+      <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> {t('delete')}</button>
     </div>
   );
 }
 
 function SortableRoutineGroupRow({ group, onRemove }) {
+  const t = useLang();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: group.id });
   return (
     <div
@@ -1598,9 +1608,9 @@ function SortableRoutineGroupRow({ group, onRemove }) {
       className={`exercise-drag-row ${isDragging ? 'dragging' : ''}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      <button className="drag-handle" type="button" title="Kéo cả hàng để đổi vị trí" {...attributes} {...listeners}><GripVertical size={18} /></button>
+      <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
       <span className="min-w-0 flex-1 text-sm font-semibold">{group.name}</span>
-      <button className="small-danger" onClick={() => onRemove(group.id)}><Trash2 size={16} /> Xóa khỏi buổi</button>
+      <button className="small-danger" onClick={() => onRemove(group.id)}><Trash2 size={16} /> {t('builder_remove_from_routine')}</button>
     </div>
   );
 }
@@ -1652,7 +1662,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     load();
   };
   const deleteGroup = async (groupId) => {
-    if (!(await dialog.confirm('Xóa Group Bài tập này? Các Group Buổi tập liên quan sẽ được cập nhật.'))) return;
+    if (!(await dialog.confirm(t('builder_confirm_delete_group_msg')))) return;
     await api(`/api/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1673,7 +1683,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     onStart({ sessionId: session.id });
   };
   const deleteRoutine = async (routineId) => {
-    if (!(await dialog.confirm('Xóa Group Buổi tập này? Lịch gán với nó cũng sẽ bị xóa.'))) return;
+    if (!(await dialog.confirm(t('builder_confirm_delete_routine_msg')))) return;
     await api(`/api/routines/${routineId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     load();
     onChanged();
@@ -1742,7 +1752,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 checked={boot.settings.schedule_mode === mode}
                 onChange={() => setMode(mode)}
               />
-              <span>{modeLabels[mode]}</span>
+              <span>{getModeLabels(t)[mode]}</span>
             </label>
           ))}
         </div>
@@ -1751,7 +1761,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
       <div className="builder-section">
         <h2 className="section-title">{t('builder_groups_title')}</h2>
         <div className="flex gap-2">
-          <input className="input" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Ví dụ: Ngực, Xô, Chân" />
+          <input className="input" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder={t('builder_group_placeholder')} />
           <button className="icon-btn" onClick={createGroup}><Plus /></button>
         </div>
       </div>
@@ -1761,7 +1771,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
         {groups.map((group) => (
           <div key={group.id} className="panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="font-bold">{group.name} · {group.exercises.length} bài</div>
+              <div className="font-bold">{group.name} · {t('builder_exercises_count', group.exercises.length)}</div>
               <div className="flex flex-wrap gap-2">
                 <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> {t('start_exercise')}</button>
                 <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> {t('delete')}</button>
@@ -1786,12 +1796,12 @@ function Builder({ userId, boot, onStart, onChanged }) {
 
       <div className="builder-section">
         <h2 className="section-title">{t('builder_routines_title')}</h2>
-        <input className="input" value={routineName} onChange={(e) => setRoutineName(e.target.value)} placeholder="Ví dụ: Push day, Pull day" />
+        <input className="input" value={routineName} onChange={(e) => setRoutineName(e.target.value)} placeholder={t('builder_routine_placeholder')} />
         <div className="mt-3 grid gap-2">
           {groups.map((group) => (
             <label key={group.id} className="flex items-center gap-3 rounded-md bg-slate-50 p-3">
               <input type="checkbox" checked={selectedGroups.includes(group.id)} onChange={(e) => setSelectedGroups((prev) => e.target.checked ? [...prev, group.id] : prev.filter((id) => id !== group.id))} />
-              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({group.exercises.length} bài)</small></span>
+              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', group.exercises.length)})</small></span>
               <div className="flex -space-x-2">
                 {group.exercises.slice(0, 4).map((exercise) => (
                   <img key={exercise.id} src={exercise.imageUrl} title={exercise.name} className="h-8 w-8 rounded-full border-2 border-white bg-white object-contain" />
@@ -1815,7 +1825,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   <img src={routine.exercises[0]?.imageUrl} className="h-12 w-12 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold">{routine.name}</h3>
-                    <p className="text-sm text-slate-500">{routine.groups.length} group · {routine.exercises.length} bài tập</p>
+                    <p className="text-sm text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                   </div>
                   <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> {t('start_exercise')}</button>
                   <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> {t('delete')}</button>
@@ -1842,8 +1852,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <ScheduleAssignPanel
-            title="Lịch cố định theo thứ"
-            description="Mỗi thứ trong tuần trỏ tới một Group Buổi tập."
+            title={t('schedule_fixed_panel_title')}
+            description={t('schedule_fixed_panel_desc')}
             mode="FIXED"
             routines={routineData.routines}
             rules={routineData.rules.filter((rule) => rule.mode === 'FIXED')}
@@ -1852,8 +1862,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
             onStart={startRoutine}
           />
           <ScheduleAssignPanel
-            title="Lịch cuốn chiếu"
-            description="Sắp theo Buổi 1, Buổi 2... Chỉ nhảy khi kết thúc buổi tập."
+            title={t('schedule_rolling_panel_title')}
+            description={t('schedule_rolling_panel_desc')}
             mode="ROLLING"
             routines={routineData.routines}
             rules={routineData.rules.filter((rule) => rule.mode === 'ROLLING')}
@@ -1868,6 +1878,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
 }
 
 function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssign, onDelete, onStart }) {
+  const t = useLang();
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex items-center gap-2">
@@ -1881,15 +1892,15 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
               <img src={routine.exercises[0]?.imageUrl} className="h-11 w-11 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold">{routine.name}</h3>
-                <p className="text-xs text-slate-500">{routine.exercises.length} bài · {routine.groups.map((g) => g.name).join(' + ')}</p>
+                <p className="text-xs text-slate-500">{t('builder_exercises_count', routine.exercises.length)} · {routine.groups.map((g) => g.name).join(' + ')}</p>
               </div>
-              <button className="small-action" onClick={() => onStart(routine)}><Play size={16} /> Vào tập</button>
+              <button className="small-action" onClick={() => onStart(routine)}><Play size={16} /> {t('schedule_go')}</button>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
-              <option value="">{mode === 'FIXED' ? 'Gán vào thứ' : 'Gán vào thứ tự chu kỳ'}</option>
+              <option value="">{mode === 'FIXED' ? t('schedule_assign_fixed') : t('schedule_assign_rolling')}</option>
               {mode === 'FIXED'
-                ? dayLabels.map((d, i) => <option key={d} value={i}>{d}</option>)
-                : [1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>Buổi {n}</option>)}
+                ? t('days').map((d, i) => <option key={d} value={i}>{d}</option>)
+                : [1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{t('schedule_session_n', n)}</option>)}
             </select>
           </article>
         ))}
@@ -1900,14 +1911,15 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
 }
 
 function ScheduleRules({ rules, onDelete }) {
-  if (!rules.length) return <p className="text-sm text-slate-600">Chưa gán lịch routine.</p>;
+  const t = useLang();
+  if (!rules.length) return <p className="text-sm text-slate-600">{t('schedule_no_rules')}</p>;
   return (
     <div className="panel">
-      <h3 className="mb-2 font-bold">Lịch đang dùng</h3>
+      <h3 className="mb-2 font-bold">{t('schedule_active_rules')}</h3>
       {rules.map((rule) => (
         <div key={rule.id} className="flex items-center justify-between gap-3 border-t border-slate-200 py-2 first:border-t-0">
           <p className="text-sm text-slate-700">
-            {rule.mode === 'FIXED' ? dayLabels[rule.day_of_week] : `Buổi ${rule.order_index}`} · {rule.routine_name}
+            {rule.mode === 'FIXED' ? t('days')[rule.day_of_week] : t('schedule_session_n', rule.order_index)} · {rule.routine_name}
           </p>
           <button className="tiny-btn" onClick={() => onDelete(rule.id)}><Trash2 size={16} /></button>
         </div>
@@ -1917,6 +1929,7 @@ function ScheduleRules({ rules, onDelete }) {
 }
 
 function WorkoutLogger({ userId, workout, settings, onClose }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [data, setData] = useState(null);
   const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
@@ -2024,7 +2037,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     };
   }, [settings?.keep_screen_awake, workout.sessionId]);
 
-  if (!data) return <div className="panel">Đang tải buổi tập...</div>;
+  if (!data) return <div className="panel">{t('loading')}</div>;
   if (!exercise) {
     const closeEmptySession = async () => {
       await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -2034,10 +2047,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     return (
       <div className="panel space-y-4">
         <div>
-          <h2 className="section-title">Routine này chưa có bài tập.</h2>
-          <p className="text-sm text-slate-600">Thêm bài tập vào group trước khi vào tập.</p>
+          <h2 className="section-title">{t('workout_empty_routine')}</h2>
+          <p className="text-sm text-slate-600">{t('workout_empty_desc')}</p>
         </div>
-        <button className="ghost-btn w-full" onClick={closeEmptySession}>Thoát</button>
+        <button className="ghost-btn w-full" onClick={closeEmptySession}>{t('workout_exit_btn')}</button>
       </div>
     );
   }
@@ -2105,7 +2118,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (item.id === exercise.id) return sets.some((set) => set.done);
       return Number(item.completedSets || item.sets || 0) > 0;
     });
-    if (!hasCompletedSet && !(await dialog.confirm('Không có set tập nào được ghi nhận? Bạn có muốn xoá buổi tập không?'))) return;
+    if (!hasCompletedSet && !(await dialog.confirm(t('workout_confirm_end')))) return;
     const result = await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     onClose();
@@ -2141,39 +2154,38 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   return (
     <section className="space-y-4 text-black">
       <div className="flex items-center justify-between">
-        <button className="ghost-btn" onClick={exitWorkout}>{view === 'exercise' ? 'Danh sách' : 'Thoát'}</button>
+        <button className="ghost-btn" onClick={exitWorkout}>{view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}</button>
         <span className="text-sm text-slate-600">{index + 1}/{data.exercises.length}</span>
       </div>
 
       {view === 'list' && (
         <div className="panel-green">
-          <h1 className="text-2xl font-black">Tiếp tục tập</h1>
+          <h1 className="text-2xl font-black">{t('workout_continue_heading')}</h1>
           <p className="mt-2 text-sm text-emerald-100">
-            Tiếp tục buổi tập đang dang dở hôm nay
-            {data.session?.started_at ? ` · bắt đầu ${formatTime(data.session.started_at, settings)}` : ''}.
+            {t('workout_continue_desc', data.session?.started_at ? formatTime(data.session.started_at, settings) : null)}
           </p>
         </div>
       )}
 
       {view === 'list' ? (
         <div className="workout-card space-y-3">
-          <h1 className="text-2xl font-black">{data.routine?.name || 'Buổi tập'}</h1>
-          <p className="text-sm text-slate-500">Chọn bài để vào màn hình đang tập.</p>
+          <h1 className="text-2xl font-black">{data.routine?.name || t('workout_session_title')}</h1>
+          <p className="text-sm text-slate-500">{t('workout_list_hint')}</p>
           {data.exercises.map((item, itemIndex) => (
             <button key={`${item.id}-${itemIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(itemIndex)}>
               {exerciseMediaUrl(item) ? <img src={exerciseMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
               <div className="min-w-0 flex-1">
                 <p className="font-bold">{item.name}</p>
                 <p className={`text-sm font-semibold ${item.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
-                  {item.completedSets ? `Đã tập ${item.completedSets} set` : 'Chưa tập'} · {item.groupName || item.target} · {item.equipment}
+                  {item.completedSets ? t('workout_set_done', item.completedSets) : t('workout_not_done')} · {item.groupName || item.target} · {item.equipment}
                 </p>
               </div>
               <span className={`rounded px-3 py-1 text-xs font-black ${item.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
-                {item.completedSets ? 'Tập tiếp' : 'Tập bài này'}
+                {item.completedSets ? t('workout_continue_btn') : t('workout_start_btn')}
               </span>
             </button>
           ))}
-          <button className="primary" onClick={complete}>Kết thúc buổi tập</button>
+          <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       ) : (
         <div className="workout-card space-y-4">
@@ -2187,11 +2199,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
-              <p className="mt-1 text-sm text-slate-500">Lần nâng trước: {previousSets[0] ? `${previousSets[0].weight_kg} kg x ${previousSets[0].reps}` : 'chưa có dữ liệu'}</p>
+              <p className="mt-1 text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_kg} kg x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <div className="weight-mode-controls">
-              <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>Tự ghi ({manualUnitLabel})</button>
+              <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
                 <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
                 <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
               </div>
@@ -2235,22 +2247,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 );
               })}
             </div>
-            <button className="add-set-btn" onClick={addSet}>+ Thêm set</button>
+            <button className="add-set-btn" onClick={addSet}>{t('workout_add_set')}</button>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <label className="label">Ghi chú bài tập</label>
-            <textarea className="input min-h-24" value={note} onChange={(e) => saveNote(e.target.value)} placeholder="Ghi cảm giác, form, mức tạ cần thử lần sau..." />
+            <label className="label">{t('workout_note_label')}</label>
+            <textarea className="input min-h-24" value={note} onChange={(e) => saveNote(e.target.value)} placeholder={t('workout_note_placeholder')} />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button className="ghost-btn" disabled={index === 0} onClick={() => openExercise(index - 1)}>Bài trước</button>
-            <button className="ghost-btn" disabled={index >= data.exercises.length - 1} onClick={() => openExercise(index + 1)}>Bài tiếp</button>
+            <button className="ghost-btn" disabled={index === 0} onClick={() => openExercise(index - 1)}>{t('workout_prev_btn')}</button>
+            <button className="ghost-btn" disabled={index >= data.exercises.length - 1} onClick={() => openExercise(index + 1)}>{t('workout_next_btn')}</button>
           </div>
-          <button className="primary" onClick={complete}>Kết thúc buổi tập</button>
+          <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       )}
-      {timer > 0 && <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>{settings?.countdown_3s && timer <= 3 ? 'Chuẩn bị ' : 'Nghỉ '}{timer}s <button onClick={() => setTimer((v) => v + 30)}>+30s</button><button onClick={() => setTimer(0)}>Tắt</button></div>}
+      {timer > 0 && <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>{settings?.countdown_3s && timer <= 3 ? `${t('workout_timer_prepare')} ` : `${t('workout_timer_rest')} `}{timer}s <button onClick={() => setTimer((v) => v + 30)}>+30s</button><button onClick={() => setTimer(0)}>{t('workout_timer_off')}</button></div>}
     </section>
   );
 }
@@ -2422,6 +2434,8 @@ function LegacyWheelPicker({ value, options, suffix = '', onChange }) {
 }
 
 function Analytics({ userId, settings }) {
+  const t = useLang();
+  const rangeOptions = getRangeOptions(t);
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
@@ -2452,7 +2466,7 @@ function Analytics({ userId, settings }) {
   const previousWeight = weightRows[weightRows.length - 2];
   const weightDelta = latestWeight && previousWeight ? Number(latestWeight.weight) - Number(previousWeight.weight) : 0;
   const latestBmi = latestWeight?.bmi;
-  const bmiInfo = bmiFeedback(latestBmi);
+  const bmiInfo = bmiFeedback(latestBmi, t);
   const selectedExerciseRawRows = filterByRange(analytics.exerciseRows, 'day', rangeKey)
     .filter((row) => row.exercise_id === selectedExerciseId);
   const selectedExerciseUnits = new Set(
@@ -2475,7 +2489,7 @@ function Analytics({ userId, settings }) {
 
   return (
     <section className="space-y-4">
-      <h2 className="section-title">Thống kê</h2>
+      <h2 className="section-title">{t('analytics_title')}</h2>
       <div className="range-bar">
         {rangeOptions.map(([key, label]) => (
           <button key={key} className={rangeKey === key ? 'active' : ''} onClick={() => setRangeKey(key)}>{label}</button>
@@ -2483,13 +2497,13 @@ function Analytics({ userId, settings }) {
       </div>
       <div className="weight-hero-card">
         <div>
-          <p className="text-sm font-bold text-white/75">Cân nặng hiện tại</p>
+          <p className="text-sm font-bold text-white/75">{t('analytics_weight_current')}</p>
           <div className="mt-1 flex items-end gap-2">
             <strong className="text-4xl">{latestWeight ? latestWeight.weight : '--'}</strong>
             <span className="pb-1 text-sm font-bold text-white/75">{latestWeight?.unit || 'kg'}</span>
           </div>
           <p className="mt-2 text-sm font-bold text-white/80">
-            {previousWeight ? `${weightDelta >= 0 ? '+' : ''}${weightDelta.toFixed(1)} ${latestWeight.unit} so với lần trước` : 'Chưa có lần trước'}
+            {previousWeight ? t('analytics_weight_delta', Number(weightDelta.toFixed(1)), latestWeight.unit) : t('analytics_no_prev')}
           </p>
         </div>
         <div className="bmi-badge">
@@ -2503,7 +2517,7 @@ function Analytics({ userId, settings }) {
         <span>{bmiInfo.text}</span>
       </div>
       <div className="weight-chart-panel h-96">
-        <h3 className="mb-3 font-bold">Biểu đồ cân nặng</h3>
+        <h3 className="mb-3 font-bold">{t('analytics_weight_chart')}</h3>
         {rangedWeightRows.length ? (
           <ResponsiveContainer width="100%" height="82%">
             <AreaChart data={rangedWeightRows} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
@@ -2525,13 +2539,13 @@ function Analytics({ userId, settings }) {
               />
               <YAxis stroke="#6b668a" tickMargin={10} />
               <Tooltip labelFormatter={(value) => formatDateTime(value, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} />
-              <Area type="monotone" dataKey="weight" name="Cân nặng" stroke="#2563eb" strokeWidth={3} fill="url(#weightFill)" dot />
+              <Area type="monotone" dataKey="weight" name={t('analytics_weight_label')} stroke="#2563eb" strokeWidth={3} fill="url(#weightFill)" dot />
             </AreaChart>
           </ResponsiveContainer>
-        ) : <p className="text-slate-600">Nhập cân nặng ở Home để vẽ biểu đồ.</p>}
+        ) : <p className="text-slate-600">{t('analytics_no_weight_chart')}</p>}
       </div>
       <div className="weight-chart-panel h-80">
-        <h3 className="mb-3 font-bold">Biểu đồ BMI</h3>
+        <h3 className="mb-3 font-bold">{t('analytics_bmi_chart')}</h3>
         {rangedWeightRows.some((row) => row.bmi) ? (
           <ResponsiveContainer width="100%" height="85%">
             <LineChart data={rangedWeightRows.filter((row) => row.bmi)} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
@@ -2550,12 +2564,12 @@ function Analytics({ userId, settings }) {
               <Line type="monotone" dataKey="bmi" name="BMI" stroke="#f97316" strokeWidth={3} dot />
             </LineChart>
           </ResponsiveContainer>
-        ) : <p className="text-slate-600">Nhập chiều cao trong Cài đặt để app tính BMI.</p>}
+        ) : <p className="text-slate-600">{t('analytics_no_bmi_chart')}</p>}
       </div>
       <div className="weight-history-panel">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-bold">Lịch sử</h3>
-          <span className="text-xs font-bold text-[#8b84ad]">{weightRows.length} lần ghi nhận</span>
+          <h3 className="font-bold">{t('analytics_history_section')}</h3>
+          <span className="text-xs font-bold text-[#8b84ad]">{t('analytics_weight_records', weightRows.length)}</span>
         </div>
         <div className="grid gap-3">
           {weightRows.slice(-10).reverse().map((row) => (
@@ -2571,15 +2585,15 @@ function Analytics({ userId, settings }) {
               </div>
             </div>
           ))}
-          {weightRows.length === 0 && <p className="text-sm text-[#8b84ad]">Chưa có lịch sử cân nặng.</p>}
+          {weightRows.length === 0 && <p className="text-sm text-[#8b84ad]">{t('analytics_weight_no_history')}</p>}
         </div>
       </div>
       <div className="panel h-[360px]">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-bold">Tiến bộ tập luyện</h3>
+          <h3 className="font-bold">{t('analytics_progress_section')}</h3>
           <div className="flex gap-2">
-            <Chip active={chartMode === 'exercise'} onClick={() => setChartMode('exercise')}>Theo bài</Chip>
-            <Chip active={chartMode === 'session'} onClick={() => setChartMode('session')}>Theo buổi</Chip>
+            <Chip active={chartMode === 'exercise'} onClick={() => setChartMode('exercise')}>{t('analytics_by_exercise')}</Chip>
+            <Chip active={chartMode === 'session'} onClick={() => setChartMode('session')}>{t('analytics_by_session')}</Chip>
           </div>
         </div>
         {chartMode === 'exercise' ? (
@@ -2600,7 +2614,7 @@ function Analytics({ userId, settings }) {
                   <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-slate-600">{selectedExercise ? 'Chưa đủ dữ liệu cho bài này.' : 'Chưa có bài tập nào có log.'}</p>}
+            ) : <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>}
           </div>
         ) : (
           <div className="h-[82%]">
@@ -2623,7 +2637,7 @@ function Analytics({ userId, settings }) {
                   <Line type="monotone" dataKey="sets" name="Set" stroke="#0f766e" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-slate-600">Chưa có buổi tập đủ dữ liệu để vẽ.</p>}
+            ) : <p className="text-slate-600">{t('analytics_no_session_data')}</p>}
           </div>
         )}
       </div>
@@ -2632,13 +2646,14 @@ function Analytics({ userId, settings }) {
 }
 
 function ExerciseProgressPicker({ exercises, value, onChange }) {
+  const t = useLang();
   const [open, setOpen] = useState(false);
   const selected = exercises.find((exercise) => exercise.id === value);
   return (
     <div className="exercise-picker">
       <button type="button" className="exercise-picker-button" onClick={() => setOpen((current) => !current)}>
         {exerciseMediaUrl(selected) && <img src={exerciseMediaUrl(selected)} alt="" />}
-        <span>{selected?.name || 'Chọn bài tập'}</span>
+        <span>{selected?.name || t('analytics_select_exercise')}</span>
       </button>
       {open && (
         <div className="exercise-picker-menu">
@@ -2691,11 +2706,11 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
-    const name = await dialog.prompt('Tên thành viên');
+    const name = await dialog.prompt(t('settings_name'));
     if (!name) return;
-    const username = await dialog.prompt('Tên đăng nhập');
+    const username = await dialog.prompt(t('settings_username'));
     if (!username) return;
-    const password = await dialog.prompt('Mật khẩu', { type: 'password' });
+    const password = await dialog.prompt(t('settings_password'), { type: 'password' });
     if (!password) return;
     await api('/api/users', { method: 'POST', body: JSON.stringify({ userId, name, username, password }) });
     location.reload();
@@ -2746,12 +2761,12 @@ function SettingsPage({ userId, boot, onChanged }) {
   const importBackup = async (file) => {
     if (!file) return;
     const backup = JSON.parse(await file.text());
-    if (!(await dialog.confirm('Nhập backup sẽ thay thế dữ liệu hiện tại của người dùng này. Tiếp tục?'))) return;
+    if (!(await dialog.confirm(t('settings_import_confirm')))) return;
     await api('/api/backup/import', {
       method: 'POST',
       body: JSON.stringify({ userId, backup })
     });
-    await dialog.alert('Đã nhập data backup.');
+    await dialog.alert(t('settings_import_done'));
     location.reload();
   };
   return (
@@ -2760,10 +2775,10 @@ function SettingsPage({ userId, boot, onChanged }) {
         <div className="mb-4 flex items-center gap-3">
           <div className="avatar-preview">{avatarContent(avatarPreview)}</div>
           <label className="small-action cursor-pointer">
-            Chọn ảnh
+            {t('settings_avatar_pick')}
             <input className="hidden" type="file" accept="image/*" onChange={(event) => pickAvatar(event.target.files?.[0])} />
           </label>
-          <button className="small-danger" onClick={() => setAvatarPreview(name.trim().slice(0, 2).toUpperCase())}>Xoá ảnh</button>
+          <button className="small-danger" onClick={() => setAvatarPreview(name.trim().slice(0, 2).toUpperCase())}>{t('settings_avatar_remove')}</button>
         </div>
         <label className="label">{t('settings_name')}</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
@@ -2792,23 +2807,23 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_body')}>
-        <SettingsToggle label="Cân nặng tạ" value={defaultWeightUnit} onChange={setDefaultWeightUnit} options={[['kg', 'Kg'], ['lb', 'Lb']]} />
-        <SettingsToggle label="Chiều cao" value={heightUnit} onChange={setHeightUnit} options={[['cm', 'cm'], ['ft-in', 'ft-in']]} />
-        <SettingsToggle label="Giờ" value={clockFormat} onChange={setClockFormat} options={[['12h', '12h'], ['24h', '24h']]} />
+        <SettingsToggle label={t('settings_weight_unit_label')} value={defaultWeightUnit} onChange={setDefaultWeightUnit} options={[['kg', 'Kg'], ['lb', 'Lb']]} />
+        <SettingsToggle label={t('settings_height_unit_label')} value={heightUnit} onChange={setHeightUnit} options={[['cm', 'cm'], ['ft-in', 'ft-in']]} />
+        <SettingsToggle label={t('settings_clock_label')} value={clockFormat} onChange={setClockFormat} options={[['12h', '12h'], ['24h', '24h']]} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_workout')}>
-        <NumberSetting label="Nghỉ giữa hiệp mặc định (giây)" value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
-        <NumberSetting label="Số set mặc định" value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
-        <NumberSetting label="Số reps mặc định" value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
-        <SwitchSetting label="Tự động tăng tạ / progressive overload" checked={progressiveOverload} onChange={setProgressiveOverload} />
+        <NumberSetting label={t('settings_rest_label')} value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
+        <NumberSetting label={t('settings_default_sets_label')} value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
+        <NumberSetting label={t('settings_default_reps_label')} value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
+        <SwitchSetting label={t('settings_progressive_label')} checked={progressiveOverload} onChange={setProgressiveOverload} />
       </SettingsGroup>
 
-      <SettingsGroup title="4. Timer & âm thanh">
-        <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">Timer và âm thanh chạy tốt nhất khi app đang mở trên màn hình. iPhone/Android có thể khống chế âm thanh nếu app chạy nền hoặc máy đang ở chế độ im lặng.</p>
-        <SwitchSetting label="Âm báo hết giờ nghỉ" checked={soundRestDone} onChange={setSoundRestDone} />
-        <SwitchSetting label="Đếm ngược 3 giây" checked={countdown3s} onChange={setCountdown3s} />
-        <SwitchSetting label="Tự chuyển sang set tiếp theo" checked={autoNextSet} onChange={setAutoNextSet} />
+      <SettingsGroup title={t('settings_timer_section')}>
+        <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{t('settings_timer_note')}</p>
+        <SwitchSetting label={t('settings_sound_rest_label')} checked={soundRestDone} onChange={setSoundRestDone} />
+        <SwitchSetting label={t('settings_countdown_label')} checked={countdown3s} onChange={setCountdown3s} />
+        <SwitchSetting label={t('settings_auto_next_label')} checked={autoNextSet} onChange={setAutoNextSet} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_ui')}>
@@ -2820,17 +2835,17 @@ function SettingsPage({ userId, boot, onChanged }) {
         <select className="input" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
           {timezoneChoices.map((item) => <option key={item.name} value={item.name}>{item.label}</option>)}
         </select>
-        <p className="mt-2 text-sm text-slate-600">Xem trước: {formatDateTime(new Date(), { timezone, locale, clock_format: clockFormat }, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+        <p className="mt-2 text-sm text-slate-600">{t('settings_preview')} {formatDateTime(new Date(), { timezone, locale, clock_format: clockFormat }, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_admin')}>
         <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
         <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>{t('settings_export_json')}</button>
         <label className="ghost-btn cursor-pointer">
-          Nhập data backup
+          {t('settings_import_data')}
           <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0])} />
         </label>
-        <p className="mt-2 text-sm text-slate-600">Excel chỉ để xem lịch sử tập. Data backup dùng để sao lưu/khôi phục toàn bộ dữ liệu của người dùng hiện tại.</p>
+        <p className="mt-2 text-sm text-slate-600">{t('settings_data_note')}</p>
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
@@ -2885,6 +2900,7 @@ function SwitchSetting({ label, checked, onChange }) {
 }
 
 function AdminUsers({ users, adminId }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [drafts, setDrafts] = useState(() => Object.fromEntries(users.map((user) => [user.id, { name: user.name, password: '' }])));
 
@@ -2896,7 +2912,7 @@ function AdminUsers({ users, adminId }) {
     location.reload();
   };
   const remove = async (targetId) => {
-    if (!(await dialog.confirm('Xoá thành viên này? Dữ liệu tập của thành viên cũng sẽ bị xoá.'))) return;
+    if (!(await dialog.confirm(t('settings_confirm_delete_user')))) return;
     await api(`/api/users/${targetId}`, { method: 'DELETE', body: JSON.stringify({ userId: adminId }) });
     location.reload();
   };
@@ -2917,13 +2933,13 @@ function AdminUsers({ users, adminId }) {
           <input
             className="input mt-2"
             type="password"
-            placeholder="Mật khẩu mới"
+            placeholder={t('settings_new_password_placeholder')}
             value={drafts[user.id]?.password || ''}
             onChange={(event) => setDrafts((old) => ({ ...old, [user.id]: { ...(old[user.id] || {}), password: event.target.value } }))}
           />
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <button className="primary" onClick={() => save(user.id)}>Lưu thành viên</button>
-            <button className="danger-btn" disabled={user.id === adminId} onClick={() => remove(user.id)}>Xoá</button>
+            <button className="primary" onClick={() => save(user.id)}>{t('settings_save_user')}</button>
+            <button className="danger-btn" disabled={user.id === adminId} onClick={() => remove(user.id)}>{t('delete')}</button>
           </div>
         </div>
       ))}
