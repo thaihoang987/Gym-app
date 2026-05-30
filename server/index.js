@@ -1519,7 +1519,20 @@ function importBackupData(userId, backup) {
   }
   // Bỏ qua data.user (tên/avatar/pass) — giữ nguyên thông tin user hiện tại
   // Chỉ THÊM training data, không xóa dữ liệu cũ (INSERT OR IGNORE)
+  const settingColumns = new Set(all('PRAGMA table_info(user_settings)').map((col) => col.name));
+  // Chỉ import các cột workout, bỏ qua thông tin cá nhân
+  const skipSettingKeys = new Set(['user_id', 'locale', 'timezone', 'height_cm', 'height_unit', 'gender', 'birth_date', 'clock_format', 'theme_mode', 'primary_color']);
+
   const tx = db.transaction(() => {
+    if (data.settings) {
+      const columns = Object.keys(data.settings).filter((key) =>
+        !skipSettingKeys.has(key) && settingColumns.has(key) && /^[a-z0-9_]+$/i.test(key)
+      );
+      if (columns.length) {
+        db.prepare(`UPDATE user_settings SET ${columns.map((key) => `"${key}" = ?`).join(', ')} WHERE user_id = ?`)
+          .run(...columns.map((key) => data.settings[key]), userId);
+      }
+    }
     for (const exercise of data.customExercises || []) {
       db.prepare(`
         INSERT OR IGNORE INTO exercises (
