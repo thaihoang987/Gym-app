@@ -2558,7 +2558,7 @@ function Analytics({ userId, settings }) {
   useEffect(() => {
     api(`/api/analytics?userId=${userId}`).then((data) => {
       setAnalytics(data);
-      setSelectedExerciseId((current) => current || String(data.exercises?.[0]?.id || ''));
+      setSelectedExerciseId((current) => current || data.exercises?.[0]?.id || '');
       setSelectedRoutineName((current) => current || data.routines?.[0]?.name || '');
     });
     api(`/api/body-weight?userId=${userId}`).then(setWeights);
@@ -2568,9 +2568,9 @@ function Analytics({ userId, settings }) {
   useEffect(() => {
     if (!selectedExerciseId || !analytics.exerciseRows?.length) return;
     const hasDataInRange = filterByRange(analytics.exerciseRows, 'day', rangeKey)
-      .some((row) => String(row.exercise_id) === String(selectedExerciseId));
+      .some((row) => row.exercise_id === selectedExerciseId);
     if (!hasDataInRange) {
-      const hasAnyData = analytics.exerciseRows.some((row) => String(row.exercise_id) === String(selectedExerciseId));
+      const hasAnyData = analytics.exerciseRows.some((row) => row.exercise_id === selectedExerciseId);
       if (hasAnyData) setRangeKey('5y'); // mở rộng ra toàn bộ
     }
   }, [selectedExerciseId, analytics.exerciseRows]);
@@ -2591,7 +2591,7 @@ function Analytics({ userId, settings }) {
   const latestBmi = latestWeight?.bmi;
   const bmiInfo = bmiFeedback(latestBmi, t);
   const selectedExerciseRawRows = filterByRange(analytics.exerciseRows, 'day', rangeKey)
-    .filter((row) => String(row.exercise_id) === String(selectedExerciseId));
+    .filter((row) => row.exercise_id === selectedExerciseId);
   const selectedExerciseUnits = new Set(
     selectedExerciseRawRows.flatMap((row) => String(row.weight_units || 'kg').split(',').map((unit) => unit.trim()).filter(Boolean))
   );
@@ -2608,7 +2608,7 @@ function Analytics({ userId, settings }) {
   const sessionChartRows = filterByRange(analytics.sessionRows, 'completed_at', rangeKey)
     .filter((row) => !selectedRoutineName || row.name === selectedRoutineName)
     .map((row) => ({ ...row, ts: parseServerDate(row.completed_at)?.getTime(), label: formatDateTime(row.completed_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }));
-  const selectedExercise = analytics.exercises.find((exercise) => String(exercise.id) === String(selectedExerciseId));
+  const selectedExercise = analytics.exercises.find((exercise) => exercise.id === selectedExerciseId);
 
   return (
     <section className="space-y-4">
@@ -2757,7 +2757,7 @@ function Analytics({ userId, settings }) {
 function ExerciseProgressPicker({ exercises, value, onChange }) {
   const t = useLang();
   const [open, setOpen] = useState(false);
-  const selected = exercises.find((exercise) => String(exercise.id) === String(value));
+  const selected = exercises.find((exercise) => exercise.id === value);
   return (
     <div className="exercise-picker">
       <button type="button" className="exercise-picker-button" onClick={() => setOpen((current) => !current)}>
@@ -2770,9 +2770,9 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
             <button
               type="button"
               key={exercise.id}
-              className={`exercise-picker-option ${String(exercise.id) === String(value) ? 'active' : ''}`}
+              className={`exercise-picker-option ${exercise.id === value ? 'active' : ''}`}
               onClick={() => {
-                onChange(String(exercise.id));
+                onChange(exercise.id);
                 setOpen(false);
               }}
             >
@@ -3067,8 +3067,6 @@ function Chip({ active, children, onClick }) {
 }
 
 createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
-
-
 
 
 
