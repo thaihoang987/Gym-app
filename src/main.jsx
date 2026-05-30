@@ -911,10 +911,8 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
   const isRolling = suggestion?.mode === 'ROLLING';
 
-  // Rolling: 3 ngày lịch sử + đúng số buổi đăng ký (hôm nay trở đi)
-  // Fixed/Free: 7 ngày, today ở giữa
-  const rollingCount = rollingRules.length || 1;
-  const dayCount = isRolling ? 3 + rollingCount : 7;
+  // Luôn hiện 7 ngày, today ở giữa (cả fixed lẫn rolling)
+  const dayCount = 7;
   const centerOffset = -3; // today at index 3
 
   // For rolling: count future sessions from rolling index
@@ -938,9 +936,10 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
         const historyRoutineId = mainDone?.routine_id;
         rollingRoutine = historyRoutineId ? routineById.get(historyRoutineId) : null;
       } else if (!isPastOrToday || (isPastOrToday && date.toDateString() === today.toDateString())) {
-        // Hôm nay hoặc tương lai: tính theo rolling index
+        // Hôm nay hoặc tương lai: tính theo rolling index, KHÔNG wrap — hết buổi thì để trống
         const baseIndex = Math.max(0, (suggestion?.rollingIndex || 1) - 1);
-        const rule = rollingRules[(baseIndex + rollingFutureOffset) % rollingRules.length];
+        const ruleIndex = baseIndex + rollingFutureOffset;
+        const rule = ruleIndex < rollingRules.length ? rollingRules[ruleIndex] : null;
         rollingRoutine = rule ? routineById.get(rule.routine_id) : null;
         rollingFutureOffset++;
       }
