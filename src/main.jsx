@@ -980,7 +980,43 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
         )}
       </div>
       <div className={`week-plan-grid ${isRolling ? 'rolling' : ''}`}>
-        {scheduleItems.map((item) => (
+        {scheduleItems.map((item) => {
+          const hasRoutine = Boolean(item.routine);
+          const isFuture = !item.isPast && !item.isToday;
+
+          // Badge: trạng thái rõ ràng
+          let badge = null;
+          if (item.done) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#16a34a',color:'#fff'}}>
+                ✓ {t('today_done')}
+              </span>
+            );
+          } else if (hasRoutine && item.isPast) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#f05a28',color:'#fff'}}>
+                ✗ {t('not_trained')}
+              </span>
+            );
+          } else if (hasRoutine && (item.isToday || isFuture)) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#2563eb',color:'#fff'}}>
+                ◉ {t('schedule_fixed')}
+              </span>
+            );
+          } else if (!hasRoutine && !item.done) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'rgba(0,0,0,0.12)',color:'inherit',opacity:0.7}}>
+                – {t('no_session')}
+              </span>
+            );
+          }
+
+          return (
           <div key={item.key} className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''}`}>
             <div className="week-day-date">
               <p>{item.label}</p>
@@ -994,9 +1030,11 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
             <div className="week-day-content">
               <h3>{item.title}</h3>
               <p>{item.content}</p>
+              <div className="mt-1 md:flex md:justify-center">{badge}</div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
