@@ -728,21 +728,20 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
-                      <div key={exercise.id} className={`flex items-center gap-2 rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
-                        {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-10 w-10 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-white text-xl">{exercise.customIcon || '🏋️'}</span>}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold">{exercise.name}</p>
-                          <p className={`text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
-                            {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
-                          </p>
+                      <div key={exercise.id} className={`rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
+                        <div className="flex items-center gap-2">
+                          {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-8 w-8 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white text-lg">{exercise.customIcon || '🏋️'}</span>}
+                          <p className="min-w-0 flex-1 truncate text-sm font-bold">{exercise.name}</p>
+                          <button
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
+                            onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
+                          >
+                            <Play size={13} />
+                          </button>
                         </div>
-                        <button
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
-                          title="Vào bài tập"
-                          onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
-                        >
-                          <Play size={14} />
-                        </button>
+                        <p className={`mt-1 text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
+                          {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
+                        </p>
                       </div>
                     );
                   })}
