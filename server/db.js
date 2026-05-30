@@ -8,14 +8,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(rootDir, 'data');
 export const uploadDir = path.join(dataDir, 'uploads');
+const translationsDir = path.join(dataDir, 'exercise-translations');
+const viTranslationsPath = path.join(translationsDir, 'vi.json');
 const dbPath = path.join(dataDir, 'gym.sqlite');
 
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync(translationsDir, { recursive: true });
 
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+
+let viExerciseTranslationsCache = null;
+let viExerciseTranslationsMtime = 0;
+
+function readViExerciseTranslations() {
+  try {
+    const stat = fs.statSync(viTranslationsPath);
+    if (!viExerciseTranslationsCache || stat.mtimeMs !== viExerciseTranslationsMtime) {
+      const parsed = JSON.parse(fs.readFileSync(viTranslationsPath, 'utf8'));
+      viExerciseTranslationsCache = parsed.translations || {};
+      viExerciseTranslationsMtime = stat.mtimeMs;
+    }
+    return viExerciseTranslationsCache;
+  } catch {
+    return {};
+  }
+}
+
+export function getExerciseTranslation(id) {
+  return readViExerciseTranslations()[id] || null;
+}
 
 export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -307,8 +331,9 @@ export function migrate() {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');
 
   const userCount = db.prepare('SELECT COUNT(*) AS total FROM users').get().total;
+  const defaultAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
   if (userCount === 0) {
-    const result = db.prepare('INSERT INTO users (name, username, password_hash, role, avatar) VALUES (?, ?, ?, ?, ?)').run('admin', 'admin', hashPassword('admin123'), 'ADMIN', 'AD');
+    const result = db.prepare('INSERT INTO users (name, username, password_hash, role, avatar) VALUES (?, ?, ?, ?, ?)').run('admin', 'admin', hashPassword(defaultAdminPassword), 'ADMIN', 'AD');
     db.prepare('INSERT INTO user_settings (user_id) VALUES (?)').run(result.lastInsertRowid);
   } else {
     const missingLogin = db.prepare('SELECT id, name FROM users WHERE username IS NULL OR password_hash IS NULL').all();
@@ -325,6 +350,7 @@ export function migrate() {
 
 export function publicExercise(row) {
   if (!row) return null;
+  const translation = readViExerciseTranslations()[row.id] || null;
   const assetUrl = (value) => {
     if (!value) return null;
     if (String(value).startsWith('/')) return value;
@@ -341,6 +367,16 @@ export function publicExercise(row) {
     secondaryMuscles: JSON.parse(row.secondary_muscles_json || '[]'),
     instructions: row.instructions_en,
     steps: JSON.parse(row.instruction_steps_json || '[]'),
+    nameVi: translation?.nameVi || null,
+    bodyPartVi: translation?.bodyPartVi || null,
+    equipmentVi: translation?.equipmentVi || null,
+    targetVi: translation?.targetVi || null,
+    muscleGroupVi: translation?.muscleGroupVi || null,
+    secondaryMusclesVi: translation?.secondaryMusclesVi || [],
+    searchVi: translation?.searchVi || '',
+    quickSearchVi: translation?.quickSearchVi || [],
+    instructionsVi: translation?.instructionsVi || null,
+    stepsVi: translation?.stepsVi || [],
     imageUrl: assetUrl(row.image_path),
     gifUrl: assetUrl(row.gif_path),
     isCustom: Boolean(row.is_custom),
