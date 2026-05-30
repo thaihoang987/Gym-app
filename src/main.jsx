@@ -211,7 +211,10 @@ function parseServerDate(value) {
   if (typeof value === 'number') return new Date(value);
   if (value instanceof Date) return value;
   const text = String(value);
-  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text.replace(' ', 'T')}Z`);
+  if (/[zZ]|[+-]\d\d:?\d\d$/.test(text)) return new Date(text);
+  const normalized = text.replace(' ', 'T');
+  // date-only '2025-05-15' → '2025-05-15T00:00:00Z' (valid ISO on all browsers)
+  return new Date(normalized.includes('T') ? `${normalized}Z` : `${normalized}T00:00:00Z`);
 }
 
 function formatDate(value, settings, options = {}) {
