@@ -719,29 +719,25 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {routine.groups.map((group) => (
-              <div key={group.id} className="rounded-lg border border-white/10 bg-white/6 p-3">
-                <div className="flex items-center gap-2">
-                  <strong>{group.name}</strong>
-                </div>
-                <div className="mt-3 grid gap-2">
+              <div key={group.id} className="rounded-lg border border-white/20 p-3" style={{background:'rgba(255,255,255,0.06)'}}>
+                <strong className="text-sm">{group.name}</strong>
+                <div className="mt-2 space-y-1.5">
                   {group.exercises.slice(0, 5).map((exercise) => {
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
-                      <div key={exercise.id} className={`rounded-md border p-2 ${done ? 'border-lime-300/70 bg-lime-300/15' : 'border-orange-200/40 bg-black/20'}`}>
-                        <div className="flex items-center gap-2">
-                          {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-8 w-8 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white text-lg">{exercise.customIcon || '🏋️'}</span>}
-                          <p className="min-w-0 flex-1 truncate text-sm font-bold">{exercise.name}</p>
-                          <button
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
-                            onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
-                          >
-                            <Play size={13} />
-                          </button>
-                        </div>
-                        <p className={`mt-1 text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
-                          {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
-                        </p>
+                      <div key={exercise.id} className="flex items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${done ? 'bg-lime-300' : 'bg-white/30'}`} />
+                        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{exercise.name}</p>
+                        <span className={`shrink-0 text-xs ${done ? 'text-lime-200' : 'text-white/50'}`}>
+                          {done ? `${summary.sets}set` : '–'}
+                        </span>
+                        <button
+                          className="shrink-0 grid h-7 w-7 place-items-center rounded bg-[#f05a28] text-white"
+                          onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
+                        >
+                          <Play size={12} />
+                        </button>
                       </div>
                     );
                   })}
