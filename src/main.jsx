@@ -1298,7 +1298,7 @@ function SessionDetail({ detail, settings }) {
 }
 
 function ExerciseLibrary({ userId, settings }) {
-  const t = createT('en-US');
+  const t = useLang();
   const dialog = useAppDialog();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ targets: [] });
@@ -1480,7 +1480,7 @@ function ExerciseLibrary({ userId, settings }) {
 }
 
 function CustomExerciseForm({ initial, onCancel, onSave }) {
-  const t = createT('en-US');
+  const t = useLang();
   const customTargetOptions = getCustomTargetOptions(t);
   const [name, setName] = useState(initial?.name || '');
   const [target, setTarget] = useState(initial?.target || customTargetOptions[0]);
@@ -1660,7 +1660,7 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
 }
 
 function SortableExerciseRow({ exercise, onRemove }) {
-  const t = createT('en-US');
+  const t = useLang();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: exercise.id });
   return (
     <div
@@ -3035,6 +3035,7 @@ function Chip({ active, children, onClick }) {
 }
 
 createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
+
 
 
 
