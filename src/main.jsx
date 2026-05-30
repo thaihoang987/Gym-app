@@ -106,17 +106,17 @@ const localeOptions = [
   ['fr-FR', 'Français (French)'],
   ['ru-RU', 'Русский (Russian)'],
 ];
-const rangeOptionsDays = { '1d': 1, '7d': 7, '14d': 14, '1m': 30, '6m': 183, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825 };
+const rangeOptionsDays = { '1d': 1, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825, 'all': null };
 const getRangeOptions = (t) => [
-  ['1d', t('range_1d'), 1],
   ['7d', t('range_7d'), 7],
   ['14d', t('range_14d'), 14],
   ['1m', t('range_1m'), 30],
+  ['3m', '3 tháng', 90],
   ['6m', t('range_6m'), 183],
   ['1y', t('range_1y'), 365],
   ['2y', t('range_2y'), 730],
-  ['3y', t('range_3y'), 1095],
-  ['5y', t('range_5y'), 1825]
+  ['5y', t('range_5y'), 1825],
+  ['all', 'Tất cả', null]
 ];
 
 function supportedTimezones() {
@@ -181,7 +181,7 @@ function bmiFeedback(bmi, t) {
 
 function filterByRange(rows, field, rangeKey) {
   const days = rangeOptionsDays[rangeKey];
-  if (!days) return rows;
+  if (days === null || days === undefined) return rows; // 'all' = no filter
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   return rows.filter((row) => {
@@ -192,9 +192,10 @@ function filterByRange(rows, field, rangeKey) {
 
 function chartRangeDomain(rangeKey) {
   const days = rangeOptionsDays[rangeKey];
+  if (days === null || days === undefined) return ['auto', 'auto'];
   const end = new Date();
   const start = new Date(end);
-  start.setDate(start.getDate() - (days || 30));
+  start.setDate(start.getDate() - days);
   return [start.getTime(), end.getTime()];
 }
 
@@ -2554,7 +2555,7 @@ function Analytics({ userId, settings }) {
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
-  const [rangeKey, setRangeKey] = useState('5y');
+  const [rangeKey, setRangeKey] = useState('7d');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
   const [selectedRoutineName, setSelectedRoutineName] = useState('');
 
@@ -2574,7 +2575,7 @@ function Analytics({ userId, settings }) {
       .some((row) => row.exercise_id === selectedExerciseId);
     if (!hasDataInRange) {
       const hasAnyData = analytics.exerciseRows.some((row) => row.exercise_id === selectedExerciseId);
-      if (hasAnyData) setRangeKey('5y'); // mở rộng ra toàn bộ
+      if (hasAnyData) setRangeKey('all'); // mở rộng ra toàn bộ
     }
   }, [selectedExerciseId, analytics.exerciseRows]);
 
@@ -2721,8 +2722,8 @@ function Analytics({ userId, settings }) {
             ) : (
               <div className="mt-4">
                 <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>
-                {selectedExercise && rangeKey !== '5y' && (
-                  <button className="small-action mt-2" onClick={() => setRangeKey('5y')}>Xem toàn bộ lịch sử</button>
+                {selectedExercise && rangeKey !== 'all' && (
+                  <button className="small-action mt-2" onClick={() => setRangeKey('all')}>Xem toàn bộ lịch sử</button>
                 )}
               </div>
             )}
