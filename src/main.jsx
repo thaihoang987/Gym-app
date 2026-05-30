@@ -915,8 +915,11 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const isRolling = suggestion?.mode === 'ROLLING';
 
   // Today-centered: -3 … today … +3 (7 days), shifted by offset
-  const dayCount = isRolling ? 3 : 7;
-  const centerOffset = isRolling ? 0 : -3; // today at index 3 for fixed/free
+  const dayCount = 7;
+  const centerOffset = -3; // today at index 3
+
+  // For rolling: count future sessions from rolling index
+  let rollingFutureOffset = 0;
 
   const scheduleItems = Array.from({ length: dayCount }, (_, itemIndex) => {
     const date = new Date(startOfToday);
@@ -927,10 +930,23 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
     const done = doneDays.has(key);
     const mainDone = dayHistory[0];
     const fixedRoutine = fixedByDay.get(weekdayIndex);
-    const rollingRule = isRolling && rollingRules.length
-      ? rollingRules[(Math.max(0, (suggestion?.rollingIndex || 1) - 1) + itemIndex) % rollingRules.length]
-      : null;
-    const rollingRoutine = rollingRule ? routineById.get(rollingRule.routine_id) : null;
+
+    let rollingRoutine = null;
+    if (isRolling && rollingRules.length) {
+      const isPastOrToday = date <= startOfToday;
+      if (isPastOrToday && done) {
+        // Ngày đã tập: lấy từ history
+        const historyRoutineId = mainDone?.routine_id;
+        rollingRoutine = historyRoutineId ? routineById.get(historyRoutineId) : null;
+      } else if (!isPastOrToday || (isPastOrToday && date.toDateString() === today.toDateString())) {
+        // Hôm nay hoặc tương lai: tính theo rolling index
+        const baseIndex = Math.max(0, (suggestion?.rollingIndex || 1) - 1);
+        const rule = rollingRules[(baseIndex + rollingFutureOffset) % rollingRules.length];
+        rollingRoutine = rule ? routineById.get(rule.routine_id) : null;
+        rollingFutureOffset++;
+      }
+    }
+
     const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : isRolling ? rollingRoutine : null;
     return {
       key,
@@ -961,8 +977,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
     <div className="panel">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="section-title mb-0">{isRolling ? t('rolling_title') : t('week_title')}</h2>
-        {!isRolling && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             <button
               className="tiny-btn"
               onClick={() => setOffset((v) => v - 3)}
@@ -982,9 +997,8 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
               title="Tới 3 ngày"
             >››</button>
           </div>
-        )}
       </div>
-      <div className={`week-plan-grid ${isRolling ? 'rolling' : ''}`}>
+      <div className="week-plan-grid">
         {scheduleItems.map((item) => {
           const hasRoutine = Boolean(item.routine);
           const isFuture = !item.isPast && !item.isToday;
