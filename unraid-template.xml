@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>gym-app</Name>
+  <Repository>ghcr.io/thaihoang987/gym-app:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/thaihoang987/Gym-app/issues</Support>
+  <Project>https://github.com/thaihoang987/Gym-app</Project>
+  <Overview>Family Gym App — Track workouts, exercises, body weight and progress. Supports multiple users, 1300+ exercises with GIFs, custom exercises, workout scheduling, analytics and Excel export. Default login: admin / admin123</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3001]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-icon.svg</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <DateInstalled></DateInstalled>
+
+  <Config
+    Name="Web Port"
+    Target="3001"
+    Default="3001"
+    Mode="tcp"
+    Description="Port to access the web interface"
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">3001</Config>
+
+  <Config
+    Name="Data Path"
+    Target="/app/data"
+    Default="/mnt/user/appdata/gym-app/data"
+    Mode="rw"
+    Description="Path to store the database and uploaded images. Keep this backed up!"
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/gym-app/data</Config>
+
+</Container>
