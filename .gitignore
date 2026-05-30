@@ -1,8 +1,5 @@
 node_modules/
 dist/
-data/*.sqlite
-data/*.sqlite-shm
-data/*.sqlite-wal
 .env
 hasaneyldrm-exercises-dataset/
 data/uploads/
