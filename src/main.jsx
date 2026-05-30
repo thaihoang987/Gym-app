@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   closestCenter,
@@ -36,6 +36,7 @@ import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/reac
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
+import { createT } from './i18n.js';
 
 const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const modeLabels = { FREE: 'Tự do', FIXED: 'Cố định', ROLLING: 'Cuốn chiếu' };
@@ -49,6 +50,18 @@ const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
 const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+function languageKey(settings = {}) {
+  const locale = settings?.locale || fallbackDisplay.locale;
+  const map = { en: 'en-US', vi: 'vi-VN', zh: 'zh-CN', es: 'es-ES', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', de: 'de-DE', fr: 'fr-FR', ru: 'ru-RU' };
+  const prefix = locale.split('-')[0];
+  return map[prefix] || 'vi-VN';
+}
+
+function exerciseDisplayName(exercise, settings = {}) {
+  if (!exercise) return '';
+  return exercise.name;
+}
+
 function stableColorForName(name) {
   const colors = [
     { dot: '#f05a28', fill: '#ffe3d3', ring: '#ffbd9a' },
@@ -83,10 +96,16 @@ const timezoneOptions = [
   ['UTC', 'UTC']
 ];
 const localeOptions = [
-  ['vi-VN', 'Tieng Viet - Viet Nam'],
-  ['en-US', 'English - United States'],
-  ['th-TH', 'Thai - Thailand'],
-  ['ja-JP', 'Japanese - Japan']
+  ['en-US', 'English'],
+  ['vi-VN', 'Tiếng Việt'],
+  ['zh-CN', '简体中文'],
+  ['es-ES', 'Español'],
+  ['pt-BR', 'Português (Brasil)'],
+  ['ja-JP', '日本語'],
+  ['ko-KR', '한국어'],
+  ['de-DE', 'Deutsch'],
+  ['fr-FR', 'Français'],
+  ['ru-RU', 'Русский'],
 ];
 const rangeOptions = [
   ['1d', '1 ngày', 1],
@@ -327,6 +346,9 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const LangContext = React.createContext(() => (k) => k);
+function useLang() { return React.useContext(LangContext); }
+
 function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
@@ -347,13 +369,15 @@ function App() {
   if (!user) return <Login onLogin={setUser} />;
   if (!boot) return <div className="min-h-screen bg-app grid place-items-center text-slate-950">Đang tải...</div>;
 
+  const t = createT(boot.settings?.locale);
+
   const nav = [
-    ['home', Home, 'Home'],
-    ['start', Play, 'Tiếp tục tập'],
-    ['library', Library, 'Bài tập'],
-    ['builder', Dumbbell, 'Lịch tập'],
-    ['analytics', BarChart3, 'Thống kê'],
-    ['settings', Settings, 'Cài đặt']
+    ['home', Home, t('nav_home')],
+    ['start', Play, t('nav_start')],
+    ['library', Library, t('nav_library')],
+    ['builder', Dumbbell, t('nav_builder')],
+    ['analytics', BarChart3, t('nav_analytics')],
+    ['settings', Settings, t('nav_settings')]
   ];
   const startWorkout = (nextWorkout) => {
     if (nextWorkout?.sessionId) setTab('start');
@@ -411,6 +435,7 @@ function App() {
   };
 
   return (
+    <LangContext.Provider value={t}>
     <div className="min-h-screen bg-app text-slate-950">
       <main className="mx-auto min-h-screen w-full max-w-md bg-[#f4f6f1] px-4 pb-40 pt-5 text-slate-950 md:max-w-6xl md:px-8">
         {workout ? (
@@ -420,7 +445,7 @@ function App() {
             <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); sessionStorage.removeItem('familyGymUser'); setUser(null); }} />
             {tab === 'home' && <Dashboard userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} />}
-            {tab === 'library' && <ExerciseLibrary userId={user.id} />}
+            {tab === 'library' && <ExerciseLibrary userId={user.id} settings={boot.settings} />}
             {tab === 'builder' && <Builder userId={user.id} boot={boot} onStart={startWorkout} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'analytics' && <Analytics userId={user.id} settings={boot.settings} />}
             {tab === 'settings' && <SettingsPage userId={user.id} boot={boot} onChanged={() => setRefresh((v) => v + 1)} />}
@@ -452,6 +477,7 @@ function App() {
         </div>
       </nav>
     </div>
+    </LangContext.Provider>
   );
 }
 
@@ -508,6 +534,7 @@ function Login({ onLogin }) {
 }
 
 function Header({ user, boot, onLogout }) {
+  const t = useLang();
   const [now, setNow] = useState(new Date());
   const [open, setOpen] = useState(false);
   const menuRef = React.useRef(null);
@@ -538,7 +565,7 @@ function Header({ user, boot, onLogout }) {
       <div>
         <p className="text-sm text-teal-950">{formatDateTime(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
         <h1 className="text-2xl font-bold">{user.name}</h1>
-        <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {boot.exerciseCount} bài tập</p>
+        <p className="text-sm text-teal-950">{modeLabels[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
       </div>
       <div className="relative" ref={menuRef}>
         <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
@@ -546,7 +573,7 @@ function Header({ user, boot, onLogout }) {
         </button>
         {open && (
           <div className="avatar-menu">
-            <button onClick={onLogout}><LogOut size={17} /> Đăng xuất</button>
+            <button onClick={onLogout}><LogOut size={17} /> {t('logout')}</button>
           </div>
         )}
       </div>
@@ -603,6 +630,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
 }
 
 function BodyWeightInput({ userId, settings }) {
+  const t = useLang();
   const [weight, setWeight] = useState('');
   const [unit, setUnit] = useState(settings.default_weight_unit || 'kg');
   const [history, setHistory] = useState([]);
@@ -620,7 +648,7 @@ function BodyWeightInput({ userId, settings }) {
     <div className="panel body-weight-card">
       <div className="body-weight-panel">
         <div className="min-w-0">
-          <label className="label">Cân nặng</label>
+          <label className="label">{t('bw_label')}</label>
           <input className="input compact-input" type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="72.5" />
         </div>
         <select className="input body-weight-unit compact-input" value={unit} onChange={(e) => setUnit(e.target.value)}>
@@ -631,10 +659,10 @@ function BodyWeightInput({ userId, settings }) {
       </div>
       <div className="weight-history">
         <div className="grid grid-cols-[1fr_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
-          <span>Ngày tháng</span>
-          <span>Cân nặng</span>
+          <span>{t('bw_date')}</span>
+          <span>{t('bw_weight')}</span>
         </div>
-        {history.length === 0 && <p className="py-2 text-sm text-slate-600">Chưa có lịch sử.</p>}
+        {history.length === 0 && <p className="py-2 text-sm text-slate-600">{t('bw_no_history')}</p>}
         {history.map((row) => (
           <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-stone-100 py-2 text-sm last:border-b-0">
             <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
@@ -647,6 +675,7 @@ function BodyWeightInput({ userId, settings }) {
 }
 
 function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings }) {
+  const t = useLang();
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
   const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
@@ -657,9 +686,9 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-emerald-200">{formatTime(clock, settings)}</p>
-          <h2 className="mt-1 text-2xl font-bold">{suggestion?.title || 'Buổi tập hôm nay'}</h2>
+          <h2 className="mt-1 text-2xl font-bold">{suggestion?.title || t('today_title')}</h2>
           <p className="mt-2 text-sm text-emerald-200">
-            {routine ? `${routine.name} · ${routine.groups.length} Group Bài tập · ${routine.exercises.length} bài` : 'Chưa có Group Buổi tập theo lịch hôm nay.'}
+            {routine ? `${routine.name} · ${routine.groups.length} Group · ${routine.exercises.length} ${t('bài')}` : t('today_no_routine')}
           </p>
         </div>
         <CalendarDays size={34} />
@@ -668,10 +697,10 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
       {routine ? (
         <div className="mt-5 space-y-4">
           <div className="rounded-lg bg-white/8 p-3">
-            <p className="text-sm text-emerald-200">Tiến độ hôm nay</p>
-            <p className="mt-1 text-xl font-bold">{doneCount}/{routine.exercises.length} bài đã có log</p>
+            <p className="text-sm text-emerald-200">{t('today_progress')}</p>
+            <p className="mt-1 text-xl font-bold">{t('logged_count', doneCount, routine.exercises.length)}</p>
             <p className="mt-1 text-sm text-emerald-200">
-              {todaySummary.length ? `${todaySummary.reduce((sum, row) => sum + Number(row.sets || 0), 0)} set · ${todaySummary.reduce((sum, row) => sum + Number(row.total_reps || 0), 0)} reps` : 'Chưa có kết quả hôm nay.'}
+              {todaySummary.length ? `${todaySummary.reduce((sum, row) => sum + Number(row.sets || 0), 0)} ${t('set')} · ${todaySummary.reduce((sum, row) => sum + Number(row.total_reps || 0), 0)} reps` : t('today_no_result')}
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -690,11 +719,11 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold">{exercise.name}</p>
                           <p className={`text-xs font-semibold ${done ? 'text-lime-100' : 'text-orange-100'}`}>
-                            {done ? `Đã tập ${summary.sets} set · max ${summary.max_weight} kg · trước: ${summary.previous_best || 'chưa có'}` : 'Chưa tập hôm nay'}
+                            {done ? `${t('sets_logged', summary.sets)} · max ${summary.max_weight} kg` : t('today_not_done')}
                           </p>
                         </div>
                         <span className={`rounded px-2 py-1 text-xs font-black ${done ? 'bg-lime-300 text-green-950' : 'bg-orange-100 text-orange-900'}`}>
-                          {done ? 'Đã tập' : 'Chưa'}
+                          {done ? t('today_done') : t('today_not_done')}
                         </span>
                         <button
                           className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#f05a28] text-white"
@@ -710,30 +739,30 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
               </div>
             ))}
           </div>
-          <button className="primary-light" onClick={() => onStartRoutine(routine)}>Bắt đầu Group Buổi tập</button>
+          <button className="primary-light" onClick={() => onStartRoutine(routine)}>{t('today_start')}</button>
         </div>
       ) : (
-        <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">Vào Lịch tập để gán Group Buổi tập cho lịch cố định hoặc cuốn chiếu.</p>
+        <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">{t('today_go_schedule')}</p>
       )}
     </div>
   );
 }
 
 function FreeTraining({ routines, groups, onStartRoutine, onStartGroup }) {
-  const routineItems = routines;
-  const groupItems = groups;
+  const t = useLang();
   return (
     <div className="panel">
-      <h2 className="section-title">Tập tự do</h2>
+      <h2 className="section-title">{t('free_title')}</h2>
       <div className="space-y-4">
-        <FreeTrainingSection title="Group Buổi tập" items={routineItems} empty="Chưa có Group Buổi tập." onStart={onStartRoutine} />
-        <FreeTrainingSection title="Group Bài tập" items={groupItems} empty="Chưa có Group Bài tập." onStart={onStartGroup} />
+        <FreeTrainingSection title={t('free_routines')} items={routines} empty={t('free_no_routine')} onStart={onStartRoutine} />
+        <FreeTrainingSection title={t('free_groups')} items={groups} empty={t('free_no_group')} onStart={onStartGroup} />
       </div>
     </div>
   );
 }
 
 function FreeTrainingSection({ title, items, empty, onStart }) {
+  const t = useLang();
   return (
     <div>
       <h3 className="mb-2 text-sm font-bold text-teal-950">{title}</h3>
@@ -747,7 +776,7 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
                 <img src={thumbs[0]?.imageUrl} className="h-14 w-14 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-950">{item.name}</p>
-                  <p className="text-sm text-teal-950">{item.exercises.length} bài tập</p>
+                  <p className="text-sm text-teal-950">{t('exercises', item.exercises.length)}</p>
                 </div>
                 <div className="flex -space-x-2">
                   {thumbs.map((exercise) => <img key={exercise.id} src={exercise.imageUrl} className="h-9 w-9 rounded-full border-2 border-white bg-slate-50 object-contain" />)}
@@ -762,6 +791,7 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
 }
 
 function StartWorkoutPage({ userId, onStart, refresh, settings }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [] });
@@ -783,13 +813,13 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   };
   const completeActiveSession = async (active) => {
     const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
-    if (!totalSets && !(await dialog.confirm('Không có set tập nào được ghi nhận? Bạn có muốn xoá buổi tập không?'))) return;
+    if (!totalSets && !(await dialog.confirm(t('confirm_no_sets')))) return;
     await api(`/api/sessions/${active.session.id}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
   };
   const deleteActiveSession = async (active) => {
-    if (!(await dialog.confirm('Bạn có muốn xoá buổi tập này không?'))) return;
+    if (!(await dialog.confirm(t('confirm_delete_session')))) return;
     await api(`/api/sessions/${active.session.id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
@@ -797,13 +827,13 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   return (
     <section className="space-y-5">
       <div className="panel-green">
-        <h1 className="text-2xl font-black">{activeSessions.length ? 'Tiếp tục tập' : 'Bắt đầu tập'}</h1>
-        <p className="mt-2 text-sm text-emerald-100">{activeSessions.length ? `${activeSessions.length} buổi/bài/group đang tập chưa kết thúc.` : 'Chưa có buổi đang tập. Chọn Group Buổi tập hoặc Group Bài tập để bắt đầu.'}</p>
+        <h1 className="text-2xl font-black">{activeSessions.length ? t('start_continue') : t('start_begin')}</h1>
+        <p className="mt-2 text-sm text-emerald-100">{activeSessions.length ? t('start_active', activeSessions.length) : t('start_no_active')}</p>
       </div>
       {activeSessions.length ? (
         <div className="grid gap-3">
           {activeSessions.map((active) => {
-            const title = active.routine?.name || active.group?.name || 'Buổi tập tự do';
+            const title = active.routine?.name || active.group?.name || t('session_free_label');
             const doneCount = active.exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
             const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
             return (
@@ -812,7 +842,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                   <div>
                     <h2 className="text-xl font-black">{title}</h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      {active.exercises.length} bài · {doneCount}/{active.exercises.length} bài đã có log · {totalSets} set · bắt đầu {formatTime(active.session.started_at, settings)}
+                      {active.exercises.length} {t('bài')} · {t('logged_count', doneCount, active.exercises.length)} · {totalSets} {t('set')} · {t('started')} {formatTime(active.session.started_at, settings)}
                     </p>
                   </div>
                 </div>
@@ -831,14 +861,14 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                         </p>
                       </div>
                       <span className={`rounded px-3 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
-                        {exercise.completedSets ? 'Tập tiếp' : 'Tập bài này'}
+                        {exercise.completedSets ? t('continue_exercise') : t('start_exercise')}
                       </span>
                     </button>
                   ))}
                 </div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  <button className="primary" onClick={() => completeActiveSession(active)}>Kết thúc buổi tập</button>
-                  <button className="danger-btn" onClick={() => deleteActiveSession(active)}>Xoá buổi tập</button>
+                  <button className="primary" onClick={() => completeActiveSession(active)}>{t('end_session')}</button>
+                  <button className="danger-btn" onClick={() => deleteActiveSession(active)}>{t('delete_session')}</button>
                 </div>
               </article>
             );
@@ -852,6 +882,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
 }
 
 function CurrentWeekPlan({ suggestion, history, routines, rules }) {
+  const t = useLang();
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const monday = new Date(today);
@@ -893,17 +924,17 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
       mainDone,
       dayHistory,
       routine,
-      title: done ? (mainDone?.routine_name || mainDone?.group_name || 'Buổi tập tự do') : routine?.name || 'Chưa gán buổi tập',
+      title: done ? (mainDone?.routine_name || mainDone?.group_name || t('session_free')) : routine?.name || t('no_session'),
       imageUrl: done ? mainDone?.imageUrl : routine?.exercises?.[0]?.imageUrl,
       content: done
-        ? `${mainDone?.sets || 0} set · ${mainDone?.duration_minutes || 0} phút${dayHistory.length > 1 ? ` · +${dayHistory.length - 1} buổi khác` : ''}`
-        : routine ? `${routine.groups?.length || 0} Group Bài tập · ${routine.exercises?.length || 0} bài` : 'Vào Lịch tập để gán Group Buổi tập.'
+        ? `${t('sets_min', mainDone?.sets || 0, mainDone?.duration_minutes || 0)}${dayHistory.length > 1 ? ` · ${t('more_sessions', dayHistory.length - 1)}` : ''}`
+        : routine ? `${routine.groups?.length || 0} Group · ${routine.exercises?.length || 0} ${t('bài')}` : t('go_schedule')
     };
   });
 
   return (
     <div className="panel">
-      <h2 className="section-title">{isRolling ? 'Lịch cuốn chiếu 3 buổi tới' : 'Lịch tập tuần này'}</h2>
+      <h2 className="section-title">{isRolling ? t('rolling_title') : t('week_title')}</h2>
       <div className={`week-plan-grid ${isRolling ? 'rolling' : ''}`}>
         {scheduleItems.map((item) => (
           <div key={item.key} className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''}`}>
@@ -928,6 +959,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
 }
 
 function ActivityCalendar({ calendar, history, settings }) {
+  const t = useLang();
   const [tip, setTip] = useState(null);
   const byDay = new Map(calendar.map((row) => [row.day, row]));
   const historyByDay = new Map();
@@ -967,9 +999,9 @@ function ActivityCalendar({ calendar, history, settings }) {
     <div className="panel">
       <div className="grid grid-cols-[120px_1fr] gap-4 md:grid-cols-[150px_240px_1fr]">
         <div>
-          <p className="text-sm font-bold">4 tuần gần nhất</p>
+          <p className="text-sm font-bold">{t('cal_4weeks')}</p>
           <p className="mt-4 text-6xl font-black">{total}</p>
-          <p className="mt-2 text-sm text-slate-600">Tổng hoạt động</p>
+          <p className="mt-2 text-sm text-slate-600">{t('cal_total')}</p>
         </div>
         <div>
           <div className="grid grid-cols-7 text-center text-sm font-bold">
@@ -991,7 +1023,7 @@ function ActivityCalendar({ calendar, history, settings }) {
           </div>
         </div>
         <div className="col-span-2 space-y-3 md:col-span-1">
-          {bars.length === 0 && <p className="text-sm text-slate-600">Chưa có dữ liệu lịch sử.</p>}
+          {bars.length === 0 && <p className="text-sm text-slate-600">{t('cal_no_data')}</p>}
           {legend.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1">
               {legend.map((item) => (
@@ -1016,7 +1048,7 @@ function ActivityCalendar({ calendar, history, settings }) {
                     borderColor: color.ring
                   }}
                 />
-                <span className="text-sm font-bold">{row.duration_minutes} phút</span>
+                <span className="text-sm font-bold">{row.duration_minutes} {t('min')}</span>
               </div>
             );
           })}
@@ -1028,6 +1060,7 @@ function ActivityCalendar({ calendar, history, settings }) {
 }
 
 function HistoryList({ userId, history, onDeleted, settings }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [openSessionId, setOpenSessionId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -1039,7 +1072,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
     setHasMore(history.length >= 20);
   }, [history]);
   const removeSession = async (sessionId) => {
-    if (!(await dialog.confirm('Xoá buổi tập này? Set/log trong buổi này cũng sẽ bị xoá khỏi thống kê.'))) return;
+    if (!(await dialog.confirm(t('history_confirm_delete')))) return;
     await api(`/api/sessions/${sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
     if (openSessionId === sessionId) {
       setOpenSessionId(null);
@@ -1073,7 +1106,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
   };
   return (
     <div>
-      <h2 className="section-title">Lịch sử gần đây</h2>
+      <h2 className="section-title">{t('history_title')}</h2>
       <div className="space-y-2">
         {loadedHistory.map((row) => {
           const activityName = row.routine_name || row.group_name || 'Buổi tập tự do';
@@ -1089,7 +1122,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
                 </button>
                 <div className="flex items-center gap-2">
                   <Dumbbell style={{ color: color.dot }} />
-                  <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> Xoá</button>
+                  <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> {t('history_delete')}</button>
                 </div>
               </div>
               {openSessionId === row.id && <SessionDetail detail={detail} settings={settings} />}
@@ -1098,7 +1131,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
         })}
         {hasMore && (
           <button className="ghost-btn w-full" disabled={loadingMore} onClick={loadMore}>
-            {loadingMore ? 'Đang tải...' : 'Tải thêm lịch sử gần đây'}
+            {loadingMore ? t('history_loading') : t('history_load_more')}
           </button>
         )}
       </div>
@@ -1124,23 +1157,24 @@ function exerciseMediaUrl(exercise) {
 }
 
 function SessionDetail({ detail, settings }) {
-  if (!detail) return <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-600">Đang tải chi tiết...</div>;
+  const t = useLang();
+  if (!detail) return <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-600">{t('detail_loading')}</div>;
   const statusText = detail.summary.effectiveness >= 60
-    ? 'Hiệu quả tốt'
+    ? t('detail_effective')
     : detail.summary.effectiveness >= 30
-      ? 'Có tiến bộ nhẹ'
-      : 'Buổi duy trì';
+      ? t('detail_progress')
+      : t('detail_maintain');
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-stone-200 bg-white p-3">
       <div className="rounded-md bg-slate-50 p-2 text-sm text-slate-700">
-        <strong>Thời gian:</strong> {formatTime(detail.session.started_at, settings)} - {formatTime(detail.session.completed_at, settings)} · {detail.session.duration_minutes} phút
+        <strong>{t('detail_time')}:</strong> {formatTime(detail.session.started_at, settings)} - {formatTime(detail.session.completed_at, settings)} · {detail.session.duration_minutes} phút
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">Bài</p><strong>{detail.summary.exerciseCount}</strong></div>
-        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">Set</p><strong>{detail.summary.totalSets}</strong></div>
-        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">Volume</p><strong>{Math.round(detail.summary.totalVolume)}</strong></div>
+        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_exercises')}</p><strong>{detail.summary.exerciseCount}</strong></div>
+        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_sets')}</p><strong>{detail.summary.totalSets}</strong></div>
+        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_volume')}</p><strong>{Math.round(detail.summary.totalVolume)}</strong></div>
       </div>
-      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {detail.summary.improvedCount}/{detail.summary.exerciseCount} bài tốt hơn lần trước</p>
+      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail.summary.improvedCount, detail.summary.exerciseCount)}</p>
       <div className="space-y-2">
         {detail.exercises.map((exercise) => {
           const volumeDiff = exercise.volume - exercise.previousVolume;
@@ -1162,14 +1196,14 @@ function SessionDetail({ detail, settings }) {
               </div>
               <div className="mt-2 rounded-md border border-dashed border-slate-200 bg-white p-2">
                 <p className="mb-1 text-xs font-bold text-slate-500">
-                  Lần trước {exercise.previousCompletedAt ? `(${formatDateTime(exercise.previousCompletedAt, settings)})` : ''}
+                  {t('detail_prev')} {exercise.previousCompletedAt ? `(${formatDateTime(exercise.previousCompletedAt, settings)})` : ''}
                 </p>
                 {exercise.previous.length ? (
                   <div className="grid grid-cols-3 gap-1 text-xs">
                     {exercise.previous.map((set) => <span key={set.id} className="rounded bg-slate-50 px-2 py-1">Set {set.setIndex}: {set.weightKg}kg x {set.reps}</span>)}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">Chưa có lần tập trước cho bài này.</p>
+                  <p className="text-xs text-slate-500">{t('detail_no_prev')}</p>
                 )}
               </div>
             </div>
@@ -1180,7 +1214,7 @@ function SessionDetail({ detail, settings }) {
   );
 }
 
-function ExerciseLibrary({ userId }) {
+function ExerciseLibrary({ userId, settings }) {
   const dialog = useAppDialog();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ targets: [] });
@@ -1254,7 +1288,7 @@ function ExerciseLibrary({ userId }) {
           ) : (
             <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center rounded-lg bg-white text-7xl ring-1 ring-slate-200 md:h-[360px]">{selectedExercise.customIcon || '🏋️'}</div>
           )}
-          <h2 className="mt-4 text-2xl font-black">{selectedExercise.name}</h2>
+          <h2 className="mt-4 text-2xl font-black">{exerciseDisplayName(selectedExercise, settings)}</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {selectedExercise.isCustom && <span className="rounded bg-orange-100 px-2 py-1 text-xs font-black text-orange-900">Tự tạo</span>}
             {!selectedExercise.imageUrl && !selectedExercise.gifUrl && <span className="text-2xl">{selectedExercise.customIcon || '🏋️'}</span>}
@@ -1265,7 +1299,7 @@ function ExerciseLibrary({ userId }) {
           {selectedExercise.secondaryMuscles?.length > 0 && (
             <p className="mt-1 text-sm text-slate-600">Nhóm phụ: {selectedExercise.secondaryMuscles.join(', ')}</p>
           )}
-          <ExerciseInstructions exercise={selectedExercise} />
+          <ExerciseInstructions exercise={selectedExercise} settings={settings} />
           <select onChange={(e) => e.target.value && addToGroup(e.target.value, selectedExercise.id)} className="input mt-4 py-2 text-sm">
             <option value="">Thêm vào group</option>
             {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
@@ -1338,7 +1372,7 @@ function ExerciseLibrary({ userId }) {
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold leading-tight">{exercise.name}</h3>
+                  <h3 className="font-bold leading-tight">{exerciseDisplayName(exercise, settings)}</h3>
                   {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-600">Tự tạo</span>}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">{exercise.target} · {exercise.equipment}</p>
@@ -1513,12 +1547,13 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
   );
 }
 
-function ExerciseInstructions({ exercise, compact = false }) {
-  const rawSteps = exercise.steps?.length
+function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
+  const translatedSteps = languageKey(settings) !== 'en-US' && exercise.stepsVi?.length ? exercise.stepsVi : null;
+  const rawSteps = translatedSteps || (exercise.steps?.length
     ? exercise.steps
     : exercise.instructions
       ? String(exercise.instructions).split(/\n+/)
-      : [];
+      : []);
   const steps = rawSteps
     .map((step) => {
       if (typeof step === 'string') return step;
@@ -1571,6 +1606,7 @@ function SortableRoutineGroupRow({ group, onRemove }) {
 }
 
 function Builder({ userId, boot, onStart, onChanged }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
@@ -1695,8 +1731,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
   return (
     <section className="space-y-5">
       <div className="builder-section">
-        <h2 className="section-title">Chế độ tập</h2>
-        <p className="mb-2 text-sm text-teal-900">Chỉ chọn nếu muốn dùng lịch thông minh. Tập tự do luôn có ở Home.</p>
+        <h2 className="section-title">{t('schedule_title')}</h2>
+        <p className="mb-2 text-sm text-teal-900">{t('schedule_hint')}</p>
         <div className="grid gap-2">
           {['FIXED', 'ROLLING'].map((mode) => (
             <label key={mode} className={`mode-btn flex items-center gap-3 ${boot.settings.schedule_mode === mode ? 'active' : ''}`}>
@@ -1713,7 +1749,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
       </div>
 
       <div className="builder-section">
-        <h2 className="section-title">1. Tạo Group Bài tập</h2>
+        <h2 className="section-title">{t('builder_groups_title')}</h2>
         <div className="flex gap-2">
           <input className="input" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Ví dụ: Ngực, Xô, Chân" />
           <button className="icon-btn" onClick={createGroup}><Plus /></button>
@@ -1721,20 +1757,20 @@ function Builder({ userId, boot, onStart, onChanged }) {
       </div>
 
       <div className="builder-section">
-        <h2 className="section-title">Group Bài tập hiện có</h2>
+        <h2 className="section-title">{t('builder_groups_title')}</h2>
         {groups.map((group) => (
           <div key={group.id} className="panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="font-bold">{group.name} · {group.exercises.length} bài</div>
               <div className="flex flex-wrap gap-2">
-                <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> Vào tập</button>
-                <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> Xóa group</button>
+                <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> {t('start_exercise')}</button>
+                <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> {t('delete')}</button>
               </div>
             </div>
             <details className="mt-3">
-              <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách bài tập</summary>
+              <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_exercise_list')}</summary>
               <div className="mt-3 space-y-2">
-                {group.exercises.length === 0 && <p className="text-sm text-slate-600">Vào Bài tập để thêm bài vào group này.</p>}
+                {group.exercises.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleExerciseDragEnd(event, group.id)}>
                   <SortableContext items={group.exercises.map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
                     {group.exercises.map((exercise) => (
@@ -1749,7 +1785,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
       </div>
 
       <div className="builder-section">
-        <h2 className="section-title">2. Tạo Group Buổi tập từ nhiều Group Bài tập</h2>
+        <h2 className="section-title">{t('builder_routines_title')}</h2>
         <input className="input" value={routineName} onChange={(e) => setRoutineName(e.target.value)} placeholder="Ví dụ: Push day, Pull day" />
         <div className="mt-3 grid gap-2">
           {groups.map((group) => (
@@ -1764,13 +1800,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
             </label>
           ))}
         </div>
-        <button className="primary mt-3" onClick={createRoutine}>Tạo Group Buổi tập</button>
+        <button className="primary mt-3" onClick={createRoutine}>{t('builder_routine_add')}</button>
       </div>
 
       <div className="builder-section">
-        <h2 className="section-title">3. Chọn kiểu lịch và gán Group Buổi tập</h2>
+        <h2 className="section-title">{t('builder_routines_title')}</h2>
         <div className="mb-4 grid gap-3">
-          {routineData.routines.length === 0 && <p className="text-sm text-slate-600">Chưa có Group Buổi tập.</p>}
+          {routineData.routines.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_routines')}</p>}
           {routineData.routines.map((routine) => {
             const availableGroups = groups.filter((group) => !routine.groups.some((item) => item.id === group.id));
             return (
@@ -1781,11 +1817,11 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     <h3 className="font-bold">{routine.name}</h3>
                     <p className="text-sm text-slate-500">{routine.groups.length} group · {routine.exercises.length} bài tập</p>
                   </div>
-                  <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> Vào tập</button>
-                  <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> Xóa</button>
+                  <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> {t('start_exercise')}</button>
+                  <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> {t('delete')}</button>
                 </div>
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-sm font-bold text-teal-950">Danh sách Group Bài tập trong buổi</summary>
+                  <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_group_list')}</summary>
                   <div className="mt-3 grid gap-2">
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleRoutineGroupDragEnd(event, routine.id)}>
                     <SortableContext items={routine.groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
@@ -1797,7 +1833,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   </div>
                 </details>
                 <select className="input mt-3 py-2 text-sm" value="" onChange={(event) => addRoutineGroup(routine.id, event.target.value)}>
-                  <option value="">Thêm Group Bài tập vào buổi</option>
+                  <option value="">{t('builder_select_groups')}</option>
                   {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
               </article>
@@ -2150,7 +2186,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           </div>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-black">{exercise.name}</h1>
+              <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
               <p className="mt-1 text-sm text-slate-500">Lần nâng trước: {previousSets[0] ? `${previousSets[0].weight_kg} kg x ${previousSets[0].reps}` : 'chưa có dữ liệu'}</p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
@@ -2162,7 +2198,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
             </div>
           </div>
-          <ExerciseInstructions exercise={exercise} />
+          <ExerciseInstructions exercise={exercise} settings={settings} />
 
           <div className="set-table">
             <div className="set-table-header">
@@ -2627,6 +2663,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
 }
 
 function SettingsPage({ userId, boot, onChanged }) {
+  const t = useLang();
   const dialog = useAppDialog();
   const settings = boot.settings || {};
   const [name, setName] = useState(boot.activeUser.name);
@@ -2667,7 +2704,7 @@ function SettingsPage({ userId, boot, onChanged }) {
     setSettingsError('');
     if (password.trim() || passwordAgain.trim()) {
       if (password !== passwordAgain) {
-        setSettingsError('Mật khẩu mới và nhập lại mật khẩu mới phải trùng nhau.');
+        setSettingsError(t('settings_password_mismatch'));
         return;
       }
     }
@@ -2719,7 +2756,7 @@ function SettingsPage({ userId, boot, onChanged }) {
   };
   return (
     <section className="space-y-4">
-      <SettingsGroup title="1. Hồ sơ cá nhân">
+      <SettingsGroup title={t('settings_profile')}>
         <div className="mb-4 flex items-center gap-3">
           <div className="avatar-preview">{avatarContent(avatarPreview)}</div>
           <label className="small-action cursor-pointer">
@@ -2728,22 +2765,22 @@ function SettingsPage({ userId, boot, onChanged }) {
           </label>
           <button className="small-danger" onClick={() => setAvatarPreview(name.trim().slice(0, 2).toUpperCase())}>Xoá ảnh</button>
         </div>
-        <label className="label">Tên hiển thị</label>
+        <label className="label">{t('settings_name')}</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="label mt-3">Mật khẩu mới</label>
+        <label className="label mt-3">{t('settings_password')}</label>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Để trống nếu không đổi" />
-        <label className="label mt-3">Nhập lại mật khẩu mới</label>
+        <label className="label mt-3">{t('settings_password_again')}</label>
         <input className="input" type="password" value={passwordAgain} onChange={(e) => setPasswordAgain(e.target.value)} placeholder="Nhập lại mật khẩu mới" />
-        <label className="label mt-3">Giới tính</label>
+        <label className="label mt-3">{t('settings_gender')}</label>
         <select className="input" value={gender} onChange={(event) => setGender(event.target.value)}>
-          <option value="">Chưa chọn</option>
-          <option value="male">Nam</option>
-          <option value="female">Nữ</option>
-          <option value="other">Khác</option>
+          <option value="">-</option>
+          <option value="male">{t('settings_gender_m')}</option>
+          <option value="female">{t('settings_gender_f')}</option>
+          <option value="other">{t('settings_gender_other')}</option>
         </select>
-        <label className="label mt-3">Tuổi / ngày sinh</label>
+        <label className="label mt-3">{t('settings_birthdate')}</label>
         <input className="input" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
-        <label className="label mt-3">Chiều cao để tính BMI</label>
+        <label className="label mt-3">{t('settings_height')}</label>
         {heightUnit === 'ft-in' ? (
           <div className="grid grid-cols-2 gap-2">
             <input className="input" type="number" min="1" max="8" value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} placeholder="feet" />
@@ -2754,13 +2791,13 @@ function SettingsPage({ userId, boot, onChanged }) {
         )}
       </SettingsGroup>
 
-      <SettingsGroup title="2. Đơn vị đo">
+      <SettingsGroup title={t('settings_body')}>
         <SettingsToggle label="Cân nặng tạ" value={defaultWeightUnit} onChange={setDefaultWeightUnit} options={[['kg', 'Kg'], ['lb', 'Lb']]} />
         <SettingsToggle label="Chiều cao" value={heightUnit} onChange={setHeightUnit} options={[['cm', 'cm'], ['ft-in', 'ft-in']]} />
         <SettingsToggle label="Giờ" value={clockFormat} onChange={setClockFormat} options={[['12h', '12h'], ['24h', '24h']]} />
       </SettingsGroup>
 
-      <SettingsGroup title="3. Cài đặt bài tập">
+      <SettingsGroup title={t('settings_workout')}>
         <NumberSetting label="Nghỉ giữa hiệp mặc định (giây)" value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
         <NumberSetting label="Số set mặc định" value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
         <NumberSetting label="Số reps mặc định" value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
@@ -2774,21 +2811,21 @@ function SettingsPage({ userId, boot, onChanged }) {
         <SwitchSetting label="Tự chuyển sang set tiếp theo" checked={autoNextSet} onChange={setAutoNextSet} />
       </SettingsGroup>
 
-      <SettingsGroup title="5. Giao diện">
-        <label className="label mt-3">Ngôn ngữ</label>
+      <SettingsGroup title={t('settings_ui')}>
+        <label className="label mt-3">{t('settings_language')}</label>
         <select className="input" value={locale} onChange={(event) => setLocale(event.target.value)}>
           {localeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <label className="label mt-3">Mốc thời gian</label>
+        <label className="label mt-3">{t('settings_timezone')}</label>
         <select className="input" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
           {timezoneChoices.map((item) => <option key={item.name} value={item.name}>{item.label}</option>)}
         </select>
         <p className="mt-2 text-sm text-slate-600">Xem trước: {formatDateTime(new Date(), { timezone, locale, clock_format: clockFormat }, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       </SettingsGroup>
 
-      <SettingsGroup title="6. Dữ liệu & đồng bộ">
-        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>Xuất Excel lịch sử tập</button>
-        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>Xuất data backup</button>
+      <SettingsGroup title={t('settings_admin')}>
+        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
+        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>{t('settings_export_json')}</button>
         <label className="ghost-btn cursor-pointer">
           Nhập data backup
           <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0])} />
@@ -2797,10 +2834,10 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
-      <button className="primary" onClick={saveAll}>Lưu thay đổi</button>
+      <button className="primary" onClick={saveAll}>{t('settings_save')}</button>
       {boot.activeUser.role === 'ADMIN' && <div className="panel">
-        <h2 className="section-title">Thành viên gia đình</h2>
-        <button className="primary" onClick={addUser}>Thêm thành viên</button>
+        <h2 className="section-title">{t('settings_users')}</h2>
+        <button className="primary" onClick={addUser}>{t('settings_add_user')}</button>
         <AdminUsers users={boot.users} adminId={userId} />
       </div>}
     </section>
@@ -2899,3 +2936,10 @@ function Chip({ active, children, onClick }) {
 }
 
 createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
+
+
+
+
+
+
+
