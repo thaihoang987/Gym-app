@@ -2551,7 +2551,7 @@ function Analytics({ userId, settings }) {
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
-  const [rangeKey, setRangeKey] = useState('1y');
+  const [rangeKey, setRangeKey] = useState('5y');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
   const [selectedRoutineName, setSelectedRoutineName] = useState('');
 
