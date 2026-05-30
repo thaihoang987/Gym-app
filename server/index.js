@@ -4,7 +4,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
+import { db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -426,6 +426,50 @@ function formatMinutes(seconds) {
   return Math.max(1, Math.round(Number(seconds || 0) / 60));
 }
 
+function advanceRollingSchedule(userId) {
+  const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
+  const maxIndex = one("SELECT COALESCE(MAX(order_index), 0) AS max_index FROM routine_schedule_rules WHERE user_id = ? AND mode = 'ROLLING'", [userId]).max_index;
+  if (settings && maxIndex > 0) {
+    const nextIndex = settings.current_rolling_index >= maxIndex ? 1 : settings.current_rolling_index + 1;
+    db.prepare('UPDATE user_settings SET current_rolling_index = ? WHERE user_id = ?').run(nextIndex, userId);
+  }
+}
+
+function cleanupStaleActiveSessions(userId) {
+  const staleSessions = all(`
+    SELECT ws.*, COUNT(wl.id) AS log_count, MAX(wl.completed_at) AS last_log_at
+    FROM workout_sessions ws
+    LEFT JOIN workout_logs wl ON wl.session_id = ws.id AND wl.user_id = ws.user_id
+    WHERE ws.user_id = ?
+      AND ws.status = 'ACTIVE'
+      AND date(ws.started_at, 'localtime') < date('now', 'localtime')
+    GROUP BY ws.id
+    ORDER BY ws.started_at ASC
+  `, [userId]);
+
+  if (!staleSessions.length) return { completed: 0, deleted: 0 };
+
+  const summary = { completed: 0, deleted: 0 };
+  const tx = db.transaction(() => {
+    for (const session of staleSessions) {
+      if (Number(session.log_count || 0) > 0 && session.last_log_at) {
+        db.prepare(`
+          UPDATE workout_sessions
+          SET status = 'COMPLETED', completed_at = ?
+          WHERE id = ? AND user_id = ? AND status = 'ACTIVE'
+        `).run(session.last_log_at, session.id, userId);
+        if (session.schedule_mode === 'ROLLING') advanceRollingSchedule(userId);
+        summary.completed += 1;
+      } else {
+        db.prepare('DELETE FROM workout_sessions WHERE id = ? AND user_id = ? AND status = \'ACTIVE\'').run(session.id, userId);
+        summary.deleted += 1;
+      }
+    }
+  });
+  tx();
+  return summary;
+}
+
 function smartSuggestion(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   if (!settings || settings.schedule_mode === 'FREE') {
@@ -465,6 +509,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/bootstrap', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const users = all('SELECT id, name, username, avatar, role FROM users ORDER BY id');
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const exerciseCount = one('SELECT COUNT(*) AS total FROM exercises').total;
@@ -623,11 +668,13 @@ app.patch('/api/settings', (req, res) => {
 
 app.get('/api/exercises', (req, res) => {
   const userId = getUserId(req);
-  const search = `%${String(req.query.q || '').trim()}%`;
+  const rawSearch = String(req.query.q || '').trim();
+  const search = `%${rawSearch}%`;
+  const normalizedSearch = rawSearch.toLocaleLowerCase('vi-VN');
   const target = req.query.target;
   const params = [userId];
   const where = ['COALESCE(is_hidden, 0) = 0', '(custom_user_id IS NULL OR custom_user_id = ?)'];
-  if (req.query.q) {
+  if (req.query.q && /^[\x00-\x7F]+$/.test(rawSearch)) {
     where.push('(name LIKE ? OR equipment LIKE ? OR target LIKE ? OR body_part LIKE ?)');
     params.push(search, search, search, search);
   }
@@ -640,15 +687,62 @@ app.get('/api/exercises', (req, res) => {
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY is_custom DESC, name
   `, params);
-  res.json(rows.map(publicExercise));
+  const filteredRows = rawSearch
+    ? rows.filter((row) => {
+        const translation = getExerciseTranslation(row.id);
+        const text = [
+          row.name,
+          row.equipment,
+          row.target,
+          row.body_part,
+          translation?.nameVi,
+          translation?.bodyPartVi,
+          translation?.equipmentVi,
+          translation?.targetVi,
+          translation?.muscleGroupVi,
+          translation?.searchVi,
+          ...(translation?.quickSearchVi || [])
+        ].join(' ').toLocaleLowerCase('vi-VN');
+        return text.includes(normalizedSearch);
+      })
+    : rows;
+  res.json(filteredRows.map(publicExercise));
 });
 
 app.get('/api/exercises/meta', (req, res) => {
   const userId = getUserId(req);
+  const visibleRows = all('SELECT id, target, equipment, body_part FROM exercises WHERE COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY name', [userId]);
+  const translated = visibleRows.map((row) => ({ row, translation: getExerciseTranslation(row.id) }));
   res.json({
-    targets: all('SELECT DISTINCT target AS value FROM exercises WHERE target IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY target', [userId]).map((r) => r.value),
-    equipment: all('SELECT DISTINCT equipment AS value FROM exercises WHERE equipment IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY equipment', [userId]).map((r) => r.value),
-    bodyParts: all('SELECT DISTINCT body_part AS value FROM exercises WHERE body_part IS NOT NULL AND COALESCE(is_hidden, 0) = 0 AND (custom_user_id IS NULL OR custom_user_id = ?) ORDER BY body_part', [userId]).map((r) => r.value)
+    targets: [...new Set(visibleRows.map((r) => r.target).filter(Boolean))].sort(),
+    equipment: [...new Set(visibleRows.map((r) => r.equipment).filter(Boolean))].sort(),
+    bodyParts: [...new Set(visibleRows.map((r) => r.body_part).filter(Boolean))].sort(),
+    targetsVi: [...new Set(translated.map(({ translation }) => translation?.targetVi).filter(Boolean))].sort(),
+    equipmentVi: [...new Set(translated.map(({ translation }) => translation?.equipmentVi).filter(Boolean))].sort(),
+    bodyPartsVi: [...new Set(translated.map(({ translation }) => translation?.bodyPartVi).filter(Boolean))].sort(),
+    quickSearchVi: [
+      'ngực',
+      'lưng',
+      'xô',
+      'vai',
+      'tay trước',
+      'tay sau',
+      'cẳng tay',
+      'chân',
+      'đùi trước',
+      'đùi sau',
+      'mông',
+      'bắp chân',
+      'bụng',
+      'tim mạch',
+      'giãn cơ',
+      'thanh đòn',
+      'tạ đơn',
+      'cáp',
+      'máy',
+      'dây kháng lực',
+      'trọng lượng cơ thể'
+    ]
   });
 });
 
@@ -967,6 +1061,7 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
 
 app.get('/api/dashboard', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const calendar = all(`
     SELECT
       date(completed_at) AS day,
@@ -1007,6 +1102,7 @@ app.get('/api/dashboard', (req, res) => {
 
 app.get('/api/history', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const limit = Math.max(1, Math.min(50, Number(req.query.limit || 20)));
   const offset = Math.max(0, Number(req.query.offset || 0));
   const rows = getRecentHistory(userId, limit, offset);
@@ -1015,6 +1111,7 @@ app.get('/api/history', (req, res) => {
 
 app.post('/api/sessions', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const scheduleMode = ['FREE', 'FIXED', 'ROLLING'].includes(req.body.scheduleMode) ? req.body.scheduleMode : settings.schedule_mode;
   const result = db.prepare(`
@@ -1026,6 +1123,7 @@ app.post('/api/sessions', (req, res) => {
 
 app.get('/api/sessions/active', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const sessions = all(`
     SELECT *
     FROM workout_sessions
@@ -1316,12 +1414,7 @@ app.post('/api/sessions/:id/complete', (req, res) => {
   const tx = db.transaction(() => {
     db.prepare("UPDATE workout_sessions SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
     if (session.schedule_mode === 'ROLLING') {
-      const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
-      const maxIndex = one("SELECT COALESCE(MAX(order_index), 0) AS max_index FROM routine_schedule_rules WHERE user_id = ? AND mode = 'ROLLING'", [userId]).max_index;
-      if (maxIndex > 0) {
-        const nextIndex = settings.current_rolling_index >= maxIndex ? 1 : settings.current_rolling_index + 1;
-        db.prepare('UPDATE user_settings SET current_rolling_index = ? WHERE user_id = ?').run(nextIndex, userId);
-      }
+      advanceRollingSchedule(userId);
     }
   });
   tx();
@@ -1330,6 +1423,7 @@ app.post('/api/sessions/:id/complete', (req, res) => {
 
 app.get('/api/analytics', (req, res) => {
   const userId = getUserId(req);
+  cleanupStaleActiveSessions(userId);
   const exerciseRows = all(`
     SELECT
       e.name,
@@ -1523,13 +1617,20 @@ app.get('/api/export/excel', async (req, res) => {
     { key: 'note', width: 35 },
   ];
 
+  const fullBorder = (color = 'FF000000', style = 'thin') => ({
+    top: { style, color: { argb: color } },
+    left: { style, color: { argb: color } },
+    bottom: { style, color: { argb: color } },
+    right: { style, color: { argb: color } },
+  });
+
   // Header row
   const headerRow = ws.addRow(['Nhóm cơ', 'Bài tập', 'Ngày', 'Set #', 'Kg', 'Lb', 'Reps', 'Ghi chú']);
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D6A4F' } };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    cell.border = { bottom: { style: 'thin', color: { argb: 'FF1B4332' } } };
+    cell.border = fullBorder('FF1B4332', 'medium');
   });
   ws.getRow(1).height = 22;
 
@@ -1552,7 +1653,7 @@ app.get('/api/export/excel', async (req, res) => {
     excelRow.eachCell({ includeEmpty: true }, (cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
-      cell.border = { bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } } };
+      cell.border = fullBorder('FFAAAAAA', 'thin');
     });
     // note left-align
     excelRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'left' };
@@ -1571,12 +1672,13 @@ app.get('/api/export/excel', async (req, res) => {
     for (let i = 1; i <= totalRows; i++) {
       const key = i < totalRows ? keyFn(rows[i]) : null;
       if (key !== currentKey) {
-        if (i - 1 > startRow - dataStartRow) {
-          // có nhiều hơn 1 row → merge
-          ws.mergeCells(startRow, colIdx, startRow + (i - 1 - (startRow - dataStartRow)), colIdx);
-          const cell = ws.getCell(startRow, colIdx);
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        const endRow = startRow + (i - 1 - (startRow - dataStartRow));
+        if (endRow > startRow) {
+          ws.mergeCells(startRow, colIdx, endRow, colIdx);
         }
+        const cell = ws.getCell(startRow, colIdx);
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = fullBorder('FFAAAAAA', 'thin');
         startRow = dataStartRow + i;
         currentKey = key;
       }
