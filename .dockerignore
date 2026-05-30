@@ -5,5 +5,6 @@ data
 .gitignore
 Gym-app
 Gym-app-github
+hasaneyldrm-exercises-dataset
 *.log
 scripts
