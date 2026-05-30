@@ -1298,7 +1298,7 @@ function SessionDetail({ detail, settings }) {
 }
 
 function ExerciseLibrary({ userId, settings }) {
-  const t = useLang();
+  const t = createT('en-US');
   const dialog = useAppDialog();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ targets: [] });
@@ -1480,7 +1480,7 @@ function ExerciseLibrary({ userId, settings }) {
 }
 
 function CustomExerciseForm({ initial, onCancel, onSave }) {
-  const t = useLang();
+  const t = createT('en-US');
   const customTargetOptions = getCustomTargetOptions(t);
   const [name, setName] = useState(initial?.name || '');
   const [target, setTarget] = useState(initial?.target || customTargetOptions[0]);
@@ -1650,10 +1650,9 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
     .filter(Boolean);
   if (!steps.length) return null;
 
-  const t = useLang();
   return (
     <details className={`mt-3 rounded-md border border-stone-200 bg-stone-50 ${compact ? 'p-2' : 'p-3'}`}>
-      <summary className="cursor-pointer text-sm font-bold text-slate-900">{t('lib_instructions_summary')}</summary>
+      <summary className="cursor-pointer text-sm font-bold text-slate-900">Instructions</summary>
       <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-slate-700">
         {steps.map((step, index) => <li key={`${exercise.id}-step-${index}`}>{step}</li>)}
       </ol>
@@ -1662,7 +1661,7 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
 }
 
 function SortableExerciseRow({ exercise, onRemove }) {
-  const t = useLang();
+  const t = createT('en-US');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: exercise.id });
   return (
     <div
@@ -3037,6 +3036,7 @@ function Chip({ active, children, onClick }) {
 }
 
 createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
+
 
 
 
