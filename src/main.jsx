@@ -2760,16 +2760,27 @@ function Analytics({ userId, settings }) {
 function ExerciseProgressPicker({ exercises, value, onChange }) {
   const t = useLang();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = exercises.find((exercise) => exercise.id === value);
+  const filtered = search.trim()
+    ? exercises.filter((e) => e.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : exercises;
   return (
     <div className="exercise-picker">
-      <button type="button" className="exercise-picker-button" onClick={() => setOpen((current) => !current)}>
+      <button type="button" className="exercise-picker-button" onClick={() => { setOpen((v) => !v); setSearch(''); }}>
         {exerciseMediaUrl(selected) && <img src={exerciseMediaUrl(selected)} alt="" />}
         <span>{selected?.name || t('analytics_select_exercise')}</span>
       </button>
       {open && (
         <div className="exercise-picker-menu">
-          {exercises.map((exercise) => (
+          <input
+            className="input mb-2 py-2 text-sm"
+            placeholder="Search..."
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {filtered.map((exercise) => (
             <button
               type="button"
               key={exercise.id}
@@ -2777,12 +2788,14 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
               onClick={() => {
                 onChange(exercise.id);
                 setOpen(false);
+                setSearch('');
               }}
             >
               {exerciseMediaUrl(exercise) && <img src={exerciseMediaUrl(exercise)} alt="" />}
               <span>{exercise.name}</span>
             </button>
           ))}
+          {filtered.length === 0 && <p className="p-2 text-sm text-slate-400">No results</p>}
         </div>
       )}
     </div>
