@@ -2509,6 +2509,42 @@ function LegacyWheelPicker({ value, options, suffix = '', onChange }) {
   );
 }
 
+function WeightHistoryPanel({ weightRows, t, settings }) {
+  const [visibleCount, setVisibleCount] = useState(5);
+  const reversed = [...weightRows].reverse();
+  const visible = reversed.slice(0, visibleCount);
+  const hasMore = visibleCount < weightRows.length;
+  return (
+    <div className="weight-history-panel">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-bold">{t('analytics_history_section')}</h3>
+        <span className="text-xs font-bold text-[#8b84ad]">{t('analytics_weight_records', weightRows.length)}</span>
+      </div>
+      <div className="grid gap-3">
+        {visible.map((row) => (
+          <div key={row.id} className="weight-history-row">
+            <div className="weight-history-dot" />
+            <div className="min-w-0 flex-1">
+              <strong>{row.day}</strong>
+              <span>{row.time}{row.bmi ? ` · BMI ${row.bmi}` : ''}</span>
+            </div>
+            <div className="text-right">
+              <strong>{row.weight}</strong>
+              <span>{row.unit}</span>
+            </div>
+          </div>
+        ))}
+        {weightRows.length === 0 && <p className="text-sm text-[#8b84ad]">{t('analytics_weight_no_history')}</p>}
+      </div>
+      {hasMore && (
+        <button className="ghost-btn w-full mt-3" onClick={() => setVisibleCount((v) => v + 5)}>
+          {t('history_load_more')} ({visibleCount}/{weightRows.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Analytics({ userId, settings }) {
   const t = useLang();
   const rangeOptions = getRangeOptions(t);
@@ -2592,10 +2628,10 @@ function Analytics({ userId, settings }) {
         <strong>{bmiInfo.label}</strong>
         <span>{bmiInfo.text}</span>
       </div>
-      <div className="weight-chart-panel h-96">
+      <div className="weight-chart-panel">
         <h3 className="mb-3 font-bold">{t('analytics_weight_chart')}</h3>
         {rangedWeightRows.length ? (
-          <ResponsiveContainer width="100%" height="82%">
+          <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={rangedWeightRows} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
               <defs>
                 <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
@@ -2620,10 +2656,10 @@ function Analytics({ userId, settings }) {
           </ResponsiveContainer>
         ) : <p className="text-slate-600">{t('analytics_no_weight_chart')}</p>}
       </div>
-      <div className="weight-chart-panel h-80">
+      <div className="weight-chart-panel">
         <h3 className="mb-3 font-bold">{t('analytics_bmi_chart')}</h3>
         {rangedWeightRows.some((row) => row.bmi) ? (
-          <ResponsiveContainer width="100%" height="85%">
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={rangedWeightRows.filter((row) => row.bmi)} margin={{ top: 16, right: 18, bottom: 28, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
@@ -2642,29 +2678,8 @@ function Analytics({ userId, settings }) {
           </ResponsiveContainer>
         ) : <p className="text-slate-600">{t('analytics_no_bmi_chart')}</p>}
       </div>
-      <div className="weight-history-panel">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-bold">{t('analytics_history_section')}</h3>
-          <span className="text-xs font-bold text-[#8b84ad]">{t('analytics_weight_records', weightRows.length)}</span>
-        </div>
-        <div className="grid gap-3">
-          {weightRows.slice(-10).reverse().map((row) => (
-            <div key={row.id} className="weight-history-row">
-              <div className="weight-history-dot" />
-              <div className="min-w-0 flex-1">
-                <strong>{row.day}</strong>
-                <span>{row.time}{row.bmi ? ` · BMI ${row.bmi}` : ''}</span>
-              </div>
-              <div className="text-right">
-                <strong>{row.weight}</strong>
-                <span>{row.unit}</span>
-              </div>
-            </div>
-          ))}
-          {weightRows.length === 0 && <p className="text-sm text-[#8b84ad]">{t('analytics_weight_no_history')}</p>}
-        </div>
-      </div>
-      <div className="panel h-[360px]">
+      <WeightHistoryPanel weightRows={weightRows} t={t} settings={settings} />
+      <div className="panel">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold">{t('analytics_progress_section')}</h3>
           <div className="flex gap-2">
@@ -2673,10 +2688,10 @@ function Analytics({ userId, settings }) {
           </div>
         </div>
         {chartMode === 'exercise' ? (
-          <div className="h-[82%]">
+          <div>
             <ExerciseProgressPicker exercises={analytics.exercises} value={selectedExerciseId} onChange={setSelectedExerciseId} />
             {exerciseChartRows.length ? (
-              <ResponsiveContainer width="100%" height="78%">
+              <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={exerciseChartRows}>
                   <XAxis
                     dataKey="ts"
@@ -2690,15 +2705,15 @@ function Analytics({ userId, settings }) {
                   <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>}
+            ) : <p className="text-slate-600 mt-4">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>}
           </div>
         ) : (
-          <div className="h-[82%]">
+          <div>
             <select className="input mb-3 py-2 text-sm" value={selectedRoutineName} onChange={(event) => setSelectedRoutineName(event.target.value)}>
               {analytics.routines.map((routine) => <option key={routine.id || routine.name} value={routine.name}>{routine.name}</option>)}
             </select>
             {sessionChartRows.length ? (
-              <ResponsiveContainer width="100%" height="78%">
+              <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={sessionChartRows}>
                   <XAxis
                     dataKey="ts"
@@ -2713,7 +2728,7 @@ function Analytics({ userId, settings }) {
                   <Line type="monotone" dataKey="sets" name="Set" stroke="#0f766e" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-slate-600">{t('analytics_no_session_data')}</p>}
+            ) : <p className="text-slate-600 mt-4">{t('analytics_no_session_data')}</p>}
           </div>
         )}
       </div>
