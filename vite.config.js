@@ -35,6 +35,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
         runtimeCaching: [
           {
