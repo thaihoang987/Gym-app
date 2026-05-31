@@ -671,6 +671,8 @@
     settings_notify_monthly: '每月',
     settings_pwa_feature_note: '在iPhone上，通过添加到主屏幕并通过HTTPS打开以使用振动和通知功能。',
     settings_sound_rest_label: '休息结束提示音',
+    settings_vibrate_rest_label: '休息结束时震动',
+    settings_keep_awake_label: '运动时保持屏幕常亮',
     settings_countdown_label: '3秒倒计时', settings_auto_next_label: '自动进入下一组',
     settings_import_data: '导入数据备份',
     settings_import_confirm: '导入备份将替换此用户的所有当前数据。继续？',
@@ -884,6 +886,8 @@
     settings_notify_monthly: 'Mensual',
     settings_pwa_feature_note: 'En iPhone, instala con Añadir a pantalla de inicio vía HTTPS para usar vibración y notificaciones.',
     settings_sound_rest_label: 'Alarma fin descanso',
+    settings_vibrate_rest_label: 'Vibrar al terminar el descanso',
+    settings_keep_awake_label: 'Mantener pantalla activa durante el ejercicio',
     settings_countdown_label: 'Cuenta atrás 3s', settings_auto_next_label: 'Avance automático a siguiente serie',
     settings_import_data: 'Importar copia de seguridad',
     settings_import_confirm: '¿Importar copia? Se reemplazarán todos los datos del usuario. ¿Continuar?',
@@ -1097,6 +1101,8 @@
     settings_notify_monthly: 'Mensal',
     settings_pwa_feature_note: 'No iPhone, instale via Adicionar à Tela Inicial com HTTPS para usar vibração e notificações.',
     settings_sound_rest_label: 'Alarme fim do descanso',
+    settings_vibrate_rest_label: 'Vibrar ao terminar o descanso',
+    settings_keep_awake_label: 'Manter tela ativa durante o treino',
     settings_countdown_label: 'Contagem regressiva 3s', settings_auto_next_label: 'Avançar automaticamente para próxima série',
     settings_import_data: 'Importar backup de dados',
     settings_import_confirm: 'Importar backup substituirá todos os dados do usuário. Continuar?',
@@ -1310,6 +1316,8 @@
     settings_notify_monthly: '毎月',
     settings_pwa_feature_note: 'iPhoneでは、HTTPSでホーム画面に追加してアプリを開くと振動・通知機能が使えます。',
     settings_sound_rest_label: 'インターバル終了アラーム',
+    settings_vibrate_rest_label: '休憩終了時に振動',
+    settings_keep_awake_label: 'トレーニング中は画面をオンに保つ',
     settings_countdown_label: '3秒カウントダウン', settings_auto_next_label: '次のセットへ自動進行',
     settings_import_data: 'データバックアップをインポート',
     settings_import_confirm: 'バックアップをインポートするとユーザーの現在データが置き換えられます。続けますか？',
@@ -1523,6 +1531,8 @@
     settings_notify_monthly: '매월',
     settings_pwa_feature_note: 'iPhone에서는 HTTPS로 홈 화면에 추가하여 진동 및 알림 기능을 사용하세요.',
     settings_sound_rest_label: '휴식 종료 알람',
+    settings_vibrate_rest_label: '휴식 종료 시 진동',
+    settings_keep_awake_label: '운동 중 화면 켜짐 유지',
     settings_countdown_label: '3초 카운트다운', settings_auto_next_label: '다음 세트 자동 진행',
     settings_import_data: '데이터 백업 가져오기',
     settings_import_confirm: '백업을 가져오면 사용자의 현재 데이터가 교체됩니다. 계속하시겠습니까?',
@@ -1736,6 +1746,8 @@
     settings_notify_monthly: 'Monatlich',
     settings_pwa_feature_note: 'Auf iPhone: App über HTTPS zum Startbildschirm hinzufügen, um Vibration und Benachrichtigungen zu nutzen.',
     settings_sound_rest_label: 'Pausenende-Alarm',
+    settings_vibrate_rest_label: 'Vibration bei Pausenende',
+    settings_keep_awake_label: 'Bildschirm beim Training eingeschaltet lassen',
     settings_countdown_label: '3s Countdown', settings_auto_next_label: 'Automatisch nächsten Satz',
     settings_import_data: 'Datensicherung importieren',
     settings_import_confirm: 'Backup importieren ersetzt alle Daten des Benutzers. Fortfahren?',
@@ -1949,6 +1961,8 @@
     settings_notify_monthly: 'Mensuel',
     settings_pwa_feature_note: 'Sur iPhone, installez via Ajouter à l\'écran d\'accueil avec HTTPS pour utiliser la vibration et les notifications.',
     settings_sound_rest_label: 'Alarme fin de repos',
+    settings_vibrate_rest_label: 'Vibration fin de repos',
+    settings_keep_awake_label: 'Garder l''écran allumé pendant l''entraînement',
     settings_countdown_label: 'Compte à rebours 3s', settings_auto_next_label: 'Avancement auto vers la série suivante',
     settings_import_data: 'Importer sauvegarde données',
     settings_import_confirm: 'Importer la sauvegarde remplacera toutes les données de l\'utilisateur. Continuer ?',
@@ -2162,6 +2176,8 @@
     settings_notify_monthly: 'Ежемесячно',
     settings_pwa_feature_note: 'На iPhone установите через Добавить на экран домой с HTTPS для вибрации и уведомлений.',
     settings_sound_rest_label: 'Сигнал окончания отдыха',
+    settings_vibrate_rest_label: 'Вибрация при окончании отдыха',
+    settings_keep_awake_label: 'Не выключать экран во время тренировки',
     settings_countdown_label: 'Обратный отсчёт 3с', settings_auto_next_label: 'Авто переход к следующему подходу',
     settings_import_data: 'Импортировать резервную копию',
     settings_import_confirm: 'Импорт заменит все данные пользователя. Продолжить?',
@@ -2214,6 +2230,8 @@ export function createT(locale) {
     return val;
   };
 }
+
+
 
 
 
