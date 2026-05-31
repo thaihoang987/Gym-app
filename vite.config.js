@@ -8,7 +8,14 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['exceljs', '@simplewebauthn/server', 'better-sqlite3', 'express', 'cors']
+      external: ['exceljs', '@simplewebauthn/server', 'better-sqlite3', 'express', 'cors'],
+      onwarn(warning, warn) {
+        // Suppress Node.js built-in externalization warnings
+        if (warning.code === 'UNRESOLVED_IMPORT') return;
+        if (warning.message?.includes('Use of eval')) return;
+        if (warning.message?.includes('externalize')) return;
+        warn(warning);
+      }
     }
   },
   plugins: [
