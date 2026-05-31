@@ -4,11 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['exceljs']
+    exclude: ['exceljs', '@simplewebauthn/server', 'better-sqlite3', 'express', 'cors']
   },
   build: {
     rollupOptions: {
-      external: []
+      external: ['exceljs', '@simplewebauthn/server', 'better-sqlite3', 'express', 'cors']
     }
   },
   plugins: [
