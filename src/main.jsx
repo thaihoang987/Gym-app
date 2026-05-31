@@ -2398,9 +2398,29 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
 
   return (
     <section className="space-y-4 text-black">
-      <div className="flex items-center justify-between">
-        <button className="ghost-btn" onClick={view === 'exercise' ? () => setView('list') : exitWorkout}>{view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}</button>
-        <span className="text-sm text-slate-600">{index + 1}/{data.exercises.length}</span>
+      <div className="flex items-center gap-2">
+        <button className="ghost-btn" onClick={view === 'exercise' ? () => setView('list') : exitWorkout}>
+          {view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}
+        </button>
+        {view === 'exercise' && (
+          <>
+            <button
+              className="ghost-btn px-3 py-3 text-lg font-bold"
+              disabled={index === 0}
+              onClick={() => openExercise(index - 1)}
+              style={{opacity: index === 0 ? 0.3 : 1}}
+            >‹</button>
+            <span className="text-sm font-bold text-slate-600 min-w-[2.5rem] text-center whitespace-nowrap">
+              {index + 1}/{data.exercises.length}
+            </span>
+            <button
+              className="ghost-btn px-3 py-3 text-lg font-bold"
+              disabled={index >= data.exercises.length - 1}
+              onClick={() => openExercise(index + 1)}
+              style={{opacity: index >= data.exercises.length - 1 ? 0.3 : 1}}
+            >›</button>
+          </>
+        )}
       </div>
 
       {view === 'list' && (
@@ -2539,10 +2559,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             <textarea className="input min-h-24" value={note} onChange={(e) => saveNote(e.target.value)} placeholder={t('workout_note_placeholder')} />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button className="ghost-btn" disabled={index === 0} onClick={() => openExercise(index - 1)}>{t('workout_prev_btn')}</button>
-            <button className="ghost-btn" disabled={index >= data.exercises.length - 1} onClick={() => openExercise(index + 1)}>{t('workout_next_btn')}</button>
-          </div>
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       )}
