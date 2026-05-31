@@ -651,6 +651,7 @@ app.patch('/api/settings', (req, res) => {
     notifyRecovery: 'notify_recovery',
     notifyMissedWorkout: 'notify_missed_workout',
     privacyPinLock: 'privacy_pin_lock',
+    privacyFaceId: 'privacy_face_id',
     privacyHideProgressPhotos: 'privacy_hide_progress_photos'
   };
   for (const [bodyKey, column] of Object.entries(booleanMap)) {
@@ -1114,10 +1115,39 @@ app.post('/api/sessions', (req, res) => {
   cleanupStaleActiveSessions(userId);
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const scheduleMode = ['FREE', 'FIXED', 'ROLLING'].includes(req.body.scheduleMode) ? req.body.scheduleMode : settings.schedule_mode;
+  const routineId = req.body.routineId ? Number(req.body.routineId) : null;
+  const groupId = req.body.groupId ? Number(req.body.groupId) : null;
+  const existing = routineId
+    ? one(`
+        SELECT id
+        FROM workout_sessions
+        WHERE user_id = ?
+          AND status = 'ACTIVE'
+          AND routine_id = ?
+          AND date(started_at, 'localtime') = date('now', 'localtime')
+        ORDER BY started_at DESC
+        LIMIT 1
+      `, [userId, routineId])
+    : groupId
+      ? one(`
+          SELECT id
+          FROM workout_sessions
+          WHERE user_id = ?
+            AND status = 'ACTIVE'
+            AND group_id = ?
+            AND date(started_at, 'localtime') = date('now', 'localtime')
+          ORDER BY started_at DESC
+          LIMIT 1
+        `, [userId, groupId])
+      : null;
+  if (existing) {
+    res.json({ id: existing.id, reused: true });
+    return;
+  }
   const result = db.prepare(`
     INSERT INTO workout_sessions (user_id, routine_id, group_id, schedule_mode)
     VALUES (?, ?, ?, ?)
-  `).run(userId, req.body.routineId || null, req.body.groupId || null, scheduleMode);
+  `).run(userId, routineId, groupId, scheduleMode);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
@@ -1151,11 +1181,12 @@ app.get('/api/sessions/:id', (req, res) => {
   const session = one('SELECT * FROM workout_sessions WHERE id = ? AND user_id = ?', [Number(req.params.id), userId]);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const routine = session.routine_id ? getRoutine(session.routine_id, userId) : null;
-  const group = session.group_id ? { exercises: getGroupExercises(session.group_id) } : null;
+  const groupRow = session.group_id ? one('SELECT id, name FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId]) : null;
+  const group = groupRow ? { id: groupRow.id, name: groupRow.name, exercises: getGroupExercises(session.group_id) } : null;
   const counts = all('SELECT exercise_id, COUNT(*) AS completed_sets FROM workout_logs WHERE session_id = ? AND user_id = ? GROUP BY exercise_id', [session.id, userId]);
   const countByExercise = new Map(counts.map((row) => [row.exercise_id, row.completed_sets]));
   const exercises = (routine?.exercises || group?.exercises || []).map((exercise) => ({ ...exercise, completedSets: countByExercise.get(exercise.id) || 0 }));
-  res.json({ session, routine, exercises });
+  res.json({ session, routine, group, exercises });
 });
 
 app.get('/api/sessions/:id/detail', (req, res) => {

@@ -97,15 +97,15 @@ const timezoneOptions = [
 ];
 const localeOptions = [
   ['en-US', 'English'],
-  ['vi-VN', 'Tiếng Việt (Vietnamese)'],
-  ['zh-CN', '简体中文 (Chinese Simplified)'],
-  ['es-ES', 'Español (Spanish)'],
-  ['pt-BR', 'Português Brasil (Portuguese)'],
-  ['ja-JP', '日本語 (Japanese)'],
-  ['ko-KR', '한국어 (Korean)'],
-  ['de-DE', 'Deutsch (German)'],
-  ['fr-FR', 'Français (French)'],
-  ['ru-RU', 'Русский (Russian)'],
+  ['vi-VN', 'Tiếng Việt'],
+  ['zh-CN', '简体中文'],
+  ['es-ES', 'Español'],
+  ['pt-BR', 'Português (Brasil)'],
+  ['ja-JP', '日本語'],
+  ['ko-KR', '한국어'],
+  ['de-DE', 'Deutsch'],
+  ['fr-FR', 'Français'],
+  ['ru-RU', 'Русский'],
 ];
 const rangeOptionsDays = { '3d': 3, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825, 'all': null };
 const getRangeOptions = (t) => [
@@ -423,19 +423,30 @@ function App() {
       return;
     }
     const saved = JSON.parse(localStorage.getItem(`familyGymWorkout:${user.id}`) || 'null');
-    if (saved?.sessionId && saved.view === 'exercise') {
-      const active = await api(`/api/sessions/active?userId=${user.id}`);
-      const savedStillActive = (active?.sessions || []).some((item) => item.session.id === saved.sessionId);
+    const active = await api(`/api/sessions/active?userId=${user.id}`);
+    const activeSessions = active?.sessions || (active?.session ? [active] : []);
+    if (saved?.sessionId) {
+      const savedStillActive = activeSessions.some((item) => item.session.id === saved.sessionId);
       if (savedStillActive) {
         setTab('start');
         setWorkout({
           sessionId: saved.sessionId,
           initialIndex: saved.index || 0,
-          initialView: 'exercise',
+          initialView: saved.view || 'list',
           returnTab: 'start'
         });
         return;
       }
+    }
+    if (activeSessions.length === 1) {
+      setTab('start');
+      setWorkout({
+        sessionId: activeSessions[0].session.id,
+        initialIndex: 0,
+        initialView: 'list',
+        returnTab: 'start'
+      });
+      return;
     }
     setWorkout(null);
     setTab('start');
@@ -495,6 +506,25 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
+  const [biometricStatus, setBiometricStatus] = useState('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkBiometric = async () => {
+      if (!window.isSecureContext || !window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+        if (!cancelled) setBiometricStatus('unavailable');
+        return;
+      }
+      try {
+        const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!cancelled) setBiometricStatus(available ? 'available' : 'unavailable');
+      } catch {
+        if (!cancelled) setBiometricStatus('unavailable');
+      }
+    };
+    checkBiometric();
+    return () => { cancelled = true; };
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -534,6 +564,24 @@ function Login({ onLogin }) {
           />
           <span>{t('login_remember')}</span>
         </label>
+        <div className="biometric-login-card">
+          <div className="face-scan-art" aria-hidden="true">
+            <span className="face-scan-corner top-left" />
+            <span className="face-scan-corner top-right" />
+            <span className="face-scan-corner bottom-left" />
+            <span className="face-scan-corner bottom-right" />
+            <UserRound size={34} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <strong>{t('login_face_title')}</strong>
+              <span className={`biometric-status ${biometricStatus === 'available' ? 'ok' : ''}`}>
+                {biometricStatus === 'checking' ? t('login_face_checking') : biometricStatus === 'available' ? t('login_face_available') : t('login_face_unavailable')}
+              </span>
+            </div>
+            <p>{t('login_face_note')}</p>
+          </div>
+        </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <button className="primary mt-5">{t('login_btn')}</button>
         <p className="mt-4 text-xs text-teal-950">{t('login_hint')}</p>
@@ -546,11 +594,30 @@ function Header({ user, boot, onLogout }) {
   const t = useLang();
   const [now, setNow] = useState(new Date());
   const [open, setOpen] = useState(false);
+  const [serverOnline, setServerOnline] = useState(true);
   const menuRef = React.useRef(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkServer = async () => {
+      try {
+        await api('/api/health');
+        if (!cancelled) setServerOnline(true);
+      } catch {
+        if (!cancelled) setServerOnline(false);
+      }
+    };
+    checkServer();
+    const id = setInterval(checkServer, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   useEffect(() => {
@@ -573,7 +640,17 @@ function Header({ user, boot, onLogout }) {
     <header className="mb-5 flex items-center justify-between">
       <div>
         <p className="text-sm text-teal-950">{formatDateTime(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
-        <h1 className="text-2xl font-bold">{user.name}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold">{user.name}</h1>
+          <span
+            className={`server-dot ${serverOnline ? 'online' : 'offline'}`}
+            title={serverOnline ? 'Đang kết nối server' : 'Mất kết nối server'}
+            aria-label={serverOnline ? 'Đang kết nối server' : 'Mất kết nối server'}
+          />
+          <span className={`server-status-text ${serverOnline ? 'online' : 'offline'}`}>
+            {serverOnline ? 'Connect' : 'Disconnect'}
+          </span>
+        </div>
         <p className="text-sm text-teal-950">{getModeLabels(t)[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
       </div>
       <div className="relative" ref={menuRef}>
@@ -749,8 +826,8 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                         className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
                         onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
                       >
-                        {exerciseMediaUrl(exercise)
-                          ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" />
+                        {exerciseAutoMediaUrl(exercise)
+                          ? <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" />
                           : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-900' : 'text-orange-900'}`}>{exercise.name}</p>
@@ -804,13 +881,13 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
           return (
             <button key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 text-left" onClick={() => onStart(item)}>
               <div className="flex items-center gap-3">
-                <img src={thumbs[0]?.imageUrl} className="h-14 w-14 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
+                <img src={exerciseAutoMediaUrl(thumbs[0])} className="h-14 w-14 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-950">{item.name}</p>
                   <p className="text-sm text-teal-950">{t('exercises', item.exercises.length)}</p>
                 </div>
                 <div className="flex -space-x-2">
-                  {thumbs.map((exercise) => <img key={exercise.id} src={exercise.imageUrl} className="h-9 w-9 rounded-full border-2 border-white bg-slate-50 object-contain" />)}
+                  {thumbs.map((exercise) => <img key={exercise.id} src={exerciseAutoMediaUrl(exercise)} className="h-9 w-9 rounded-full border-2 border-white bg-slate-50 object-contain" />)}
                 </div>
               </div>
             </button>
@@ -834,8 +911,8 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
     api(`/api/sessions/active?userId=${userId}`).then((payload) => setActiveSessions(payload?.sessions || (payload?.session ? [payload] : [])));
   }, [userId, refresh]);
 
-  const startRoutine = async (routine) => {
-    const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, routineId: routine.id, scheduleMode: 'FREE' }) });
+  const startRoutine = async (routine, scheduleMode = 'FREE') => {
+    const session = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ userId, routineId: routine.id, scheduleMode }) });
     onStart({ sessionId: session.id });
   };
   const startGroup = async (group) => {
@@ -858,8 +935,10 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   return (
     <section className="space-y-5">
       <div className="panel-green">
-        <h1 className="text-2xl font-black">{activeSessions.length ? t('start_continue') : t('start_begin')}</h1>
-        <p className="mt-2 text-sm text-emerald-100">{activeSessions.length ? t('start_active', activeSessions.length) : t('start_no_active')}</p>
+        <h1 className="text-2xl font-black">{t('start_continue')}</h1>
+        <p className="mt-2 text-sm text-emerald-100">
+          {activeSessions.length ? t('start_active', activeSessions.length) : t('start_no_active')}
+        </p>
       </div>
       {activeSessions.length ? (
         <div className="grid gap-3">
@@ -867,6 +946,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
             const title = active.routine?.name || active.group?.name || t('session_free_label');
             const doneCount = active.exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
             const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+            const exerciseGroups = workoutExerciseGroups(active);
             return (
               <article key={active.session.id} className="workout-card">
                 <div className="flex items-start justify-between gap-3">
@@ -877,27 +957,38 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 grid gap-2">
-                  {active.exercises.map((exercise, exerciseIndex) => (
-                    <button
-                      key={`${active.session.id}-${exercise.id}-${exerciseIndex}`}
-                      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
-                      onClick={() => onStart({ sessionId: active.session.id, initialIndex: exerciseIndex, initialView: 'exercise' })}
-                    >
-                      {exerciseMediaUrl(exercise) ? <img src={exerciseMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
-                      <div className="min-w-0 flex-1">
-                        <p className="break-words font-bold leading-snug">{exercise.name}</p>
-                        <p className={`mt-0.5 text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
-                          {exercise.completedSets ? t('exercise_set_done', exercise.completedSets) : t('exercise_not_done')} · {exercise.groupName || exercise.target}
-                        </p>
+                <div className="mt-4 space-y-4">
+                  {exerciseGroups.map((group) => (
+                    <div key={`${active.session.id}-${group.id}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="font-black text-slate-950">{group.name}</h3>
+                        <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', group.exercises.length)}</span>
                       </div>
-                      <span className={`shrink-0 rounded px-2 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
-                        {exercise.completedSets ? t('continue_exercise') : t('start_exercise')}
-                      </span>
-                    </button>
+                      <div className="grid gap-2">
+                        {group.exercises.map((exercise) => (
+                          <button
+                            key={`${active.session.id}-${group.id}-${exercise.id}-${exercise.workoutIndex}`}
+                            className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
+                            onClick={() => onStart({ sessionId: active.session.id, initialIndex: exercise.workoutIndex, initialView: 'exercise' })}
+                          >
+                            {exerciseAutoMediaUrl(exercise) ? <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words font-bold leading-snug">{exercise.name}</p>
+                              <p className={`mt-0.5 text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
+                                {exercise.completedSets ? t('exercise_set_done', exercise.completedSets) : t('exercise_not_done')} · {exercise.target}
+                              </p>
+                            </div>
+                            <span className={`shrink-0 rounded px-2 py-1 text-xs font-black ${exercise.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                              {exercise.completedSets ? t('continue_exercise') : t('start_exercise')}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
+                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                  <button className="primary-green" onClick={() => onStart({ sessionId: active.session.id, initialIndex: 0, initialView: 'list' })}>{t('start_continue')}</button>
                   <button className="primary" onClick={() => completeActiveSession(active)}>{t('end_session')}</button>
                   <button className="danger-btn" onClick={() => deleteActiveSession(active)}>{t('delete_session')}</button>
                 </div>
@@ -906,7 +997,10 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
           })}
         </div>
       ) : (
-        <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
+        <div className="workout-card py-10 text-center">
+          <h2 className="text-xl font-black text-slate-950">{t('start_no_active')}</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm font-semibold text-slate-500">{t('start_continue')}</p>
+        </div>
       )}
     </section>
   );
@@ -977,7 +1071,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
       dayHistory,
       routine,
       title: done ? (mainDone?.routine_name || mainDone?.group_name || t('session_free')) : routine?.name || t('no_session'),
-      imageUrl: done ? mainDone?.imageUrl : routine?.exercises?.[0]?.imageUrl,
+      imageUrl: done ? (mainDone?.gifUrl || mainDone?.imageUrl) : exerciseAutoMediaUrl(routine?.exercises?.[0]),
       content: done
         ? `${t('sets_min', mainDone?.sets || 0, mainDone?.duration_minutes || 0)}${dayHistory.length > 1 ? ` · ${t('more_sessions', dayHistory.length - 1)}` : ''}`
         : routine ? `${routine.groups?.length || 0} Group · ${routine.exercises?.length || 0} ${t('bài')}` : t('go_schedule')
@@ -1276,6 +1370,43 @@ function exerciseMediaUrl(exercise) {
   return exercise?.imageUrl || exercise?.gifUrl || '';
 }
 
+function exerciseAutoMediaUrl(exercise) {
+  if (exercise?.displayMedia === 'icon') return '';
+  if (exercise?.displayMedia === 'image') return exercise?.imageUrl || '';
+  return exercise?.gifUrl || exercise?.imageUrl || '';
+}
+
+function workoutExerciseGroups(sessionData) {
+  const flat = sessionData?.exercises || [];
+  const used = new Set();
+  const takeFlatExercise = (exercise, groupName) => {
+    let index = flat.findIndex((item, itemIndex) => !used.has(itemIndex) && item.id === exercise.id && (!groupName || item.groupName === groupName));
+    if (index < 0) index = flat.findIndex((item, itemIndex) => !used.has(itemIndex) && item.id === exercise.id);
+    if (index < 0) index = flat.findIndex((item) => item.id === exercise.id);
+    const source = index >= 0 ? flat[index] : exercise;
+    if (index >= 0) used.add(index);
+    return { ...exercise, ...source, workoutIndex: index >= 0 ? index : 0 };
+  };
+
+  if (sessionData?.routine?.groups?.length) {
+    return sessionData.routine.groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      exercises: (group.exercises || []).map((exercise) => takeFlatExercise(exercise, group.name))
+    })).filter((group) => group.exercises.length);
+  }
+
+  if (sessionData?.group?.exercises?.length) {
+    return [{
+      id: sessionData.group.id || 'group',
+      name: sessionData.group.name || 'Group Bài tập',
+      exercises: sessionData.group.exercises.map((exercise) => takeFlatExercise(exercise, sessionData.group.name))
+    }];
+  }
+
+  return [{ id: 'all', name: 'Bài tập', exercises: flat.map((exercise, index) => ({ ...exercise, workoutIndex: index })) }];
+}
+
 function SessionDetail({ detail, settings }) {
   const t = useLang();
   if (!detail) return <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-600">{t('detail_loading')}</div>;
@@ -1302,7 +1433,7 @@ function SessionDetail({ detail, settings }) {
           return (
             <div key={exercise.id} className="rounded-md bg-slate-50 p-2">
               <div className="flex gap-2">
-                <img src={exercise.imageUrl} className="h-12 w-12 rounded bg-white object-contain" />
+                <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{exercise.name}</p>
                   <p className="text-xs text-slate-600">{exercise.sets.length} set · max {exercise.maxWeight} kg · volume {Math.round(exercise.volume)}</p>
@@ -1458,6 +1589,7 @@ function ExerciseLibrary({ userId, settings }) {
           <Chip active={!target} onClick={() => setTarget('')}>{t('lib_all')}</Chip>
           {meta.targets.slice(0, 18).map((value) => <Chip key={value} active={target === value} onClick={() => setTarget(value)}>{value}</Chip>)}
         </div>
+        <p className="library-play-hint">Bấm vào hình bài tập để chạy GIF.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {visibleItems.map((exercise) => {
@@ -1473,11 +1605,8 @@ function ExerciseLibrary({ userId, settings }) {
           >
             <div className="flex gap-3">
               {exercise.imageUrl || exercise.gifUrl ? (
-                <img
-                  src={isPlayingGif && exercise.displayMedia !== 'image' ? exercise.gifUrl || exerciseMediaUrl(exercise) : exerciseMediaUrl(exercise)}
-                  alt={exercise.name}
-                  className="h-24 w-24 rounded-md bg-white object-contain"
-                  loading={isPlayingGif ? 'eager' : 'lazy'}
+                <div
+                  className="library-media-thumb"
                   onPointerEnter={() => playSmallGif(exercise)}
                   onPointerDown={(event) => {
                     event.stopPropagation();
@@ -1487,7 +1616,13 @@ function ExerciseLibrary({ userId, settings }) {
                     event.stopPropagation();
                     pinSmallGif(exercise);
                   }}
-                />
+                >
+                  <img
+                    src={isPlayingGif && exercise.displayMedia !== 'image' ? exercise.gifUrl || exerciseMediaUrl(exercise) : exerciseMediaUrl(exercise)}
+                    alt={exercise.name}
+                    loading={isPlayingGif ? 'eager' : 'lazy'}
+                  />
+                </div>
               ) : (
                 <div className="grid h-24 w-24 place-items-center rounded-md bg-white text-4xl ring-1 ring-slate-200">{exercise.customIcon || '🏋️'}</div>
               )}
@@ -1706,7 +1841,7 @@ function SortableExerciseRow({ exercise, onRemove }) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
-      <img src={exercise.imageUrl} className="h-14 w-14 rounded bg-white object-contain" />
+      <img src={exerciseAutoMediaUrl(exercise)} className="h-14 w-14 rounded bg-white object-contain" />
       <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
       <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> {t('delete')}</button>
     </div>
@@ -1918,7 +2053,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
               <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', group.exercises.length)})</small></span>
               <div className="flex -space-x-2">
                 {group.exercises.slice(0, 4).map((exercise) => (
-                  <img key={exercise.id} src={exercise.imageUrl} title={exercise.name} className="h-8 w-8 rounded-full border-2 border-white bg-white object-contain" />
+                  <img key={exercise.id} src={exerciseAutoMediaUrl(exercise)} title={exercise.name} className="h-8 w-8 rounded-full border-2 border-white bg-white object-contain" />
                 ))}
               </div>
             </label>
@@ -1936,7 +2071,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
             return (
               <article key={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start gap-3">
-                  <img src={routine.exercises[0]?.imageUrl} className="h-12 w-12 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
+                  <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold">{routine.name}</h3>
                     <p className="text-sm text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
@@ -2003,7 +2138,7 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
         {routines.map((routine) => (
           <article key={`${mode}-${routine.id}`} className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex flex-wrap items-center gap-3">
-              <img src={routine.exercises[0]?.imageUrl} className="h-11 w-11 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
+              <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-11 w-11 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold">{routine.name}</h3>
                 <p className="text-xs text-slate-500">{t('builder_exercises_count', routine.exercises.length)} · {routine.groups.map((g) => g.name).join(' + ')}</p>
@@ -2192,6 +2327,28 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setTargetSets(nextCount);
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets: nextCount }) });
   };
+  const refreshExerciseSets = async () => {
+    const payload = await api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`);
+    const target = payload.targetSets || targetSets || settings?.default_sets || 3;
+    setPreviousSets(payload.previous || []);
+    setNote(payload.note || '');
+    setTargetSets(target);
+    setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
+    setDefaultWeightKg(payload.defaultWeightKg ?? null);
+    setWeightMode(payload.weightMode || 'KG');
+    setManualWeight(payload.manualWeightKg == null ? '' : displayWeight(payload.manualWeightKg, defaultWeightUnit));
+    const current = payload.current || [];
+    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
+    const total = Math.max(target, doneSets.length || 1);
+    const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => buildDraftSet(doneSets.length + offset + 1));
+    setSets([...doneSets, ...drafts]);
+    setData((currentData) => currentData ? {
+      ...currentData,
+      exercises: currentData.exercises.map((item) => (
+        item.id === exercise.id ? { ...item, completedSets: doneSets.length } : item
+      ))
+    } : currentData);
+  };
   const addSet = async () => {
     const lastSet = sets[sets.length - 1] || { weightKg: 20, reps: 8 };
     const nextCount = sets.length + 1;
@@ -2214,15 +2371,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (!lastDone || lastDone.setIndex !== set.setIndex) return;
       if (!set.id) return;
       await api(`/api/logs/${set.id}`, { method: 'DELETE' });
-      setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: undefined, done: false } : item));
-      setData((current) => current ? {
-        ...current,
-        exercises: current.exercises.map((item) => (
-          item.id === exercise.id
-            ? { ...item, completedSets: Math.max(0, Number(item.completedSets || 0) - 1) }
-            : item
-        ))
-      } : current);
+      await refreshExerciseSets();
       return;
     }
     // Tick: bắt buộc theo thứ tự
@@ -2282,6 +2431,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     onClose();
   };
+  const exerciseGroups = workoutExerciseGroups(data);
 
   return (
     <section className="space-y-4 text-black">
@@ -2301,29 +2451,41 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
 
       {view === 'list' ? (
         <div className="workout-card space-y-3">
-          <h1 className="text-2xl font-black">{data.routine?.name || t('workout_session_title')}</h1>
+          <h1 className="text-2xl font-black">{data.routine?.name || data.group?.name || t('workout_session_title')}</h1>
           <p className="text-sm text-slate-500">{t('workout_list_hint')}</p>
-          {data.exercises.map((item, itemIndex) => (
-            <button key={`${item.id}-${itemIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(itemIndex)}>
-              {exerciseMediaUrl(item) ? <img src={exerciseMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
-              <div className="min-w-0 flex-1">
-                <p className="font-bold">{item.name}</p>
-                <p className={`text-sm font-semibold ${item.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
-                  {item.completedSets ? t('workout_set_done', item.completedSets) : t('workout_not_done')} · {item.groupName || item.target} · {item.equipment}
-                </p>
+          <div className="space-y-4">
+            {exerciseGroups.map((group) => (
+              <div key={group.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="font-black text-slate-950">{group.name}</h2>
+                  <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', group.exercises.length)}</span>
+                </div>
+                <div className="grid gap-2">
+                  {group.exercises.map((item) => (
+                    <button key={`${group.id}-${item.id}-${item.workoutIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(item.workoutIndex)}>
+                      {exerciseAutoMediaUrl(item) ? <img src={exerciseAutoMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold">{item.name}</p>
+                        <p className={`text-sm font-semibold ${item.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
+                          {item.completedSets ? t('workout_set_done', item.completedSets) : t('workout_not_done')} · {item.target} · {item.equipment}
+                        </p>
+                      </div>
+                      <span className={`rounded px-3 py-1 text-xs font-black ${item.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
+                        {item.completedSets ? t('workout_continue_btn') : t('workout_start_btn')}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <span className={`rounded px-3 py-1 text-xs font-black ${item.completedSets ? 'bg-emerald-600 text-white' : 'bg-[#f05a28] text-white'}`}>
-                {item.completedSets ? t('workout_continue_btn') : t('workout_start_btn')}
-              </span>
-            </button>
-          ))}
+            ))}
+          </div>
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       ) : (
         <div className="workout-card space-y-4">
           <div className="overflow-hidden rounded-xl bg-slate-50">
-            {exerciseMediaUrl(exercise) ? (
-              <img src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exercise.gifUrl || exerciseMediaUrl(exercise)} alt={exercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]" />
+            {exerciseAutoMediaUrl(exercise) ? (
+              <img src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exerciseAutoMediaUrl(exercise)} alt={exercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]" />
             ) : (
               <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
             )}
@@ -2394,7 +2556,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                     >
                       {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
                     </button>
-                    <button className="tiny-btn" disabled={set.done || sets.length <= 1} onClick={() => removeDraftSet(set.setIndex)}><Trash2 size={15} /></button>
+                    <button
+                      className="tiny-btn"
+                      disabled={set.done || sets.length <= 1}
+                      style={set.done ? { opacity: 0.22, cursor: 'not-allowed', filter: 'grayscale(1)' } : undefined}
+                      onClick={() => removeDraftSet(set.setIndex)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 );
               })}
@@ -2841,7 +3010,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
   return (
     <div className="exercise-picker">
       <button type="button" className="exercise-picker-button" onClick={() => { setOpen((v) => !v); setSearch(''); }}>
-        {exerciseMediaUrl(selected) && <img src={exerciseMediaUrl(selected)} alt="" />}
+        {exerciseAutoMediaUrl(selected) && <img src={exerciseAutoMediaUrl(selected)} alt="" />}
         <span>{selected?.name || t('analytics_select_exercise')}</span>
       </button>
       {open && (
@@ -2864,7 +3033,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
                 setSearch('');
               }}
             >
-              {exerciseMediaUrl(exercise) && <img src={exerciseMediaUrl(exercise)} alt="" />}
+              {exerciseAutoMediaUrl(exercise) && <img src={exerciseAutoMediaUrl(exercise)} alt="" />}
               <span>{exercise.name}</span>
             </button>
           ))}
@@ -2899,8 +3068,11 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [defaultReps, setDefaultReps] = useState(settings.default_reps || 12);
   const [progressiveOverload, setProgressiveOverload] = useState(Boolean(settings.progressive_overload));
   const [soundRestDone, setSoundRestDone] = useState(Boolean(settings.sound_rest_done));
+  const [vibrateRestDone, setVibrateRestDone] = useState(Boolean(settings.vibrate_rest_done));
   const [countdown3s, setCountdown3s] = useState(Boolean(settings.countdown_3s));
   const [autoNextSet, setAutoNextSet] = useState(Boolean(settings.auto_next_set));
+  const [notifyWorkout, setNotifyWorkout] = useState(Boolean(settings.notify_workout));
+  const [privacyFaceId, setPrivacyFaceId] = useState(Boolean(settings.privacy_face_id));
   const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
@@ -2943,8 +3115,11 @@ function SettingsPage({ userId, boot, onChanged }) {
         defaultReps,
         progressiveOverload,
         soundRestDone,
+        vibrateRestDone,
         countdown3s,
-        autoNextSet
+        autoNextSet,
+        notifyWorkout,
+        privacyFaceId
       })
     });
     localStorage.setItem('familyGymUser', JSON.stringify(updated));
@@ -3020,8 +3195,28 @@ function SettingsPage({ userId, boot, onChanged }) {
       <SettingsGroup title={t('settings_timer_section')}>
         <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{t('settings_timer_note')}</p>
         <SwitchSetting label={t('settings_sound_rest_label')} checked={soundRestDone} onChange={setSoundRestDone} />
+        <SwitchSetting label={t('settings_vibrate_rest_label')} checked={vibrateRestDone} onChange={setVibrateRestDone} />
         <SwitchSetting label={t('settings_countdown_label')} checked={countdown3s} onChange={setCountdown3s} />
         <SwitchSetting label={t('settings_auto_next_label')} checked={autoNextSet} onChange={setAutoNextSet} />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings_notifications_section')}>
+        <p className="mb-3 rounded-md bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{t('settings_pwa_feature_note')}</p>
+        <SwitchSetting
+          label={t('settings_notify_workout_label')}
+          checked={notifyWorkout}
+          onChange={async (value) => {
+            if (value && 'Notification' in window && Notification.permission === 'default') {
+              await Notification.requestPermission();
+            }
+            setNotifyWorkout(value);
+          }}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings_privacy_section')}>
+        <p className="mb-3 rounded-md bg-sky-50 p-3 text-sm font-semibold text-sky-900">{t('settings_face_id_note')}</p>
+        <SwitchSetting label={t('settings_face_id_label')} checked={privacyFaceId} onChange={setPrivacyFaceId} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_ui')}>

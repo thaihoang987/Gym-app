@@ -4,6 +4,11 @@
     nav_home: 'Home', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
     // login
     login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123',
+    login_face_title: 'Face verification',
+    login_face_checking: 'Checking',
+    login_face_available: 'Supported',
+    login_face_unavailable: 'Not ready',
+    login_face_note: 'Face ID/biometrics on web use Passkeys/WebAuthn. Use HTTPS and open the iPhone PWA from Home Screen; Android uses Chrome/Passkeys with fingerprint, face unlock, PIN, or pattern.',
     // header
     logout: 'Log out', exercises_count: (n) => `${n} exercises`,
     // loading
@@ -175,12 +180,19 @@
     settings_timer_note: 'Timer and sound work best when the app is on screen. iPhone/Android may restrict sound if the app is in background or silent mode.',
     settings_sound: 'Sound when rest done', settings_vibrate: 'Vibrate when rest done',
     settings_sound_rest_label: 'Rest done alarm',
+    settings_vibrate_rest_label: 'Phone vibration when rest ends',
     settings_countdown: '3-second countdown', settings_auto_next: 'Auto next set',
     settings_countdown_label: '3-second countdown', settings_auto_next_label: 'Auto advance to next set',
     settings_keep_awake: 'Keep screen awake',
-    settings_ui: '5. Interface', settings_language: 'Language', settings_timezone: 'Timezone', settings_clock: 'Clock format',
+    settings_notifications_section: '5. Notifications',
+    settings_notify_workout_label: 'Workout reminders',
+    settings_pwa_feature_note: 'On iPhone, install the app with Add to Home Screen and open it from the Home Screen over HTTPS to use vibration, notifications, and Face ID-related features.',
+    settings_privacy_section: '6. Privacy',
+    settings_face_id_label: 'Face recognition / Face ID',
+    settings_face_id_note: 'Face ID requires the iPhone PWA opened from the Home Screen and HTTPS. This setting is saved per user for the app lock flow.',
+    settings_ui: '7. Interface', settings_language: 'Language', settings_timezone: 'Timezone', settings_clock: 'Clock format',
     settings_theme: 'Theme', settings_theme_light: 'Light', settings_theme_dark: 'Dark',
-    settings_admin: '6. Admin', settings_users: 'Users',
+    settings_admin: '8. Admin', settings_users: 'Users',
     settings_add_user: 'Add user', settings_delete_user: 'Delete user',
     settings_export_excel: 'Export Excel', settings_export_json: 'Export JSON backup',
     settings_import: 'Import backup',
@@ -225,6 +237,11 @@
   'vi-VN': {
     nav_home: 'Home', nav_start: 'Tiếp tục tập', nav_library: 'Bài tập', nav_builder: 'Lịch tập', nav_analytics: 'Thống kê', nav_settings: 'Cài đặt',
     login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123',
+    login_face_title: 'Xác nhận gương mặt',
+    login_face_checking: 'Đang kiểm tra',
+    login_face_available: 'Có hỗ trợ',
+    login_face_unavailable: 'Chưa sẵn sàng',
+    login_face_note: 'Face ID/sinh trắc học trên web dùng Passkeys/WebAuthn. iPhone cần HTTPS và mở PWA từ Home Screen; Android dùng Chrome/Passkeys với vân tay, khuôn mặt, PIN hoặc hình mở khoá.',
     logout: 'Đăng xuất', exercises_count: (n) => `${n} bài tập`,
     loading: 'Đang tải...',
     mode_free: 'Tự do', mode_fixed: 'Cố định', mode_rolling: 'Cuốn chiếu',
@@ -371,12 +388,19 @@
     settings_timer_note: 'Timer và âm thanh chạy tốt nhất khi app đang mở trên màn hình. iPhone/Android có thể khống chế âm thanh nếu app chạy nền hoặc máy đang ở chế độ im lặng.',
     settings_sound: 'Âm thanh khi nghỉ xong', settings_vibrate: 'Rung khi nghỉ xong',
     settings_sound_rest_label: 'Âm báo hết giờ nghỉ',
+    settings_vibrate_rest_label: 'Rung điện thoại khi hết giờ nghỉ',
     settings_countdown: 'Đếm ngược 3 giây', settings_auto_next: 'Tự sang set tiếp',
     settings_countdown_label: 'Đếm ngược 3 giây', settings_auto_next_label: 'Tự chuyển sang set tiếp theo',
     settings_keep_awake: 'Giữ màn hình sáng',
-    settings_ui: '5. Giao diện', settings_language: 'Ngôn ngữ', settings_timezone: 'Múi giờ', settings_clock: 'Định dạng giờ',
+    settings_notifications_section: '5. Thông báo',
+    settings_notify_workout_label: 'Thông báo tập',
+    settings_pwa_feature_note: 'Trên iPhone phải dùng Add to Home Screen, mở app từ màn hình chính và chạy bằng HTTPS để dùng rung điện thoại, thông báo và các tính năng liên quan Face ID.',
+    settings_privacy_section: '6. Quyền riêng tư',
+    settings_face_id_label: 'Nhận diện khuôn mặt / Face ID',
+    settings_face_id_note: 'Face ID cần iPhone PWA mở từ màn hình chính và chạy HTTPS. Mục này được lưu theo từng user để dùng cho luồng khoá app.',
+    settings_ui: '7. Giao diện', settings_language: 'Ngôn ngữ', settings_timezone: 'Múi giờ', settings_clock: 'Định dạng giờ',
     settings_theme: 'Giao diện', settings_theme_light: 'Sáng', settings_theme_dark: 'Tối',
-    settings_admin: '6. Quản trị', settings_users: 'Người dùng',
+    settings_admin: '8. Quản trị', settings_users: 'Người dùng',
     settings_add_user: 'Thêm user', settings_delete_user: 'Xoá user',
     settings_export_excel: 'Xuất Excel', settings_export_json: 'Xuất backup JSON',
     settings_import: 'Nhập backup',
@@ -1957,8 +1981,10 @@ export function createT(locale) {
   const map = { en: 'en-US', vi: 'vi-VN', zh: 'zh-CN', es: 'es-ES', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', de: 'de-DE', fr: 'fr-FR', ru: 'ru-RU' };
   const key = map[lang] || 'vi-VN';
   const dict = translations[key] || translations['vi-VN'];
+  const fallbackDict = translations['vi-VN'];
+  const englishDict = translations['en-US'];
   return (k, ...args) => {
-    const val = dict[k];
+    const val = dict[k] ?? fallbackDict[k] ?? englishDict[k];
     if (val === undefined) return k;
     if (typeof val === 'function') return val(...args);
     return val;

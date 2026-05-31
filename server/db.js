@@ -100,6 +100,7 @@ export function migrate() {
       notify_recovery INTEGER NOT NULL DEFAULT 0,
       notify_missed_workout INTEGER NOT NULL DEFAULT 0,
       privacy_pin_lock INTEGER NOT NULL DEFAULT 0,
+      privacy_face_id INTEGER NOT NULL DEFAULT 0,
       privacy_hide_progress_photos INTEGER NOT NULL DEFAULT 0,
       height_cm REAL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -320,6 +321,7 @@ export function migrate() {
     ['notify_recovery', 'INTEGER NOT NULL DEFAULT 0'],
     ['notify_missed_workout', 'INTEGER NOT NULL DEFAULT 0'],
     ['privacy_pin_lock', 'INTEGER NOT NULL DEFAULT 0'],
+    ['privacy_face_id', 'INTEGER NOT NULL DEFAULT 0'],
     ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0']
   ];
   for (const [column, definition] of userSettingColumns) {
