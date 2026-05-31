@@ -2343,11 +2343,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setSets((old) => old.map((s) => s.setIndex === set.setIndex ? { ...s, done: false, id: undefined } : s));
       try {
         await api(`/api/logs/${set.id}?userId=${userId}`, { method: 'DELETE' });
-        await refreshExerciseSets();
-      } catch (err) {
-        // Revert nếu lỗi
-        await refreshExerciseSets();
+      } catch {
+        // DELETE thất bại — revert về trạng thái từ DB
+        await refreshExerciseSets().catch(() => {});
+        return;
       }
+      // DELETE thành công — đồng bộ lại từ DB
+      await refreshExerciseSets().catch(() => {});
       return;
     }
     // Tick: bắt buộc theo thứ tự
