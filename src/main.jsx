@@ -2339,8 +2339,15 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const lastDone = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0];
       if (!lastDone || lastDone.setIndex !== set.setIndex) return;
       if (!set.id) return;
-      await api(`/api/logs/${set.id}?userId=${userId}`, { method: 'DELETE' });
-      await refreshExerciseSets();
+      // Optimistic update trước
+      setSets((old) => old.map((s) => s.setIndex === set.setIndex ? { ...s, done: false, id: undefined } : s));
+      try {
+        await api(`/api/logs/${set.id}?userId=${userId}`, { method: 'DELETE' });
+        await refreshExerciseSets();
+      } catch (err) {
+        // Revert nếu lỗi
+        await refreshExerciseSets();
+      }
       return;
     }
     // Tick: bắt buộc theo thứ tự
