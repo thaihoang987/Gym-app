@@ -1768,6 +1768,7 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 }
 
 function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
+  const t = useLang();
   const rawSteps = (exercise.steps?.length
     ? exercise.steps
     : exercise.instructions
@@ -1785,7 +1786,7 @@ function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
 
   return (
     <details className={`mt-3 rounded-md border border-stone-200 bg-stone-50 ${compact ? 'p-2' : 'p-3'}`}>
-      <summary className="cursor-pointer text-sm font-bold text-slate-900">Instructions</summary>
+      <summary className="cursor-pointer text-sm font-bold text-slate-900">{t('lib_instructions_summary')}</summary>
       <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-slate-700">
         {steps.map((step, index) => <li key={`${exercise.id}-step-${index}`}>{step}</li>)}
       </ol>
@@ -2470,7 +2471,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
 
           <div className="set-table">
             <div className="set-table-header">
-              <span>Set</span><span>Previous</span><span>{weightMode === 'LB' ? 'Lb' : 'Kg'}</span><span>Reps</span><span /><span />
+              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{weightMode === 'LB' ? 'Lb' : 'Kg'}</span><span>{t('analytics_reps')}</span><span /><span />
             </div>
             <div className="space-y-2">
               {sets.map((set) => {
@@ -2926,7 +2927,7 @@ function Analytics({ userId, settings }) {
               <div className="mt-4">
                 <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>
                 {selectedExercise && rangeKey !== 'all' && (
-                  <button className="small-action mt-2" onClick={() => setRangeKey('all')}>Xem toàn bộ lịch sử</button>
+                  <button className="small-action mt-2" onClick={() => setRangeKey('all')}>{t('analytics_show_all')}</button>
                 )}
               </div>
             )}
@@ -3134,9 +3135,9 @@ function SettingsPage({ userId, boot, onChanged }) {
         <label className="label">{t('settings_name')}</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         <label className="label mt-3">{t('settings_password')}</label>
-        <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Để trống nếu không đổi" />
+        <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password_placeholder')} />
         <label className="label mt-3">{t('settings_password_again')}</label>
-        <input className="input" type="password" value={passwordAgain} onChange={(e) => setPasswordAgain(e.target.value)} placeholder="Nhập lại mật khẩu mới" />
+        <input className="input" type="password" value={passwordAgain} onChange={(e) => setPasswordAgain(e.target.value)} placeholder={t('settings_password_again')} />
         <label className="label mt-3">{t('settings_gender')}</label>
         <select className="input" value={gender} onChange={(event) => setGender(event.target.value)}>
           <option value="">-</option>
@@ -3153,7 +3154,7 @@ function SettingsPage({ userId, boot, onChanged }) {
             <input className="input" type="number" min="0" max="11" value={heightInches} onChange={(event) => setHeightInches(event.target.value)} placeholder="inch" />
           </div>
         ) : (
-          <input className="input" type="number" min="50" max="260" step="0.5" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder="Ví dụ: 170" />
+          <input className="input" type="number" min="50" max="260" step="0.5" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder={t('height_placeholder')} />
         )}
       </SettingsGroup>
 
