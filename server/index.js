@@ -9,6 +9,7 @@ import { db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, mig
 const app = express();
 const port = process.env.PORT || 3001;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.set('trust proxy', true);
 
 migrate();
 if (db.prepare('SELECT COUNT(*) AS total FROM exercises').get().total === 0) {
@@ -37,6 +38,11 @@ function assetUrl(value) {
   if (!value) return null;
   if (String(value).startsWith('/')) return value;
   return `/media/${value}`;
+}
+
+function publicUserWithSettings(userId) {
+  const user = one('SELECT * FROM users WHERE id = ?', [userId]);
+  return publicUser(user);
 }
 
 function requireBody(fields, body) {
@@ -637,6 +643,12 @@ app.patch('/api/settings', (req, res) => {
   if (req.body.defaultSets !== undefined) addUpdate('default_sets', Math.max(1, Math.min(20, Number(req.body.defaultSets || 3))));
   if (req.body.defaultReps !== undefined) addUpdate('default_reps', Math.max(1, Math.min(100, Number(req.body.defaultReps || 12))));
   if (req.body.restSeconds !== undefined) addUpdate('rest_seconds', Math.max(10, Math.min(600, Number(req.body.restSeconds || 60))));
+  if (req.body.notifyWorkoutTime !== undefined && /^\d{2}:\d{2}$/.test(req.body.notifyWorkoutTime)) addUpdate('notify_workout_time', req.body.notifyWorkoutTime);
+  if (req.body.notifyMissedWorkoutTime !== undefined && /^\d{2}:\d{2}$/.test(req.body.notifyMissedWorkoutTime)) addUpdate('notify_missed_workout_time', req.body.notifyMissedWorkoutTime);
+  if (req.body.notifyUnfinishedAfterMinutes !== undefined) addUpdate('notify_unfinished_after_minutes', Math.max(15, Math.min(720, Number(req.body.notifyUnfinishedAfterMinutes || 180))));
+  if (req.body.notifyWeighFrequency !== undefined && ['off', 'daily', 'weekly'].includes(req.body.notifyWeighFrequency)) addUpdate('notify_weigh_frequency', req.body.notifyWeighFrequency);
+  if (req.body.notifyWeighTime !== undefined && /^\d{2}:\d{2}$/.test(req.body.notifyWeighTime)) addUpdate('notify_weigh_time', req.body.notifyWeighTime);
+  if (req.body.notifyProgressPhotoFrequency !== undefined && ['off', 'weekly', 'monthly'].includes(req.body.notifyProgressPhotoFrequency)) addUpdate('notify_progress_photo_frequency', req.body.notifyProgressPhotoFrequency);
   const booleanMap = {
     progressiveOverload: 'progressive_overload',
     soundRestDone: 'sound_rest_done',

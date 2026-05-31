@@ -34,7 +34,6 @@ import {
   UserRound
 } from 'lucide-react';
 import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
-import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
@@ -507,8 +506,6 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
-  const [faceLoading, setFaceLoading] = useState(false);
-
   const submit = async (event) => {
     event.preventDefault();
     setError('');
@@ -521,26 +518,6 @@ function Login({ onLogin }) {
       onLogin(result.user);
     } catch (err) {
       setError(err.message);
-    }
-  };
-
-  const loginWithFaceId = async () => {
-    setError('');
-    setFaceLoading(true);
-    try {
-      if (!window.isSecureContext || !window.PublicKeyCredential) {
-        throw new Error(t('login_face_secure_error'));
-      }
-      const optionsJSON = await api('/api/webauthn/auth/options', { method: 'POST', body: JSON.stringify({}) });
-      const response = await startAuthentication({ optionsJSON });
-      const result = await api('/api/webauthn/auth/verify', { method: 'POST', body: JSON.stringify({ response }) });
-      localStorage.setItem('familyGymUser', JSON.stringify(result.user));
-      sessionStorage.removeItem('familyGymUser');
-      onLogin(result.user);
-    } catch (err) {
-      setError(err.message || t('login_face_failed'));
-    } finally {
-      setFaceLoading(false);
     }
   };
 
@@ -567,15 +544,6 @@ function Login({ onLogin }) {
           />
           <span>{t('login_remember')}</span>
         </label>
-        <button type="button" className="face-login-button" onClick={loginWithFaceId} disabled={faceLoading} aria-label={t('login_face_title')} title={t('login_face_title')}>
-          <div className="face-scan-art login-icon" aria-hidden="true">
-            <span className="face-scan-corner top-left" />
-            <span className="face-scan-corner top-right" />
-            <span className="face-scan-corner bottom-left" />
-            <span className="face-scan-corner bottom-right" />
-            <UserRound size={34} />
-          </div>
-        </button>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <button className="primary mt-5">{t('login_btn')}</button>
         <p className="mt-4 text-xs text-teal-950">{t('login_hint')}</p>
@@ -3074,7 +3042,6 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [notifyWeighFrequency, setNotifyWeighFrequency] = useState(settings.notify_weigh_frequency || 'off');
   const [notifyWeighTime, setNotifyWeighTime] = useState(settings.notify_weigh_time || '07:00');
   const [notifyProgressPhotoFrequency, setNotifyProgressPhotoFrequency] = useState(settings.notify_progress_photo_frequency || 'off');
-  const [privacyFaceId, setPrivacyFaceId] = useState(Boolean(settings.privacy_face_id));
   const [settingsError, setSettingsError] = useState('');
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
@@ -3130,8 +3097,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         notifyWeighFrequency,
         notifyWeighTime,
         notifyProgressPhoto: notifyProgressPhotoFrequency !== 'off',
-        notifyProgressPhotoFrequency,
-        privacyFaceId
+        notifyProgressPhotoFrequency
       })
     });
     localStorage.setItem('familyGymUser', JSON.stringify(updated));
@@ -3142,28 +3108,6 @@ function SettingsPage({ userId, boot, onChanged }) {
     const reader = new FileReader();
     reader.onload = () => setAvatarPreview(String(reader.result));
     reader.readAsDataURL(file);
-  };
-  const toggleFaceId = async (enabled) => {
-    setSettingsError('');
-    try {
-      if (!enabled) {
-        await api('/api/webauthn/credentials', { method: 'DELETE', body: JSON.stringify({ userId }) });
-        setPrivacyFaceId(false);
-        return;
-      }
-      if (!window.isSecureContext || !window.PublicKeyCredential) {
-        throw new Error(t('settings_face_id_secure_error'));
-      }
-      const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.();
-      if (!available) throw new Error(t('settings_face_id_unavailable'));
-      const optionsJSON = await api('/api/webauthn/register/options', { method: 'POST', body: JSON.stringify({ userId }) });
-      const response = await startRegistration({ optionsJSON });
-      await api('/api/webauthn/register/verify', { method: 'POST', body: JSON.stringify({ userId, response }) });
-      setPrivacyFaceId(true);
-    } catch (err) {
-      setPrivacyFaceId(false);
-      setSettingsError(err.message || t('settings_face_id_failed'));
-    }
   };
   const importBackup = async (file) => {
     if (!file) return;
@@ -3309,11 +3253,6 @@ function SettingsPage({ userId, boot, onChanged }) {
             </div>
           );
         })()}
-      </SettingsGroup>
-
-      <SettingsGroup title={t('settings_privacy_section')}>
-        <p className="mb-3 rounded-md bg-sky-50 p-3 text-sm font-semibold text-sky-900">{t('settings_face_id_note')}</p>
-        <SwitchSetting label={t('settings_face_id_label')} checked={privacyFaceId} onChange={toggleFaceId} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_ui')}>
