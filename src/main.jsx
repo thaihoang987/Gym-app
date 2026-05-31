@@ -2333,7 +2333,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const lastDone = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0];
       if (!lastDone || lastDone.setIndex !== set.setIndex) return;
       if (!set.id) return;
-      await api(`/api/logs/${set.id}`, { method: 'DELETE' });
+      await api(`/api/logs/${set.id}?userId=${userId}`, { method: 'DELETE' });
       await refreshExerciseSets();
       return;
     }
