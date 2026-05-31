@@ -606,7 +606,8 @@ button:disabled {
 }
 
 .timer-pop {
-  @apply fixed bottom-24 right-4 z-30 flex max-w-[220px] items-center gap-3 rounded-lg bg-[#1f2933] px-3 py-2 text-sm font-bold text-white shadow-soft;
+  @apply fixed right-4 z-[9998] flex max-w-[220px] items-center gap-3 rounded-lg bg-[#1f2933] px-3 py-2 text-sm font-bold text-white shadow-soft;
+  bottom: calc(5rem + env(safe-area-inset-bottom));
 }
 
 .timer-pop.urgent {
