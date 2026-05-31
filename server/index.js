@@ -902,8 +902,11 @@ app.patch('/api/groups/:id/exercises-order', (req, res) => {
 });
 
 app.patch('/api/groups/:groupId/exercises/:exerciseId', (req, res) => {
+  const userId = getUserId(req);
   const groupId = Number(req.params.groupId);
   const exerciseId = req.params.exerciseId;
+  const group = one('SELECT id FROM custom_groups WHERE id = ? AND user_id = ?', [groupId, userId]);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
   if (req.body.icon !== undefined) {
     db.prepare('UPDATE group_exercises SET icon = ? WHERE group_id = ? AND exercise_id = ?').run(req.body.icon || '🏋️', groupId, exerciseId);
   }
@@ -926,7 +929,11 @@ app.patch('/api/groups/:groupId/exercises/:exerciseId', (req, res) => {
 });
 
 app.delete('/api/groups/:groupId/exercises/:exerciseId', (req, res) => {
-  db.prepare('DELETE FROM group_exercises WHERE group_id = ? AND exercise_id = ?').run(Number(req.params.groupId), req.params.exerciseId);
+  const userId = getUserId(req);
+  const groupId = Number(req.params.groupId);
+  const group = one('SELECT id FROM custom_groups WHERE id = ? AND user_id = ?', [groupId, userId]);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  db.prepare('DELETE FROM group_exercises WHERE group_id = ? AND exercise_id = ?').run(groupId, req.params.exerciseId);
   res.json({ ok: true });
 });
 

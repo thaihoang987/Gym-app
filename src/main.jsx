@@ -1870,7 +1870,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
     reorderGroupExercises(groupId, active.id, over.id);
   };
   const removeExercise = async (groupId, exerciseId) => {
-    await api(`/api/groups/${groupId}/exercises/${exerciseId}`, { method: 'DELETE' });
+    await api(`/api/groups/${groupId}/exercises/${exerciseId}?userId=${userId}`, { method: 'DELETE' });
     load();
   };
   const deleteGroup = async (groupId) => {
