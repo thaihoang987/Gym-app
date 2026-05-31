@@ -1962,7 +1962,7 @@
     settings_pwa_feature_note: 'Sur iPhone, installez via Ajouter à l\'écran d\'accueil avec HTTPS pour utiliser la vibration et les notifications.',
     settings_sound_rest_label: 'Alarme fin de repos',
     settings_vibrate_rest_label: 'Vibration fin de repos',
-    settings_keep_awake_label: 'Garder l''écran allumé pendant l''entraînement',
+    settings_keep_awake_label: "Garder l'écran allumé pendant l'entraînement",
     settings_countdown_label: 'Compte à rebours 3s', settings_auto_next_label: 'Avancement auto vers la série suivante',
     settings_import_data: 'Importer sauvegarde données',
     settings_import_confirm: 'Importer la sauvegarde remplacera toutes les données de l\'utilisateur. Continuer ?',
