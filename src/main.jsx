@@ -2303,7 +2303,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const current = payload.current || [];
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
     const total = Math.max(target, doneSets.length || 1);
-    const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => buildDraftSet(doneSets.length + offset + 1));
+    const lastDone = doneSets[doneSets.length - 1];
+    const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => ({
+      setIndex: doneSets.length + offset + 1,
+      weightKg: lastDone?.weightKg ?? payload.defaultWeightKg ?? 20,
+      reps: payload.defaultReps ?? settings?.default_reps ?? 12,
+      done: false
+    }));
     setSets([...doneSets, ...drafts]);
     setData((currentData) => currentData ? {
       ...currentData,
