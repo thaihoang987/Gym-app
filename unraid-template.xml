@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>FamilyGym</Name>
+  <Name>GymApp</Name>
   <Repository>ghcr.io/thaihoang987/gym-app:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
@@ -8,7 +8,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-app/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-app</Project>
-  <Overview>Family Gym - A local-first workout tracker for personal or family use. Features 1300+ exercises with GIFs, custom exercises, workout scheduling, body weight tracking, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile (add to home screen).</Overview>
+  <Overview>Gym App - A local-first workout tracker for personal or family use. Features 1300+ exercises with GIFs, custom exercises, workout scheduling, body weight tracking, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile (add to home screen).</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
