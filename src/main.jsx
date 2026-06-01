@@ -102,20 +102,10 @@ async function downloadGroupsForOffline(userId, onProgress) {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-// ── Offline queue ─────────────────────────────────────────────────────────────
-function useOnlineStatus() {
-  const [online, setOnline] = useState(() => navigator.onLine);
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener('online', on);
-    window.addEventListener('offline', off);
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
-  }, []);
-  return online;
-}
-
+// ── Server status (centralized) ──────────────────────────────────────────────
 async function checkServerAvailable(timeoutMs = 2500) {
+  // Nếu browser báo offline → khỏi ping cho nhanh
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
   const ping = `${Date.now()}-${Math.random()}`;
   const attempts = [
     { method: 'HEAD', url: `/api/health?ping=${ping}` },
@@ -141,33 +131,59 @@ async function checkServerAvailable(timeoutMs = 2500) {
   return false;
 }
 
-function useServerStatus(intervalMs = 4000) {
+const ServerStatusContext = React.createContext({ online: false, forceCheck: () => {} });
+function useServerStatus() { return React.useContext(ServerStatusContext); }
+
+function ServerStatusProvider({ children }) {
   const [online, setOnline] = useState(false);
+  const onlineRef = React.useRef(false);
+  const timerRef = React.useRef(null);
+
+  const check = React.useCallback(async () => {
+    const ok = await checkServerAvailable();
+    onlineRef.current = ok;
+    setOnline(ok);
+    return ok;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    let timer;
-    const update = async () => {
-      const ok = await checkServerAvailable();
-      if (!cancelled) setOnline(ok);
+
+    const tick = async () => {
+      if (cancelled) return;
+      await check();
+      schedule();
     };
+
     const schedule = () => {
-      clearInterval(timer);
-      timer = setInterval(update, intervalMs);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      // Adaptive: online → 30s tiết kiệm pin, offline → 5s để biết có mạng lại
+      const delay = onlineRef.current ? 30000 : 5000;
+      timerRef.current = setTimeout(tick, delay);
     };
-    update();
+
+    // Initial check
+    check();
     schedule();
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    document.addEventListener('visibilitychange', update);
+
+    const onWindowOnline = () => check();
+    const onWindowOffline = () => { onlineRef.current = false; setOnline(false); };
+    const onVisible = () => { if (!document.hidden) check(); };
+
+    window.addEventListener('online', onWindowOnline);
+    window.addEventListener('offline', onWindowOffline);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
-      clearInterval(timer);
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-      document.removeEventListener('visibilitychange', update);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      window.removeEventListener('online', onWindowOnline);
+      window.removeEventListener('offline', onWindowOffline);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [intervalMs]);
-  return online;
+  }, [check]);
+
+  const value = useMemo(() => ({ online, forceCheck: check }), [online, check]);
+  return <ServerStatusContext.Provider value={value}>{children}</ServerStatusContext.Provider>;
 }
 
 const OFFLINE_QUEUE_KEY = (userId) => `gymOfflineQueue:${userId}`;
@@ -978,15 +994,23 @@ function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
   const [tab, setTab] = useState('home');
-  const isServerOnline = useServerStatus(4000);
+  const { online: isServerOnline, forceCheck: recheckServer } = useServerStatus();
+  const wasOnlineRef = React.useRef(isServerOnline);
 
-  // Sync offline queue ngay khi app online (kể cả sau khi đóng browser)
+  // Sync offline queue ngay khi vừa có mạng lại (chỉ trigger lúc offline→online)
   const [syncMsg, setSyncMsg] = useState('');
   useEffect(() => {
-    if (!isServerOnline || !user?.id) return;
+    if (!user?.id) return;
+    const justCameOnline = !wasOnlineRef.current && isServerOnline;
+    wasOnlineRef.current = isServerOnline;
+    if (!isServerOnline) return;
     flushOfflineQueue(user.id).then((synced) => {
-      if (synced > 0) setSyncMsg(`✓ Đã đồng bộ ${synced} set`);
-    });
+      if (synced > 0) {
+        setSyncMsg(`✓ Đã đồng bộ ${synced} thay đổi`);
+        if (justCameOnline) setRefresh((v) => v + 1);
+        setTimeout(() => setSyncMsg(''), 3000);
+      }
+    }).catch(() => {});
   }, [isServerOnline, user?.id]);
 
   const cachedBoot = useMemo(() => {
@@ -997,10 +1021,12 @@ function App() {
   const [refresh, setRefresh] = useState(0);
   const [workout, setWorkout] = useState(null);
 
+  // Bootstrap chỉ fetch khi: user thay đổi, refresh, hoặc vừa có mạng lại
   useEffect(() => {
     if (!user) return;
     const localBoot = readBootCache(user.id);
     if (localBoot) setBoot(localBoot);
+    if (!isServerOnline) return; // Offline → dùng cache, không gọi API
     api(`/api/bootstrap?userId=${user.id}`)
       .then((data) => {
         if (user.authVersion && data.activeUser?.authVersion && user.authVersion !== data.activeUser.authVersion) {
@@ -1179,7 +1205,7 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
-  const serverOnline = useServerStatus(4000);
+  const { online: serverOnline } = useServerStatus();
   const tryOfflineLogin = async () => {
     const offlineUser = await verifyOfflineAuth(username, password);
     if (!offlineUser) {
@@ -1259,7 +1285,7 @@ function Header({ user, boot, onLogout }) {
   const t = useLang();
   const [now, setNow] = useState(new Date());
   const [open, setOpen] = useState(false);
-  const serverOnline = useServerStatus(3000);
+  const { online: serverOnline } = useServerStatus();
   const menuRef = React.useRef(null);
 
   useEffect(() => {
@@ -1283,20 +1309,28 @@ function Header({ user, boot, onLogout }) {
     };
   }, [open]);
 
+  const pendingCount = useMemo(() => {
+    try { return (JSON.parse(localStorage.getItem(`gymOfflineQueue:${user.id}`) || '[]')).length; } catch { return 0; }
+  }, [user.id, serverOnline, now]);
+
   return (
     <header className="mb-5 flex items-center justify-between">
       <div>
         <p className="text-sm text-teal-950">{formatDateTime(now, boot.settings, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-2xl font-bold">{user.name}</h1>
           <span
-            className={`server-dot ${serverOnline ? 'online' : 'offline'}`}
-            title={serverOnline ? 'Đang kết nối server' : 'Mất kết nối server'}
-            aria-label={serverOnline ? 'Đang kết nối server' : 'Mất kết nối server'}
-          />
-          <span className={`server-status-text ${serverOnline ? 'online' : 'offline'}`}>
-            {serverOnline ? 'Connect' : 'Disconnect'}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${serverOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}
+            title={serverOnline ? 'Đang kết nối server' : 'Mất kết nối — đang dùng dữ liệu offline'}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${serverOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {serverOnline ? 'Online' : 'Offline'}
           </span>
+          {pendingCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700" title="Số thay đổi chờ đồng bộ">
+              ⟲ {pendingCount} chờ sync
+            </span>
+          )}
         </div>
         <p className="text-sm text-teal-950">{getModeLabels(t)[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
       </div>
@@ -2976,7 +3010,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
 function WorkoutLogger({ userId, workout, settings, onClose }) {
   const t = useLang();
   const dialog = useAppDialog();
-  const isOnline = useServerStatus(4000);
+  const { online: isOnline } = useServerStatus();
   const [data, setData] = useState(null);
   const [summary, setSummary] = useState(null);
   const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
@@ -4339,7 +4373,14 @@ function Chip({ active, children, onClick }) {
   return <button onClick={onClick} className={`chip ${active ? 'active' : ''}`}>{children}</button>;
 }
 
-createRoot(document.getElementById('root')).render(<DialogProvider><App /></DialogProvider>);
+createRoot(document.getElementById('root')).render(
+  <ServerStatusProvider>
+    <DialogProvider>
+      <App />
+    </DialogProvider>
+  </ServerStatusProvider>
+);
+
 
 
 
