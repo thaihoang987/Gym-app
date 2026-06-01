@@ -330,13 +330,36 @@ function localIsoDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+// GET-only API calls được cache vào localStorage để dùng offline
+const API_CACHE_PREFIX = 'gymApiCache:';
+const API_CACHE_GET_PATTERNS = ['/api/groups', '/api/routines', '/api/dashboard', '/api/sessions/active', '/api/sessions/', '/api/exercises/meta', '/api/body-weight', '/api/analytics'];
+
+function shouldCacheApi(path) {
+  return API_CACHE_GET_PATTERNS.some((p) => path.includes(p));
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options
-  });
-  if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
-  return response.json();
+  const isGet = !options.method || options.method === 'GET';
+  try {
+    const response = await fetch(path, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options
+    });
+    if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
+    const data = await response.json();
+    // Cache GET responses vào localStorage
+    if (isGet && shouldCacheApi(path)) {
+      try { localStorage.setItem(API_CACHE_PREFIX + path, JSON.stringify(data)); } catch {}
+    }
+    return data;
+  } catch (err) {
+    // Khi mất mạng, trả về cache cho GET requests
+    if (isGet && !navigator.onLine && shouldCacheApi(path)) {
+      const cached = localStorage.getItem(API_CACHE_PREFIX + path);
+      if (cached) return JSON.parse(cached);
+    }
+    throw err;
+  }
 }
 
 const DialogContext = React.createContext(null);
