@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>gym-app</Name>
+  <Name>FamilyGym</Name>
   <Repository>ghcr.io/thaihoang987/gym-app:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
@@ -8,12 +8,14 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-app/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-app</Project>
-  <Overview>Gym App - Track workouts, exercises, body weight and progress. Supports multiple users, 1300+ exercises with GIFs, custom exercises, workout scheduling, analytics, Excel export, backup/restore, and PWA install on mobile.</Overview>
+  <Overview>Family Gym - A local-first workout tracker for personal or family use. Features 1300+ exercises with GIFs, custom exercises, workout scheduling, body weight tracking, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile (add to home screen).</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <Author>thaihoang987</Author>
+  <Date>2026-06-01</Date>
 
   <!-- PORT -->
   <Config
@@ -21,7 +23,7 @@
     Target="3001"
     Default="3001"
     Mode="tcp"
-    Description="Port to access the web interface (e.g. http://your-ip:3001)"
+    Description="Port to access the web interface. Open http://your-ip:3001 in your browser."
     Type="Port"
     Display="always"
     Required="true"
@@ -33,7 +35,7 @@
     Target="/app/data"
     Default="/mnt/user/appdata/gym-app/data"
     Mode="rw"
-    Description="Where the database, uploaded images, and server logs are stored. Back this up regularly!"
+    Description="Where the database, uploaded images, and logs are stored. Back this up regularly!"
     Type="Path"
     Display="always"
     Required="true"
@@ -45,7 +47,7 @@
     Target="ADMIN_PASSWORD"
     Default="admin123"
     Mode=""
-    Description="Password for the default admin account on first run. Change this! Only applies when creating a fresh database."
+    Description="Password for the default admin account on first run. Change this before starting! Only applies when creating a fresh database."
     Type="Variable"
     Display="always"
     Required="false"
@@ -55,13 +57,13 @@
   <Config
     Name="Timezone"
     Target="TZ"
-    Default="America/New_York"
+    Default="Asia/Ho_Chi_Minh"
     Mode=""
-    Description="Your timezone for correct date/time display. E.g. America/New_York, America/Los_Angeles, Europe/London, Asia/Ho_Chi_Minh"
+    Description="Your timezone for correct date/time display. E.g. Asia/Ho_Chi_Minh, America/New_York, Europe/London."
     Type="Variable"
     Display="always"
     Required="false"
-    Mask="false">America/New_York</Config>
+    Mask="false">Asia/Ho_Chi_Minh</Config>
 
   <!-- PORT ENV -->
   <Config
