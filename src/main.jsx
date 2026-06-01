@@ -3349,12 +3349,15 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_admin')}>
-        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
+        <a className="primary text-center block" href={`/api/export/excel?userId=${userId}`} download>{t('settings_export_excel')}</a>
         <div className="flex flex-wrap gap-2">
-          <button className="ghost-btn flex-1" onClick={() => {
+          {(() => {
             const scope = boot.activeUser.role === 'ADMIN' ? 'admin' : 'user';
-            window.open(`/api/backup?userId=${userId}${scope === 'admin' ? '&scope=admin' : ''}`, '_blank');
-          }}>{t('settings_export_data')}</button>
+            const exportUrl = `/api/backup?userId=${userId}${scope === 'admin' ? '&scope=admin' : ''}`;
+            return (
+              <a className="ghost-btn flex-1 text-center" href={exportUrl} download>{t('settings_export_data')}</a>
+            );
+          })()}
           <label className={`flex-1 cursor-pointer text-center ${boot.activeUser.role === 'ADMIN' ? 'danger-btn' : 'ghost-btn'}`}>
             {t('settings_import_data')}
             <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => {
