@@ -319,12 +319,36 @@ function offlineSessionPayload(userId, createEntry, pendingLogs = []) {
 function findOfflineSessionPayload(userId, sessionId) {
   const { logs, createdSessions, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
   const created = createdSessions.find((entry) => Number(entry.sessionId) === Number(sessionId));
-  if (!created || deletedSessionIds.has(Number(sessionId))) return null;
-  const payload = offlineSessionPayload(userId, created, logs);
-  if (completedSessionIds.has(Number(sessionId))) {
-    return { ...payload, session: { ...payload.session, status: 'COMPLETED', syncStatus: 'pending' } };
+  if (created && !deletedSessionIds.has(Number(sessionId))) {
+    const payload = offlineSessionPayload(userId, created, logs);
+    if (completedSessionIds.has(Number(sessionId))) {
+      return { ...payload, session: { ...payload.session, status: 'COMPLETED', syncStatus: 'pending' } };
+    }
+    return payload;
   }
-  return payload;
+
+  // Fallback 1: cached /api/sessions/:id từ lần online trước
+  const cachedSession = readApiCache(`/api/sessions/${sessionId}?userId=${userId}`);
+  if (cachedSession?.exercises?.length) {
+    return {
+      ...cachedSession,
+      exercises: addPendingCountsToExercises(cachedSession.exercises, logs, sessionId)
+    };
+  }
+
+  // Fallback 2: tìm trong /api/sessions/active
+  const activeCache = readApiCache(`/api/sessions/active?userId=${userId}`);
+  const activeSessions = activeCache?.sessions || (activeCache?.session ? [activeCache] : []);
+  const match = activeSessions.find((entry) => Number(entry.session?.id) === Number(sessionId));
+  if (match?.exercises?.length) {
+    return {
+      session: match.session,
+      routine: match.routine,
+      group: match.group,
+      exercises: addPendingCountsToExercises(match.exercises, logs, sessionId)
+    };
+  }
+  return null;
 }
 
 function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId = null) {
@@ -809,12 +833,16 @@ function offlineExerciseMeta(userId) {
 async function api(path, options = {}) {
   const isGet = !options.method || options.method === 'GET';
   const method = (options.method || 'GET').toUpperCase();
-  const { offlineQueue = true, ...fetchOptions } = options;
+  const { offlineQueue = true, timeoutMs = 8000, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(path, {
       headers: { 'Content-Type': 'application/json', ...(fetchOptions.headers || {}) },
+      signal: controller.signal,
       ...fetchOptions
     });
+    clearTimeout(timeoutId);
     if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
     const data = await response.json();
     // Cache GET responses vào localStorage
@@ -827,6 +855,7 @@ async function api(path, options = {}) {
     }
     return isGet ? applyOfflineQueueToCachedApi(path, data) : data;
   } catch (err) {
+    clearTimeout(timeoutId);
     if (offlineQueue && method === 'POST' && path === '/api/sessions') {
       if (await checkServerAvailable(1000)) throw err;
       const bodyUserId = userIdFromRequestOptions(options) || 1;
@@ -3177,7 +3206,24 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     };
   }, [settings?.keep_screen_awake, workout.sessionId]);
 
-  if (!data) return <div className="panel">{t('loading')}</div>;
+  if (!data) {
+    // Sau 1s loading → thử fallback cache offline
+    const offlineFallback = findOfflineSessionPayload(userId, workout.sessionId);
+    if (offlineFallback) {
+      setTimeout(() => setData(offlineFallback), 0);
+    }
+    return (
+      <div className="panel">
+        <p>{t('loading')}</p>
+        {!isOnline && (
+          <p className="mt-2 text-sm text-amber-700">
+            ⚠ Offline — đang tải từ cache, vui lòng đợi...
+          </p>
+        )}
+        <button className="ghost-btn mt-3" onClick={onClose}>{t('workout_nav_exit')}</button>
+      </div>
+    );
+  }
   if (!exercise) {
     const closeEmptySession = async () => {
       await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -3459,7 +3505,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         <div className="workout-card space-y-4">
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (
-              <img src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exerciseAutoMediaUrl(exercise)} alt={exercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]" />
+              <img
+                src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exerciseAutoMediaUrl(exercise)}
+                alt={exercise.name}
+                className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]"
+                onError={(e) => {
+                  const fallback = exercise.gifUrl && e.target.src !== exercise.gifUrl ? exercise.gifUrl
+                    : (exercise.imageUrl && e.target.src !== exercise.imageUrl ? exercise.imageUrl : null);
+                  if (fallback) e.target.src = fallback;
+                  else e.target.style.display = 'none';
+                }}
+              />
             ) : (
               <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
             )}
