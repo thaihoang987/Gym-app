@@ -4,6 +4,20 @@ Gym App is a local-first workout tracker for personal or family use. It includes
 
 ## Local development
 
+Prerequisites:
+
+- Node.js 22+
+- npm
+- Internet access for the first dataset download
+
+Clone the exercise dataset before the first local run:
+
+```powershell
+git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset.git hasaneyldrm-exercises-dataset
+```
+
+Then install dependencies and start the app:
+
 ```powershell
 npm install
 npm run dev
@@ -19,7 +33,12 @@ Default login:
 
 ## Docker / Unraid
 
-Build and run:
+Prerequisites:
+
+- Docker / Docker Compose
+- Internet access during the first image build. The Dockerfile downloads the exercise dataset and bundles it into the image.
+
+Build and run from the repo folder:
 
 ```powershell
 docker compose up -d --build
@@ -54,9 +73,13 @@ The app keeps persistent workout data in `./data`, which is mounted into the con
 
 ## Included dataset
 
+Gym App uses `hasaneyldrm/exercises-dataset` for the default exercise library:
+
 - `hasaneyldrm-exercises-dataset/data/exercises.json`: 1,324 exercises
 - `hasaneyldrm-exercises-dataset/images`: JPG thumbnails
 - `hasaneyldrm-exercises-dataset/videos`: GIF animations
+
+The dataset folder is not committed to this repo. For Docker builds, it is downloaded during image build. For local development, clone it manually with the command in the Local development section.
 
 The library list renders lightweight JPG cards in batches. GIF files are loaded only when opening exercise detail or entering workout mode.
 
