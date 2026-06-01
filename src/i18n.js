@@ -1837,7 +1837,7 @@
     detail_effective: 'Super séance', detail_progress: 'Quelques progrès', detail_maintain: 'Maintien',
     detail_improved: (n, total) => `${n}/${total} améliorés`,
     detail_prev: 'Séance précédente', detail_no_prev: 'Aucune donnée précédente.',
-    lib_search: 'Rechercher...', lib_all: 'Tous', lib_custom_tag: 'Personnalisé', lib_gif_hint: 'Appuyez sur l'''image pour lancer le GIF.',
+    lib_search: 'Rechercher...', lib_all: 'Tous', lib_custom_tag: 'Personnalisé', lib_gif_hint: "Appuyez sur l'image pour lancer le GIF.",
     lib_add_custom: '+ Exercice perso', lib_add_to_group: 'Ajouter au groupe',
     lib_show_more: (n, shown, total) => `${n} de plus (${shown}/${total})`,
     lib_main_muscle: 'Muscle principal', lib_area: 'Zone', lib_equipment: 'Équipement',
