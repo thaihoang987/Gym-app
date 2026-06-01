@@ -914,9 +914,18 @@ function DialogProvider({ children }) {
     });
   };
   const apiValue = useMemo(() => ({
-    alert: (message, options = {}) => openDialog({ kind: 'alert', title: options.title || 'Thông báo', message, okText: options.okText || 'OK' }),
-    confirm: (message, options = {}) => openDialog({ kind: 'confirm', title: options.title || 'Xác nhận', message, okText: options.okText || 'Có', cancelText: options.cancelText || 'Không' }),
-    prompt: (message, options = {}) => openDialog({ kind: 'prompt', title: options.title || message, message: options.description || '', inputType: options.type || 'text', defaultValue: options.defaultValue || '', okText: options.okText || 'Tiếp tục', cancelText: options.cancelText || 'Huỷ' })
+    alert: (message, options = {}) => {
+      const tD = createT(localStorage.getItem('familyGymUser') ? (JSON.parse(localStorage.getItem('familyGymUser') || '{}')).locale : undefined);
+      return openDialog({ kind: 'alert', title: options.title || tD('dialog_alert_title'), message, okText: options.okText || tD('dialog_ok') });
+    },
+    confirm: (message, options = {}) => {
+      const tD = createT(localStorage.getItem('familyGymUser') ? (JSON.parse(localStorage.getItem('familyGymUser') || '{}')).locale : undefined);
+      return openDialog({ kind: 'confirm', title: options.title || tD('dialog_confirm_title'), message, okText: options.okText || tD('dialog_yes'), cancelText: options.cancelText || tD('dialog_no') });
+    },
+    prompt: (message, options = {}) => {
+      const tD = createT(localStorage.getItem('familyGymUser') ? (JSON.parse(localStorage.getItem('familyGymUser') || '{}')).locale : undefined);
+      return openDialog({ kind: 'prompt', title: options.title || message, message: options.description || '', inputType: options.type || 'text', defaultValue: options.defaultValue || '', okText: options.okText || tD('dialog_continue'), cancelText: options.cancelText || tD('dialog_cancel_btn') });
+    }
   }), []);
 
   return (
@@ -1053,9 +1062,10 @@ function App() {
     const justCameOnline = !wasOnlineRef.current && isServerOnline;
     wasOnlineRef.current = isServerOnline;
     if (!isServerOnline) return;
+    const tSync = createT(user?.locale);
     flushOfflineQueue(user.id).then((synced) => {
       if (synced > 0) {
-        setSyncMsg(`✓ Đã đồng bộ ${synced} thay đổi`);
+        setSyncMsg(tSync('sync_done', synced));
         if (justCameOnline) setRefresh((v) => v + 1);
         setTimeout(() => setSyncMsg(''), 3000);
       }
@@ -1110,13 +1120,14 @@ function App() {
   if (!user) return <Login onLogin={setUser} />;
   if (!boot && !isServerOnline) {
     // Offline và chưa có cached data
+    const tOffline = createT(savedUser?.locale);
     return (
       <div className="min-h-screen bg-app grid place-items-center text-center p-6">
         <div>
           <WifiOff size={48} className="mx-auto mb-4 text-slate-400" />
-          <h2 className="text-xl font-bold text-slate-700">Không có kết nối</h2>
-          <p className="mt-2 text-sm text-slate-500">Mở app lần đầu cần có mạng để tải dữ liệu.</p>
-          <button className="primary mt-6" onClick={() => window.location.reload()}>Thử lại</button>
+          <h2 className="text-xl font-bold text-slate-700">{tOffline('offline_no_connection')}</h2>
+          <p className="mt-2 text-sm text-slate-500">{tOffline('offline_first_load')}</p>
+          <button className="primary mt-6" onClick={() => window.location.reload()}>{tOffline('offline_retry')}</button>
         </div>
       </div>
     );
@@ -1284,7 +1295,7 @@ function Login({ onLogin }) {
         try {
           if (await tryOfflineLogin()) return;
         } catch {}
-        setError('Không kết nối được server app và máy này chưa có đăng nhập offline hợp lệ.');
+        setError(t('login_offline_error'));
         return;
       }
       if (!networkLikeError) {
@@ -1370,14 +1381,14 @@ function Header({ user, boot, onLogout }) {
           <h1 className="text-2xl font-bold">{user.name}</h1>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${serverOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}
-            title={serverOnline ? 'Đang kết nối server' : 'Mất kết nối — đang dùng dữ liệu offline'}
+            title={serverOnline ? t('server_connecting') : t('server_disconnected')}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${serverOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            {serverOnline ? 'Online' : 'Offline'}
+            {serverOnline ? t('status_online') : t('status_offline')}
           </span>
           {pendingCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700" title="Số thay đổi chờ đồng bộ">
-              ⟲ {pendingCount} chờ sync
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700" title={t('pending_changes_title')}>
+              ⟲ {t('pending_changes', pendingCount)}
             </span>
           )}
         </div>
@@ -2111,7 +2122,7 @@ function exerciseAutoMediaUrl(exercise) {
   return exercise?.gifUrl || exercise?.imageUrl || '';
 }
 
-function workoutExerciseGroups(sessionData) {
+function workoutExerciseGroups(sessionData, t) {
   const flat = sessionData?.exercises || [];
   const used = new Set();
   const takeFlatExercise = (exercise, groupName) => {
@@ -2134,12 +2145,12 @@ function workoutExerciseGroups(sessionData) {
   if (sessionData?.group?.exercises?.length) {
     return [{
       id: sessionData.group.id || 'group',
-      name: sessionData.group.name || 'Group Bài tập',
+      name: sessionData.group.name || (t ? t('free_groups') : 'Exercise Group'),
       exercises: sessionData.group.exercises.map((exercise) => takeFlatExercise(exercise, sessionData.group.name))
     }];
   }
 
-  return [{ id: 'all', name: 'Bài tập', exercises: flat.map((exercise, index) => ({ ...exercise, workoutIndex: index })) }];
+  return [{ id: 'all', name: t ? t('nav_library') : 'Exercises', exercises: flat.map((exercise, index) => ({ ...exercise, workoutIndex: index })) }];
 }
 
 function SessionDetail({ detail, settings }) {
