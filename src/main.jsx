@@ -724,6 +724,8 @@ async function warmOfflineData(userId) {
     `/api/body-weight/recent?userId=${userId}`
   ];
   await Promise.allSettled(endpoints.map((endpoint) => api(endpoint)));
+  // Tự động cache media cho mọi bài đã có trong groups/routines/active sessions
+  try { await downloadGroupsForOffline(userId).catch(() => {}); } catch {}
 }
 
 function userIdFromRequestOptions(options = {}) {
@@ -2188,7 +2190,18 @@ function ExerciseLibrary({ userId, settings }) {
     setVisibleCount(60);
     setPreviewGifId(null);
     setPinnedGifIds(new Set());
-    api(`/api/exercises?userId=${userId}&q=${encodeURIComponent(q)}&target=${encodeURIComponent(target)}`).then(setItems);
+    api(`/api/exercises?userId=${userId}&q=${encodeURIComponent(q)}&target=${encodeURIComponent(target)}`).then((items) => {
+      setItems(items);
+      // Lazy warm media cho 60 bài đầu hiển thị → có sẵn cho offline
+      if (navigator.onLine) {
+        const urls = [];
+        for (const ex of items.slice(0, 60)) {
+          if (ex.imageUrl) urls.push(ex.imageUrl);
+          if (ex.gifUrl) urls.push(ex.gifUrl);
+        }
+        if (urls.length) cacheMediaUrls([...new Set(urls)]).catch(() => {});
+      }
+    });
     api(`/api/exercises/meta?userId=${userId}`).then(setMeta);
   };
 
@@ -2333,6 +2346,11 @@ function ExerciseLibrary({ userId, settings }) {
                     src={isPlayingGif && exercise.displayMedia !== 'image' ? exercise.gifUrl || exerciseMediaUrl(exercise) : exerciseMediaUrl(exercise)}
                     alt={exercise.name}
                     loading={isPlayingGif ? 'eager' : 'lazy'}
+                    onError={(e) => {
+                      const fallback = exercise.gifUrl && e.target.src !== exercise.gifUrl ? exercise.gifUrl
+                        : (exercise.imageUrl && e.target.src !== exercise.imageUrl ? exercise.imageUrl : null);
+                      if (fallback) e.target.src = fallback;
+                    }}
                   />
                 </div>
               ) : (
