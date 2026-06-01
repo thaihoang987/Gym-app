@@ -96,6 +96,23 @@ Server logs are written to:
 
 This repo also includes `unraid-template.xml` for Community Applications/manual template use.
 
+## Backup and restore
+
+Gym App has two JSON backup modes:
+
+| Mode | What it includes | Intended use |
+|---|---|---|
+| User backup | Current user's workout data, custom exercises, routines, body weight logs, and exercise settings. It does not include passwords. | Move or restore one user's training data. |
+| Admin backup | All users, user settings, workout data, custom exercises, uploaded media, and encrypted `password_hash` values. | Full app restore/migration by an admin. |
+
+Password hashes are one-way encrypted values. They are not decrypted during restore; admin restore writes the hash back so users can keep logging in with their existing passwords.
+
+For a full Unraid/server backup, also keep the appdata folder:
+
+```text
+/mnt/user/appdata/gym-app/data
+```
+
 ## Docker image registry
 
 This repo includes a GitHub Actions workflow that builds and pushes a Docker image to GitHub Container Registry on every push to `main`:

@@ -220,11 +220,16 @@
     settings_admin: '7. Admin', settings_users: 'Users',
     settings_add_user: 'Add user', settings_delete_user: 'Delete user',
     settings_export_excel: 'Export Excel', settings_export_json: 'Export JSON backup',
+    settings_export_user_backup: 'Export user backup',
+    settings_import_user_backup: 'Import user backup',
+    settings_export_admin_backup: 'Export admin backup',
+    settings_import_admin_backup: 'Restore admin backup',
     settings_import: 'Import backup',
     settings_import_data: 'Import data backup',
-    settings_import_confirm: 'Importing a backup will replace all current data for this user. Continue?',
+    settings_import_confirm: 'Import this user backup into the current account? Existing matching records may be merged.',
+    settings_admin_import_confirm: 'Admin restore will replace all users, settings, training logs, custom exercises, uploads, and password hashes. Continue?',
     settings_import_done: 'Backup imported successfully. New data has been merged into your account.',
-    settings_data_note: 'Excel is for viewing training history only. Backup is for full data backup/restore of the current user.',
+    settings_data_note: 'Excel is for viewing training history only. User backup excludes passwords. Admin backup includes all users and encrypted password hashes for full restore.',
     password_placeholder: 'Leave blank to keep current',
     height_placeholder: 'e.g. 170',
     analytics_show_all: 'Show all history',
@@ -456,11 +461,16 @@
     settings_admin: '7. Quản trị', settings_users: 'Người dùng',
     settings_add_user: 'Thêm user', settings_delete_user: 'Xoá user',
     settings_export_excel: 'Xuất Excel', settings_export_json: 'Xuất backup JSON',
+    settings_export_user_backup: 'Xuất backup user',
+    settings_import_user_backup: 'Nhập backup user',
+    settings_export_admin_backup: 'Xuất backup admin',
+    settings_import_admin_backup: 'Khôi phục backup admin',
     settings_import: 'Nhập backup',
     settings_import_data: 'Nhập data backup',
-    settings_import_confirm: 'Nhập backup sẽ thay thế dữ liệu hiện tại của người dùng này. Tiếp tục?',
+    settings_import_confirm: 'Nhập backup user vào tài khoản hiện tại? Các dữ liệu trùng có thể được gộp.',
+    settings_admin_import_confirm: 'Khôi phục admin sẽ thay thế toàn bộ users, cài đặt, log tập, bài custom, upload và password hash. Tiếp tục?',
     settings_import_done: 'Đã nhập data backup.',
-    settings_data_note: 'Excel chỉ để xem lịch sử tập. Data backup dùng để sao lưu/khôi phục toàn bộ dữ liệu của người dùng hiện tại.',
+    settings_data_note: 'Excel chỉ để xem lịch sử tập. Backup user không chứa mật khẩu. Backup admin chứa toàn bộ users và password hash đã mã hoá để khôi phục đầy đủ.',
     password_placeholder: 'Để trống nếu không đổi',
     height_placeholder: 'Ví dụ: 170',
     analytics_show_all: 'Xem toàn bộ lịch sử',
@@ -2224,7 +2234,7 @@ export function createT(locale) {
   const fallbackDict = translations['vi-VN'];
   const englishDict = translations['en-US'];
   return (k, ...args) => {
-    const val = dict[k] ?? fallbackDict[k] ?? englishDict[k];
+    const val = dict[k] ?? englishDict[k] ?? fallbackDict[k];
     if (val === undefined) return k;
     if (typeof val === 'function') return val(...args);
     return val;

@@ -3145,13 +3145,14 @@ function SettingsPage({ userId, boot, onChanged }) {
     reader.onload = () => setAvatarPreview(String(reader.result));
     reader.readAsDataURL(file);
   };
-  const importBackup = async (file) => {
+  const importBackup = async (file, scope = 'user') => {
     if (!file) return;
     const backup = JSON.parse(await file.text());
-    if (!(await dialog.confirm(t('settings_import_confirm')))) return;
+    const message = scope === 'admin' ? t('settings_admin_import_confirm') : t('settings_import_confirm');
+    if (!(await dialog.confirm(message))) return;
     await api('/api/backup/import', {
       method: 'POST',
-      body: JSON.stringify({ userId, backup })
+      body: JSON.stringify({ userId, scope, backup })
     });
     await dialog.alert(t('settings_import_done'));
     location.reload();
@@ -3305,11 +3306,20 @@ function SettingsPage({ userId, boot, onChanged }) {
 
       <SettingsGroup title={t('settings_admin')}>
         <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
-        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>{t('settings_export_json')}</button>
+        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>{t('settings_export_user_backup')}</button>
         <label className="ghost-btn cursor-pointer">
-          {t('settings_import_data')}
-          <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0])} />
+          {t('settings_import_user_backup')}
+          <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0], 'user')} />
         </label>
+        {boot.activeUser.role === 'ADMIN' && (
+          <>
+            <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}&scope=admin`, '_blank')}>{t('settings_export_admin_backup')}</button>
+            <label className="danger-btn cursor-pointer">
+              {t('settings_import_admin_backup')}
+              <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0], 'admin')} />
+            </label>
+          </>
+        )}
         <p className="mt-2 text-sm text-slate-600">{t('settings_data_note')}</p>
       </SettingsGroup>
 

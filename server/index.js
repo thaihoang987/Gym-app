@@ -45,7 +45,7 @@ if (db.prepare('SELECT COUNT(*) AS total FROM exercises').get().total === 0) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '200mb' }));
 app.use('/media', express.static(path.join(rootDir, 'hasaneyldrm-exercises-dataset')));
 app.use('/uploads', express.static(uploadDir));
 
@@ -274,6 +274,82 @@ function readExportTables(userId) {
     `, [userId]),
     exerciseNotes: all('SELECT * FROM exercise_notes WHERE user_id = ? ORDER BY exercise_id', [userId]),
     bodyWeights: all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at', [userId])
+  };
+}
+
+function tableRows(table, where = '', params = []) {
+  return all(`SELECT * FROM ${table}${where ? ` ${where}` : ''}`, params);
+}
+
+function tableColumns(table) {
+  return all(`PRAGMA table_info(${table})`).map((column) => column.name);
+}
+
+function insertRows(table, rows = []) {
+  const columns = tableColumns(table);
+  for (const row of rows || []) {
+    const keys = Object.keys(row || {}).filter((key) => columns.includes(key) && /^[a-z0-9_]+$/i.test(key));
+    if (!keys.length) continue;
+    db.prepare(`INSERT OR REPLACE INTO ${table} (${keys.map((key) => `"${key}"`).join(', ')}) VALUES (${keys.map((key) => `@${key}`).join(', ')})`).run(row);
+  }
+}
+
+function mimeForFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+
+function readUploadedFiles() {
+  const files = [];
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, item.name);
+      if (item.isDirectory()) {
+        walk(fullPath);
+      } else if (item.isFile()) {
+        const relativePath = path.relative(uploadDir, fullPath).replace(/\\/g, '/');
+        files.push({
+          path: relativePath,
+          mime: mimeForFile(fullPath),
+          base64: fs.readFileSync(fullPath).toString('base64')
+        });
+      }
+    }
+  };
+  walk(uploadDir);
+  return files;
+}
+
+function restoreUploadedFiles(files = []) {
+  for (const file of files || []) {
+    const relativePath = String(file.path || '').replace(/\\/g, '/');
+    if (!relativePath || relativePath.includes('..') || path.isAbsolute(relativePath)) continue;
+    const targetPath = path.join(uploadDir, relativePath);
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, Buffer.from(String(file.base64 || ''), 'base64'));
+  }
+}
+
+function readAdminExportTables() {
+  return {
+    users: tableRows('users', 'ORDER BY id'),
+    settings: tableRows('user_settings', 'ORDER BY user_id'),
+    customExercises: tableRows('exercises', 'WHERE is_custom = 1 ORDER BY custom_user_id, name'),
+    groups: tableRows('custom_groups', 'ORDER BY user_id, id'),
+    groupExercises: tableRows('group_exercises', 'ORDER BY group_id, order_index'),
+    routines: tableRows('routines', 'ORDER BY user_id, id'),
+    routineGroups: tableRows('routine_groups', 'ORDER BY routine_id, order_index'),
+    scheduleRules: tableRows('routine_schedule_rules', 'ORDER BY user_id, mode, day_of_week, order_index'),
+    sessions: tableRows('workout_sessions', 'ORDER BY user_id, started_at'),
+    logs: tableRows('workout_logs', 'ORDER BY user_id, completed_at, session_id, set_index'),
+    exerciseNotes: tableRows('exercise_notes', 'ORDER BY user_id, exercise_id'),
+    bodyWeights: tableRows('body_weight_logs', 'ORDER BY user_id, logged_at'),
+    uploads: readUploadedFiles()
   };
 }
 
@@ -1695,17 +1771,81 @@ function importBackupData(userId, backup) {
   tx();
 }
 
+function restoreAdminBackup(requesterId, backup) {
+  assertAdmin(requesterId);
+  const data = backup?.data || backup;
+  if (!data || typeof data !== 'object' || !Array.isArray(data.users)) {
+    const error = new Error('Invalid admin backup file');
+    error.status = 400;
+    throw error;
+  }
+  const tx = db.transaction(() => {
+    db.pragma('foreign_keys = OFF');
+    try {
+      for (const table of [
+        'body_weight_logs',
+        'exercise_notes',
+        'workout_logs',
+        'workout_sessions',
+        'routine_schedule_rules',
+        'routine_groups',
+        'routines',
+        'group_exercises',
+        'custom_groups',
+        'user_settings',
+        'users'
+      ]) {
+        db.prepare(`DELETE FROM ${table}`).run();
+      }
+      db.prepare('DELETE FROM exercises WHERE is_custom = 1').run();
+
+      insertRows('users', data.users);
+      insertRows('user_settings', data.settings);
+      insertRows('exercises', data.customExercises);
+      insertRows('custom_groups', data.groups);
+      insertRows('group_exercises', data.groupExercises);
+      insertRows('routines', data.routines);
+      insertRows('routine_groups', data.routineGroups);
+      insertRows('routine_schedule_rules', data.scheduleRules);
+      insertRows('workout_sessions', data.sessions);
+      insertRows('workout_logs', data.logs);
+      insertRows('exercise_notes', data.exerciseNotes);
+      insertRows('body_weight_logs', data.bodyWeights);
+      restoreUploadedFiles(data.uploads);
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  });
+  tx();
+}
+
 app.get('/api/backup', (req, res) => {
   const userId = getUserId(req);
+  const scope = req.query.scope === 'admin' ? 'admin' : 'user';
   const today = new Date().toISOString().slice(0, 10);
-  res.setHeader('Content-Disposition', `attachment; filename="gym-app-backup-${userId}-${today}.json"`);
-  res.json({ app: 'Gym App', version: 1, userId, exportedAt: new Date().toISOString(), data: readExportTables(userId) });
+  if (scope === 'admin') {
+    assertAdmin(userId);
+    res.setHeader('Content-Disposition', `attachment; filename="gym-app-admin-backup-${today}.json"`);
+    res.json({
+      app: 'Gym App',
+      version: 2,
+      scope: 'admin',
+      exportedAt: new Date().toISOString(),
+      note: 'Admin backup includes users and password_hash values. Passwords are not decrypted; hashes are restored directly.',
+      data: readAdminExportTables()
+    });
+    return;
+  }
+  res.setHeader('Content-Disposition', `attachment; filename="gym-app-user-backup-${userId}-${today}.json"`);
+  res.json({ app: 'Gym App', version: 2, scope: 'user', userId, exportedAt: new Date().toISOString(), data: readExportTables(userId) });
 });
 
 app.post('/api/backup/import', (req, res) => {
   const userId = getUserId(req);
   requireBody(['backup'], req.body);
-  importBackupData(userId, req.body.backup);
+  const scope = req.body.scope || req.body.backup?.scope || 'user';
+  if (scope === 'admin') restoreAdminBackup(userId, req.body.backup);
+  else importBackupData(userId, req.body.backup);
   res.json({ ok: true });
 });
 
