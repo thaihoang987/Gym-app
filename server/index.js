@@ -273,7 +273,8 @@ function readExportTables(userId) {
       ORDER BY wl.completed_at, wl.session_id, wl.set_index
     `, [userId]),
     exerciseNotes: all('SELECT * FROM exercise_notes WHERE user_id = ? ORDER BY exercise_id', [userId]),
-    bodyWeights: all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at', [userId])
+    bodyWeights: all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at', [userId]),
+    uploads: readUserUploadedFiles(userId)
   };
 }
 
@@ -325,6 +326,38 @@ function readUploadedFiles() {
   return files;
 }
 
+function uploadedPathFromUrl(value) {
+  const text = String(value || '');
+  if (!text.startsWith('/uploads/')) return null;
+  return text.slice('/uploads/'.length).replace(/\\/g, '/');
+}
+
+function readUploadFileByRelativePath(relativePath) {
+  const clean = String(relativePath || '').replace(/\\/g, '/');
+  if (!clean || clean.includes('..') || path.isAbsolute(clean)) return null;
+  const fullPath = path.join(uploadDir, clean);
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) return null;
+  return {
+    path: clean,
+    mime: mimeForFile(fullPath),
+    base64: fs.readFileSync(fullPath).toString('base64')
+  };
+}
+
+function readUserUploadedFiles(userId) {
+  const paths = new Set();
+  const user = one('SELECT avatar FROM users WHERE id = ?', [userId]);
+  const avatarPath = uploadedPathFromUrl(user?.avatar);
+  if (avatarPath) paths.add(avatarPath);
+  for (const exercise of all('SELECT image_path, gif_path FROM exercises WHERE custom_user_id = ? AND is_custom = 1', [userId])) {
+    const imagePath = uploadedPathFromUrl(exercise.image_path);
+    const gifPath = uploadedPathFromUrl(exercise.gif_path);
+    if (imagePath) paths.add(imagePath);
+    if (gifPath) paths.add(gifPath);
+  }
+  return [...paths].map(readUploadFileByRelativePath).filter(Boolean);
+}
+
 function restoreUploadedFiles(files = []) {
   for (const file of files || []) {
     const relativePath = String(file.path || '').replace(/\\/g, '/');
@@ -336,20 +369,12 @@ function restoreUploadedFiles(files = []) {
 }
 
 function readAdminExportTables() {
+  const adminIds = all("SELECT id FROM users WHERE role = 'ADMIN' ORDER BY id").map((user) => user.id);
+  const adminData = adminIds.map((adminId) => ({ userId: adminId, data: readExportTables(adminId) }));
   return {
-    users: tableRows('users', 'ORDER BY id'),
-    settings: tableRows('user_settings', 'ORDER BY user_id'),
-    customExercises: tableRows('exercises', 'WHERE is_custom = 1 ORDER BY custom_user_id, name'),
-    groups: tableRows('custom_groups', 'ORDER BY user_id, id'),
-    groupExercises: tableRows('group_exercises', 'ORDER BY group_id, order_index'),
-    routines: tableRows('routines', 'ORDER BY user_id, id'),
-    routineGroups: tableRows('routine_groups', 'ORDER BY routine_id, order_index'),
-    scheduleRules: tableRows('routine_schedule_rules', 'ORDER BY user_id, mode, day_of_week, order_index'),
-    sessions: tableRows('workout_sessions', 'ORDER BY user_id, started_at'),
-    logs: tableRows('workout_logs', 'ORDER BY user_id, completed_at, session_id, set_index'),
-    exerciseNotes: tableRows('exercise_notes', 'ORDER BY user_id, exercise_id'),
-    bodyWeights: tableRows('body_weight_logs', 'ORDER BY user_id, logged_at'),
-    uploads: readUploadedFiles()
+    users: all('SELECT id, username, name, password_hash, role, created_at FROM users ORDER BY id'),
+    adminData,
+    uploads: [...new Map(adminData.flatMap((item) => item.data.uploads || []).map((file) => [file.path, file])).values()]
   };
 }
 
@@ -1712,15 +1737,15 @@ function importBackupData(userId, backup) {
     throw error;
   }
   // Bỏ qua data.user (tên/avatar/pass) — giữ nguyên thông tin user hiện tại
-  // Chỉ THÊM training data, không xóa dữ liệu cũ (INSERT OR IGNORE)
   const settingColumns = new Set(all('PRAGMA table_info(user_settings)').map((col) => col.name));
-  // Chỉ import các cột workout, bỏ qua thông tin cá nhân
-  const skipSettingKeys = new Set(['user_id', 'locale', 'timezone', 'height_cm', 'height_unit', 'gender', 'birth_date', 'clock_format', 'theme_mode', 'primary_color']);
-
   const tx = db.transaction(() => {
+    restoreUploadedFiles(data.uploads);
+    if (data.user) {
+      db.prepare('UPDATE users SET name = COALESCE(?, name), avatar = COALESCE(?, avatar) WHERE id = ?').run(data.user.name || null, data.user.avatar || null, userId);
+    }
     if (data.settings) {
       const columns = Object.keys(data.settings).filter((key) =>
-        !skipSettingKeys.has(key) && settingColumns.has(key) && /^[a-z0-9_]+$/i.test(key)
+        key !== 'user_id' && settingColumns.has(key) && /^[a-z0-9_]+$/i.test(key)
       );
       if (columns.length) {
         db.prepare(`UPDATE user_settings SET ${columns.map((key) => `"${key}" = ?`).join(', ')} WHERE user_id = ?`)
@@ -1800,18 +1825,11 @@ function restoreAdminBackup(requesterId, backup) {
       db.prepare('DELETE FROM exercises WHERE is_custom = 1').run();
 
       insertRows('users', data.users);
-      insertRows('user_settings', data.settings);
-      insertRows('exercises', data.customExercises);
-      insertRows('custom_groups', data.groups);
-      insertRows('group_exercises', data.groupExercises);
-      insertRows('routines', data.routines);
-      insertRows('routine_groups', data.routineGroups);
-      insertRows('routine_schedule_rules', data.scheduleRules);
-      insertRows('workout_sessions', data.sessions);
-      insertRows('workout_logs', data.logs);
-      insertRows('exercise_notes', data.exerciseNotes);
-      insertRows('body_weight_logs', data.bodyWeights);
+      db.prepare('INSERT OR IGNORE INTO user_settings (user_id) SELECT id FROM users').run();
       restoreUploadedFiles(data.uploads);
+      for (const adminItem of data.adminData || []) {
+        importBackupData(Number(adminItem.userId), { data: adminItem.data });
+      }
     } finally {
       db.pragma('foreign_keys = ON');
     }
@@ -1831,7 +1849,7 @@ app.get('/api/backup', (req, res) => {
       version: 2,
       scope: 'admin',
       exportedAt: new Date().toISOString(),
-      note: 'Admin backup includes users and password_hash values. Passwords are not decrypted; hashes are restored directly.',
+      note: 'Admin backup includes login records and password_hash values for all users, plus admin-owned training data/uploads only. Other users must export their own backups. Passwords are not decrypted; hashes are restored directly.',
       data: readAdminExportTables()
     });
     return;

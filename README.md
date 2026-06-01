@@ -102,10 +102,10 @@ Gym App has two JSON backup modes:
 
 | Mode | What it includes | Intended use |
 |---|---|---|
-| User backup | Current user's workout data, custom exercises, routines, body weight logs, and exercise settings. It does not include passwords. | Move or restore one user's training data. |
-| Admin backup | All users, user settings, workout data, custom exercises, uploaded media, and encrypted `password_hash` values. | Full app restore/migration by an admin. |
+| User backup | Current user's workout data, custom exercises, routines, body weight logs, exercise settings, and that user's uploaded images/GIFs/icons. It does not include passwords. | Move or restore one user's private training data. |
+| Admin backup | Login records for all users, including encrypted `password_hash` values, plus admin-owned workout data and admin uploaded images/GIFs/icons only. It does not include other users' workout logs, body weights, notes, or uploads. | Restore accounts/login after migration while preserving user privacy. |
 
-Password hashes are one-way encrypted values. They are not decrypted during restore; admin restore writes the hash back so users can keep logging in with their existing passwords.
+Password hashes are one-way encrypted values. They are not decrypted during restore; admin restore writes the hash back so users can keep logging in with their existing passwords. Non-admin users should export/import their own user backups for privacy.
 
 For a full Unraid/server backup, also keep the appdata folder:
 
