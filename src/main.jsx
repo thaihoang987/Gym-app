@@ -703,7 +703,11 @@ async function warmOfflineData(userId) {
     `/api/routines?userId=${userId}`,
     `/api/sessions/active?userId=${userId}`,
     `/api/exercises/meta?userId=${userId}`,
-    `/api/exercises?userId=${userId}&q=&target=`
+    `/api/exercises?userId=${userId}&q=&target=`,
+    `/api/history?userId=${userId}&limit=20&offset=0`,
+    `/api/analytics?userId=${userId}`,
+    `/api/body-weight?userId=${userId}`,
+    `/api/body-weight/recent?userId=${userId}`
   ];
   await Promise.allSettled(endpoints.map((endpoint) => api(endpoint)));
 }
