@@ -3066,8 +3066,54 @@ function WorkoutSummary({ summary, settings, onClose }) {
         </div>
       )}
 
-      {/* Header gradient card — used for screenshot */}
-      <div ref={shareCardRef} className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
+      {/* Hidden share card — fixed size 400×520px, captured for PNG */}
+      <div style={{ position: 'fixed', left: '-9999px', top: 0, width: 400, pointerEvents: 'none' }}>
+        <div ref={shareCardRef} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
+          <div style={{ padding: 28, color: '#fff' }}>
+            {/* Header */}
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.75, marginBottom: 6 }}>💪 Workout Summary</div>
+            <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.2, marginBottom: 4 }}>{sessionName}</div>
+            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 20 }}>{gradeText}</div>
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              {[
+                { label: 'Duration', value: `${session?.duration_minutes}`, unit: 'min' },
+                { label: 'Exercises', value: s?.exerciseCount, unit: '' },
+                { label: 'Sets', value: s?.totalSets, unit: '' },
+                { label: 'Volume', value: volumeDisplay, unit: 'kg' },
+              ].map((stat) => (
+                <div key={stat.label} style={{ flex: 1, background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1 }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
+                  <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Top exercises — max 5 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(exercises || []).slice(0, 5).map((exercise) => {
+                const improved = exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight;
+                return (
+                  <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>{exercise.name}</div>
+                      <div style={{ fontSize: 11, opacity: 0.75 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
+                    </div>
+                    {improved && <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px' }}>▲ PR</div>}
+                  </div>
+                );
+              })}
+              {(exercises || []).length > 5 && (
+                <div style={{ textAlign: 'center', fontSize: 12, opacity: 0.7, padding: '4px 0' }}>+{exercises.length - 5} more exercises</div>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym App</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Header gradient card — displayed in app */}
+      <div className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
         <div className="mb-2 flex items-center gap-2">
           <Trophy size={22} />
           <span className="text-sm font-bold uppercase tracking-wide opacity-80">{t('summary_title')}</span>
