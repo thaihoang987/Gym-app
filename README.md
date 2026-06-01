@@ -2,6 +2,23 @@
 
 Gym App is a local-first workout tracker for personal or family use. It includes an exercise library with local JPG/GIF media, group/routine builders, workout logging, body-weight tracking, and basic analytics.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/image/01-home-today.png" width="180"/><br/><sub>Today's Workout</sub></td>
+    <td align="center"><img src="docs/image/02-home-schedule.png" width="180"/><br/><sub>Weekly Schedule</sub></td>
+    <td align="center"><img src="docs/image/03-home-history.png" width="180"/><br/><sub>Activity & History</sub></td>
+    <td align="center"><img src="docs/image/04-exercises.png" width="180"/><br/><sub>Exercise Library</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/image/05-schedule.png" width="180"/><br/><sub>Schedule Builder</sub></td>
+    <td align="center"><img src="docs/image/06-analytics.png" width="180"/><br/><sub>Analytics & BMI</sub></td>
+    <td align="center"><img src="docs/image/07-workout.png" width="180"/><br/><sub>Workout Logging</sub></td>
+    <td></td>
+  </tr>
+</table>
+
 ## Local development
 
 Prerequisites:
