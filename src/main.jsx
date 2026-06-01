@@ -3349,6 +3349,7 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_admin')}>
+        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
         <div className="flex flex-wrap gap-2">
           <button className="ghost-btn flex-1" onClick={() => {
             const scope = boot.activeUser.role === 'ADMIN' ? 'admin' : 'user';
