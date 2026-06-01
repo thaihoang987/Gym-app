@@ -90,13 +90,18 @@ async function cacheMediaUrls(urls, onProgress) {
 
 async function downloadGroupsForOffline(userId, onProgress) {
   const groups = await api(`/api/groups?userId=${userId}`);
+  const routinesPayload = await api(`/api/routines?userId=${userId}`).catch(() => ({ routines: [] }));
+  const activePayload = await api(`/api/sessions/active?userId=${userId}`).catch(() => ({ sessions: [] }));
   const urls = [];
-  for (const group of groups) {
-    for (const exercise of group.exercises || []) {
+  const collect = (exercises = []) => {
+    for (const exercise of exercises) {
       if (exercise.imageUrl) urls.push(exercise.imageUrl);
       if (exercise.gifUrl) urls.push(exercise.gifUrl);
     }
-  }
+  };
+  for (const group of groups) collect(group.exercises || []);
+  for (const routine of routinesPayload.routines || []) collect(routine.exercises || []);
+  for (const session of activePayload.sessions || []) collect(session.exercises || []);
   const unique = [...new Set(urls)];
   return cacheMediaUrls(unique, onProgress);
 }
@@ -104,8 +109,6 @@ async function downloadGroupsForOffline(userId, onProgress) {
 
 // ── Server status (centralized) ──────────────────────────────────────────────
 async function checkServerAvailable(timeoutMs = 2500) {
-  // Nếu browser báo offline → khỏi ping cho nhanh
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
   const ping = `${Date.now()}-${Math.random()}`;
   const attempts = [
     { method: 'HEAD', url: `/api/health?ping=${ping}` },
@@ -311,6 +314,17 @@ function offlineSessionPayload(userId, createEntry, pendingLogs = []) {
     group,
     exercises
   };
+}
+
+function findOfflineSessionPayload(userId, sessionId) {
+  const { logs, createdSessions, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
+  const created = createdSessions.find((entry) => Number(entry.sessionId) === Number(sessionId));
+  if (!created || deletedSessionIds.has(Number(sessionId))) return null;
+  const payload = offlineSessionPayload(userId, created, logs);
+  if (completedSessionIds.has(Number(sessionId))) {
+    return { ...payload, session: { ...payload.session, status: 'COMPLETED', syncStatus: 'pending' } };
+  }
+  return payload;
 }
 
 function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId = null) {
@@ -3034,7 +3048,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
   const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
-  useEffect(() => { api(`/api/sessions/${workout.sessionId}?userId=${userId}`).then(setData); }, [workout.sessionId, userId]);
+  useEffect(() => {
+    api(`/api/sessions/${workout.sessionId}?userId=${userId}`)
+      .then((payload) => {
+        if (payload?.session?.status === 'DELETED' || !payload?.exercises?.length) {
+          setData(findOfflineSessionPayload(userId, workout.sessionId) || payload);
+          return;
+        }
+        setData(payload);
+      })
+      .catch(() => setData(findOfflineSessionPayload(userId, workout.sessionId)));
+  }, [workout.sessionId, userId]);
 
   // Live sync: reload session data khi máy khác cập nhật
   useLiveSync(userId, () => {

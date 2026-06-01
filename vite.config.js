@@ -58,8 +58,8 @@ export default defineConfig({
             options: {
               cacheName: 'exercise-media',
               expiration: {
-                maxEntries: 180,
-                maxAgeSeconds: 60 * 60 * 24 * 30
+                maxEntries: 5000,
+                maxAgeSeconds: 60 * 60 * 24 * 180
               },
               cacheableResponse: {
                 statuses: [0, 200]
