@@ -636,6 +636,41 @@ function readBootCache(userId) {
   try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(userId)) || 'null'); } catch { return null; }
 }
 
+function todayDowIndex() {
+  const jsDay = new Date().getDay();
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+function offlineSuggestion(userId) {
+  const boot = readBootCache(userId);
+  const settings = boot?.settings || {};
+  const routineData = readApiCache(`/api/routines?userId=${userId}`) || {};
+  const routines = routineData.routines || [];
+  const rules = routineData.rules || [];
+  const mode = settings.schedule_mode || 'FREE';
+  if (mode === 'FREE') return { mode: 'FREE', title: 'Tập tự do', routine: null };
+  if (mode === 'FIXED') {
+    const dow = todayDowIndex();
+    const rule = rules.find((item) => item.mode === 'FIXED' && Number(item.day_of_week) === dow);
+    const routine = rule ? routines.find((item) => Number(item.id) === Number(rule.routine_id)) : null;
+    return { mode: 'FIXED', dayOfWeek: dow, title: rule ? `Lịch cố định hôm nay` : 'Hôm nay chưa gán lịch', routine: routine || null };
+  }
+  const index = Number(settings.current_rolling_index || 1);
+  const rule = rules.find((item) => item.mode === 'ROLLING' && Number(item.order_index) === index);
+  const routine = rule ? routines.find((item) => Number(item.id) === Number(rule.routine_id)) : null;
+  return { mode: 'ROLLING', rollingIndex: index, title: rule ? `Buổi ${index} trong chu kỳ` : 'Chu kỳ chưa hoàn tất', routine: routine || null };
+}
+
+function offlineDashboardData(userId) {
+  const cached = readApiCache(`/api/dashboard?userId=${userId}`) || {};
+  return {
+    suggestion: cached.suggestion || readBootCache(userId)?.suggestion || offlineSuggestion(userId),
+    activityCalendar: cached.activityCalendar || [],
+    recentHistory: cached.recentHistory || [],
+    todaySummary: cached.todaySummary || []
+  };
+}
+
 async function warmOfflineData(userId) {
   const endpoints = [
     `/api/bootstrap?userId=${userId}`,
@@ -776,6 +811,7 @@ async function api(path, options = {}) {
     // Cache được phủ thêm offline queue để set vừa tập vẫn hiện sau khi đổi trang/mở lại app.
     if (isGet && shouldCacheApi(path)) {
       const cached = localStorage.getItem(API_CACHE_PREFIX + path);
+      if (!cached && path.includes('/api/dashboard')) return applyOfflineQueueToCachedApi(path, offlineDashboardData(userIdFromApiPath(path)));
       if (!cached && path.includes('/api/exercises/meta')) return offlineExerciseMeta(userIdFromApiPath(path));
       if (!cached && path.includes('/api/exercises')) return offlineExercisesForPath(path);
       return applyOfflineQueueToCachedApi(path, cached ? JSON.parse(cached) : null);
