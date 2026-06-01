@@ -471,7 +471,7 @@ function localIsoDate(date) {
 
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
-const API_CACHE_GET_PATTERNS = ['/api/groups', '/api/routines', '/api/dashboard', '/api/history', '/api/sessions/active', '/api/sessions/', '/api/exercises/meta', '/api/body-weight', '/api/analytics'];
+const API_CACHE_GET_PATTERNS = ['/api/bootstrap', '/api/groups', '/api/routines', '/api/dashboard', '/api/history', '/api/sessions/active', '/api/sessions/', '/api/exercises', '/api/body-weight', '/api/analytics'];
 const WORKOUT_CACHE_PATTERNS = ['/api/dashboard', '/api/history', '/api/sessions/active', '/api/sessions/', '/api/analytics'];
 
 function shouldCacheApi(path) {
@@ -498,6 +498,23 @@ function clearWorkoutApiCaches(userId) {
       }).catch(() => {});
     }).catch(() => {});
   }
+}
+
+function readBootCache(userId) {
+  try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(userId)) || 'null'); } catch { return null; }
+}
+
+async function warmOfflineData(userId) {
+  const endpoints = [
+    `/api/bootstrap?userId=${userId}`,
+    `/api/dashboard?userId=${userId}`,
+    `/api/groups?userId=${userId}`,
+    `/api/routines?userId=${userId}`,
+    `/api/sessions/active?userId=${userId}`,
+    `/api/exercises/meta?userId=${userId}`,
+    `/api/exercises?userId=${userId}&q=&target=`
+  ];
+  await Promise.allSettled(endpoints.map((endpoint) => api(endpoint)));
 }
 
 function userIdFromRequestOptions(options = {}) {
@@ -709,15 +726,17 @@ function App() {
   }, [isOnlineApp]);
 
   const cachedBoot = useMemo(() => {
-    if (!savedUser?.id) return null;
-    try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(savedUser.id)) || 'null'); } catch { return null; }
-  }, [savedUser?.id]);
+    if (!user?.id) return null;
+    return readBootCache(user.id);
+  }, [user?.id]);
   const [boot, setBoot] = useState(cachedBoot);
   const [refresh, setRefresh] = useState(0);
   const [workout, setWorkout] = useState(null);
 
   useEffect(() => {
     if (!user) return;
+    const localBoot = readBootCache(user.id);
+    if (localBoot) setBoot(localBoot);
     api(`/api/bootstrap?userId=${user.id}`)
       .then((data) => {
         if (user.authVersion && data.activeUser?.authVersion && user.authVersion !== data.activeUser.authVersion) {
@@ -742,6 +761,8 @@ function App() {
           localStorage.removeItem('familyGymUser');
           sessionStorage.removeItem('familyGymUser');
           setUser(null);
+        } else if (localBoot) {
+          setBoot(localBoot);
         }
         // Nếu offline + chưa có cachedBoot → vẫn giữ user, hiện màn offline
       });
@@ -924,6 +945,7 @@ function Login({ onLogin }) {
       sessionStorage.removeItem('familyGymUser');
       storage.setItem('familyGymUser', JSON.stringify(result.user));
       await saveOfflineAuth(username, password, result.user);
+      warmOfflineData(result.user.id).catch(() => {});
       onLogin(result.user);
     } catch (err) {
       const networkLikeError = !navigator.onLine || /fetch|network|failed|load failed/i.test(err.message || '');
