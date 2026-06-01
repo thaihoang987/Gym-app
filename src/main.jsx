@@ -45,6 +45,38 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 
+// ── Offline media cache ───────────────────────────────────────────────────────
+const MEDIA_CACHE = 'exercise-media';
+
+async function cacheMediaUrls(urls, onProgress) {
+  const cache = await caches.open(MEDIA_CACHE);
+  let done = 0;
+  const total = urls.length;
+  for (const url of urls) {
+    try {
+      const cached = await cache.match(url);
+      if (!cached) await cache.add(url);
+    } catch {}
+    done++;
+    onProgress?.(done, total);
+  }
+  return done;
+}
+
+async function downloadGroupsForOffline(userId, onProgress) {
+  const groups = await api(`/api/groups?userId=${userId}`);
+  const urls = [];
+  for (const group of groups) {
+    for (const exercise of group.exercises || []) {
+      if (exercise.imageUrl) urls.push(exercise.imageUrl);
+      if (exercise.gifUrl) urls.push(exercise.gifUrl);
+    }
+  }
+  const unique = [...new Set(urls)];
+  return cacheMediaUrls(unique, onProgress);
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 // ── Offline queue ─────────────────────────────────────────────────────────────
 function useOnlineStatus() {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -406,21 +438,35 @@ class ErrorBoundary extends React.Component {
 const LangContext = React.createContext(() => (k) => k);
 function useLang() { return React.useContext(LangContext); }
 
+const BOOT_CACHE_KEY = (userId) => `familyGymBoot:${userId}`;
+
 function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
   const [tab, setTab] = useState('home');
-  const [boot, setBoot] = useState(null);
+  const cachedBoot = useMemo(() => {
+    if (!savedUser?.id) return null;
+    try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(savedUser.id)) || 'null'); } catch { return null; }
+  }, [savedUser?.id]);
+  const [boot, setBoot] = useState(cachedBoot);
   const [refresh, setRefresh] = useState(0);
   const [workout, setWorkout] = useState(null);
 
   useEffect(() => {
     if (!user) return;
-    api(`/api/bootstrap?userId=${user.id}`).then(setBoot).catch(() => {
-      localStorage.removeItem('familyGymUser');
-      sessionStorage.removeItem('familyGymUser');
-      setUser(null);
-    });
+    api(`/api/bootstrap?userId=${user.id}`)
+      .then((data) => {
+        setBoot(data);
+        localStorage.setItem(BOOT_CACHE_KEY(user.id), JSON.stringify(data));
+      })
+      .catch(() => {
+        // Mất mạng — nếu có cached boot thì dùng tiếp, không clear user
+        if (!cachedBoot) {
+          localStorage.removeItem('familyGymUser');
+          sessionStorage.removeItem('familyGymUser');
+          setUser(null);
+        }
+      });
   }, [user, refresh]);
 
   if (!user) return <Login onLogin={setUser} />;
@@ -1508,7 +1554,15 @@ function ExerciseLibrary({ userId, settings }) {
 
   const addToGroup = async (groupId, exerciseId) => {
     await api(`/api/groups/${groupId}/exercises`, { method: 'POST', body: JSON.stringify({ exerciseId }) });
-    api(`/api/groups?userId=${userId}`).then(setGroups);
+    const updated = await api(`/api/groups?userId=${userId}`);
+    setGroups(updated);
+    // Tự cache ảnh + GIF của bài vừa thêm
+    const exercise = updated.flatMap((g) => g.exercises).find((e) => e.id === exerciseId);
+    if (exercise && 'caches' in window) {
+      const cache = await caches.open(MEDIA_CACHE);
+      const urls = [exercise.imageUrl, exercise.gifUrl].filter(Boolean);
+      for (const url of urls) { try { if (!(await cache.match(url))) await cache.add(url); } catch {} }
+    }
   };
   const playSmallGif = (exercise) => {
     if (exercise.displayMedia === 'icon' || exercise.displayMedia === 'image') return;
@@ -1920,8 +1974,18 @@ function Builder({ userId, boot, onStart, onChanged }) {
     reorderGroupExercises(groupId, active.id, over.id);
   };
   const removeExercise = async (groupId, exerciseId) => {
+    // Lấy URL trước khi xóa
+    const exercise = groups.flatMap((g) => g.exercises).find((e) => e.id === exerciseId);
     await api(`/api/groups/${groupId}/exercises/${exerciseId}?userId=${userId}`, { method: 'DELETE' });
-    load();
+    const updated = await api(`/api/groups?userId=${userId}`);
+    setGroups(updated);
+    // Xóa cache nếu bài này không còn trong group nào nữa
+    const stillExists = updated.flatMap((g) => g.exercises).some((e) => e.id === exerciseId);
+    if (!stillExists && exercise && 'caches' in window) {
+      const cache = await caches.open(MEDIA_CACHE);
+      const urls = [exercise.imageUrl, exercise.gifUrl].filter(Boolean);
+      for (const url of urls) { try { await cache.delete(url); } catch {} }
+    }
   };
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [editingGroupName, setEditingGroupName] = useState('');
