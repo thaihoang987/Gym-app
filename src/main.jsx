@@ -1521,7 +1521,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
               <div key={group.id} className="rounded-lg border border-white/20 p-3" style={{background:'rgba(255,255,255,0.06)'}}>
                 <strong className="text-sm">{group.name}</strong>
                 <div className="mt-2 space-y-2">
-                  {group.exercises.slice(0, 5).map((exercise) => {
+                  {group.exercises.map((exercise) => {
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
