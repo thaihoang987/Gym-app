@@ -125,7 +125,7 @@ function saveOfflineQueue(userId, queue) {
 }
 function addToOfflineQueue(userId, entry) {
   const q = getOfflineQueue(userId);
-  q.push({ ...entry, tempId: Date.now() + Math.random() });
+  q.push({ ...entry, tempId: Date.now() + Math.random(), queuedAt: new Date().toISOString() });
   saveOfflineQueue(userId, q);
 }
 async function flushOfflineQueue(userId) {
@@ -143,6 +143,94 @@ async function flushOfflineQueue(userId) {
   }
   saveOfflineQueue(userId, failed);
   return queue.length - failed.length;
+}
+
+function userIdFromApiPath(path) {
+  try {
+    const url = new URL(path, window.location.origin);
+    return Number(url.searchParams.get('userId') || 1);
+  } catch {
+    return 1;
+  }
+}
+
+function pendingOfflineLogs(userId) {
+  return getOfflineQueue(userId).filter((entry) => entry.type === 'log');
+}
+
+function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId = null) {
+  const counts = new Map();
+  for (const entry of pendingLogs) {
+    if (sessionId !== null && Number(entry.sessionId) !== Number(sessionId)) continue;
+    counts.set(entry.exerciseId, (counts.get(entry.exerciseId) || 0) + 1);
+  }
+  if (!counts.size) return exercises;
+  return exercises.map((exercise) => ({
+    ...exercise,
+    completedSets: Number(exercise.completedSets || 0) + Number(counts.get(exercise.id) || 0)
+  }));
+}
+
+function applyOfflineQueueToCachedApi(path, data) {
+  if (!data) return data;
+  const userId = userIdFromApiPath(path);
+  const pendingLogs = pendingOfflineLogs(userId);
+  if (!pendingLogs.length) return data;
+
+  const sessionExerciseSetsMatch = path.match(/\/api\/sessions\/(\d+)\/exercises\/([^/?]+)\/sets/);
+  if (sessionExerciseSetsMatch) {
+    const sessionId = Number(sessionExerciseSetsMatch[1]);
+    const exerciseId = decodeURIComponent(sessionExerciseSetsMatch[2]);
+    const current = Array.isArray(data.current) ? data.current : [];
+    const queued = pendingLogs
+      .filter((entry) => Number(entry.sessionId) === sessionId && entry.exerciseId === exerciseId)
+      .map((entry, index) => ({
+        id: entry.id || entry.tempId || `offline_${sessionId}_${exerciseId}_${index}`,
+        session_id: sessionId,
+        exercise_id: exerciseId,
+        set_index: Number(entry.setIndex || 0) || current.length + index + 1,
+        weight_kg: entry.weightKg,
+        weight_unit: entry.weightUnit || 'kg',
+        reps: entry.reps,
+        completed_at: entry.queuedAt || new Date().toISOString(),
+        offline: true
+      }));
+    if (!queued.length) return data;
+    return { ...data, current: [...current, ...queued] };
+  }
+
+  const sessionMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
+  if (sessionMatch && !path.includes('/detail')) {
+    const sessionId = Number(sessionMatch[1]);
+    return { ...data, exercises: addPendingCountsToExercises(data.exercises || [], pendingLogs, sessionId) };
+  }
+
+  if (path.includes('/api/sessions/active')) {
+    const sessions = data.sessions || (data.session ? [data] : []);
+    const nextSessions = sessions.map((item) => ({
+      ...item,
+      exercises: addPendingCountsToExercises(item.exercises || [], pendingLogs, item.session?.id)
+    }));
+    return {
+      ...data,
+      ...(data.session ? { exercises: nextSessions[0]?.exercises || data.exercises } : {}),
+      sessions: nextSessions
+    };
+  }
+
+  if (path.includes('/api/dashboard')) {
+    const byExercise = new Map((data.todaySummary || []).map((row) => [row.exercise_id, { ...row }]));
+    for (const entry of pendingLogs) {
+      const row = byExercise.get(entry.exerciseId) || { exercise_id: entry.exerciseId, name: '', sets: 0, max_weight: 0, total_reps: 0, previous_best: null };
+      row.sets = Number(row.sets || 0) + 1;
+      row.max_weight = Math.max(Number(row.max_weight || 0), Number(entry.weightKg || 0));
+      row.total_reps = Number(row.total_reps || 0) + Number(entry.reps || 0);
+      byExercise.set(entry.exerciseId, row);
+    }
+    return { ...data, todaySummary: [...byExercise.values()] };
+  }
+
+  return data;
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -378,10 +466,11 @@ async function api(path, options = {}) {
     }
     return data;
   } catch (err) {
-    // Khi mất mạng, trả về cache cho GET requests
-    if (isGet && !navigator.onLine && shouldCacheApi(path)) {
+    // Khi mất mạng hoặc server tạm không tới được, trả về cache cho GET requests.
+    // Cache được phủ thêm offline queue để set vừa tập vẫn hiện sau khi đổi trang/mở lại app.
+    if (isGet && shouldCacheApi(path)) {
       const cached = localStorage.getItem(API_CACHE_PREFIX + path);
-      if (cached) return JSON.parse(cached);
+      if (cached) return applyOfflineQueueToCachedApi(path, JSON.parse(cached));
     }
     throw err;
   }
@@ -487,6 +576,51 @@ const LangContext = React.createContext(() => (k) => k);
 function useLang() { return React.useContext(LangContext); }
 
 const BOOT_CACHE_KEY = (userId) => `familyGymBoot:${userId}`;
+const OFFLINE_AUTH_PREFIX = 'familyGymOfflineAuth:';
+
+function bytesToBase64(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+async function passwordDigest(password, saltBase64) {
+  const salt = saltBase64 ? base64ToBytes(saltBase64) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' }, key, 256);
+  return { salt: bytesToBase64(salt), hash: bytesToBase64(bits) };
+}
+
+function offlineAuthKey(username) {
+  return `${OFFLINE_AUTH_PREFIX}${String(username || '').trim().toLowerCase()}`;
+}
+
+async function saveOfflineAuth(username, password, user) {
+  if (!username || !password || !user?.id || !crypto?.subtle) return;
+  const verifier = await passwordDigest(password);
+  localStorage.setItem(offlineAuthKey(username), JSON.stringify({
+    username: String(username).trim(),
+    user,
+    salt: verifier.salt,
+    hash: verifier.hash,
+    authVersion: user.authVersion || null,
+    savedAt: new Date().toISOString()
+  }));
+}
+
+async function verifyOfflineAuth(username, password) {
+  const raw = localStorage.getItem(offlineAuthKey(username));
+  if (!raw || !password || !crypto?.subtle) return null;
+  const saved = JSON.parse(raw);
+  const verifier = await passwordDigest(password, saved.salt);
+  return verifier.hash === saved.hash ? saved.user : null;
+}
+
+function clearOfflineAuth(username) {
+  if (username) localStorage.removeItem(offlineAuthKey(username));
+}
 
 function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
@@ -515,13 +649,25 @@ function App() {
     if (!user) return;
     api(`/api/bootstrap?userId=${user.id}`)
       .then((data) => {
+        if (user.authVersion && data.activeUser?.authVersion && user.authVersion !== data.activeUser.authVersion) {
+          clearOfflineAuth(user.username);
+          localStorage.removeItem('familyGymUser');
+          sessionStorage.removeItem('familyGymUser');
+          setUser(null);
+          return;
+        }
         setBoot(data);
+        const nextUser = { ...user, ...data.activeUser };
+        const userStorage = localStorage.getItem('familyGymUser') ? localStorage : sessionStorage;
+        userStorage.setItem('familyGymUser', JSON.stringify(nextUser));
+        if (JSON.stringify(nextUser) !== JSON.stringify(user)) setUser(nextUser);
         localStorage.setItem(BOOT_CACHE_KEY(user.id), JSON.stringify(data));
       })
       .catch(() => {
         // Chỉ logout nếu đang có mạng (lỗi auth thật sự)
         // Mất mạng → giữ nguyên, không bao giờ clear user
         if (navigator.onLine) {
+          clearOfflineAuth(user.username);
           localStorage.removeItem('familyGymUser');
           sessionStorage.removeItem('familyGymUser');
           setUser(null);
@@ -681,15 +827,31 @@ function Login({ onLogin }) {
   const submit = async (event) => {
     event.preventDefault();
     setError('');
-    if (!isOnline) { setError(t('login_offline_error')); return; }
+    if (!isOnline) {
+      try {
+        const offlineUser = await verifyOfflineAuth(username, password);
+        if (!offlineUser) {
+          setError(t('login_offline_no_cache'));
+          return;
+        }
+        localStorage.setItem('familyGymUser', JSON.stringify(offlineUser));
+        sessionStorage.removeItem('familyGymUser');
+        onLogin(offlineUser);
+      } catch {
+        setError(t('login_offline_no_cache'));
+      }
+      return;
+    }
     try {
       const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
       const storage = remember ? localStorage : sessionStorage;
       localStorage.removeItem('familyGymUser');
       sessionStorage.removeItem('familyGymUser');
       storage.setItem('familyGymUser', JSON.stringify(result.user));
+      await saveOfflineAuth(username, password, result.user);
       onLogin(result.user);
     } catch (err) {
+      clearOfflineAuth(username);
       setError(err.message);
     }
   };
@@ -706,7 +868,7 @@ function Login({ onLogin }) {
         </div>
         {!isOnline && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm font-semibold text-amber-800">
-            <WifiOff size={15} /> {t('login_offline_error')}
+            <WifiOff size={15} /> {t('login_offline_hint')}
           </div>
         )}
         <label className="label">{t('login_username')}</label>
@@ -2704,7 +2866,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       setTimer(Number(settings?.rest_seconds || 60));

@@ -53,6 +53,10 @@ export function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), candidate);
 }
 
+export function authVersion(storedHash) {
+  return storedHash ? crypto.createHash('sha256').update(storedHash).digest('hex').slice(0, 24) : null;
+}
+
 function hasColumn(table, column) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
 }
@@ -106,7 +110,6 @@ export function migrate() {
       notify_missed_workout INTEGER NOT NULL DEFAULT 0,
       notify_missed_workout_time TEXT NOT NULL DEFAULT '21:00',
       privacy_pin_lock INTEGER NOT NULL DEFAULT 0,
-      privacy_face_id INTEGER NOT NULL DEFAULT 0,
       privacy_hide_progress_photos INTEGER NOT NULL DEFAULT 0,
       height_cm REAL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -333,7 +336,6 @@ export function migrate() {
     ['notify_missed_workout', 'INTEGER NOT NULL DEFAULT 0'],
     ['notify_missed_workout_time', "TEXT NOT NULL DEFAULT '21:00'"],
     ['privacy_pin_lock', 'INTEGER NOT NULL DEFAULT 0'],
-    ['privacy_face_id', 'INTEGER NOT NULL DEFAULT 0'],
     ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0']
   ];
   for (const [column, definition] of userSettingColumns) {

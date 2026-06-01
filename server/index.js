@@ -4,7 +4,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
+import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -569,7 +569,7 @@ function getTodayDow() {
 }
 
 function publicUser(user) {
-  return user ? { id: user.id, name: user.name, username: user.username, avatar: user.avatar, role: user.role } : null;
+  return user ? { id: user.id, name: user.name, username: user.username, avatar: user.avatar, role: user.role, authVersion: authVersion(user.password_hash) } : null;
 }
 
 function assertAdmin(userId) {
@@ -690,12 +690,14 @@ app.get('/api/events', (req, res) => {
 app.get('/api/bootstrap', (req, res) => {
   const userId = getUserId(req);
   cleanupStaleActiveSessions(userId);
-  const users = all('SELECT id, name, username, avatar, role FROM users ORDER BY id');
+  const users = all('SELECT id, name, username, avatar, role, password_hash FROM users ORDER BY id');
+  const activeUser = users.find((user) => user.id === userId);
+  if (!activeUser) return res.status(404).json({ error: 'User not found' });
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const exerciseCount = one('SELECT COUNT(*) AS total FROM exercises').total;
   res.json({
     users: users.map(publicUser),
-    activeUser: publicUser(users.find((user) => user.id === userId) || users[0]),
+    activeUser: publicUser(activeUser),
     settings,
     exerciseCount,
     suggestion: smartSuggestion(userId)
@@ -837,7 +839,6 @@ app.patch('/api/settings', (req, res) => {
     notifyRecovery: 'notify_recovery',
     notifyMissedWorkout: 'notify_missed_workout',
     privacyPinLock: 'privacy_pin_lock',
-    privacyFaceId: 'privacy_face_id',
     privacyHideProgressPhotos: 'privacy_hide_progress_photos'
   };
   for (const [bodyKey, column] of Object.entries(booleanMap)) {
