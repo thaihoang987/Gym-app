@@ -60,6 +60,21 @@ The app keeps persistent workout data in `./data`, which is mounted into the con
 
 The library list renders lightweight JPG cards in batches. GIF files are loaded only when opening exercise detail or entering workout mode.
 
+The bundled exercise dataset is for personal, educational, and non-commercial use according to the dataset README. Exercise images and GIFs may belong to their respective copyright holders. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistributing this repo or Docker image publicly.
+
+## Third-party licenses
+
+Gym App uses third-party open-source modules such as React, Vite, Express, dnd kit, react-wheel-picker, Recharts, lucide-react, Tailwind CSS, and others. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for license and attribution details.
+
+## Donate
+
+Gym App is free for personal use. If it helps you, you can optionally support development and maintenance:
+
+- Ko-fi: https://ko-fi.com/leonbell
+- PayPal: https://paypal.me/leonbell95
+
+Donations are voluntary and do not purchase a license to any third-party exercise dataset, images, or GIFs bundled with or referenced by this project.
+
 ## Notes
 
 - Build output is generated into `dist`.

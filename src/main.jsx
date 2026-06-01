@@ -3088,52 +3088,56 @@ function SettingsPage({ userId, boot, onChanged }) {
   };
   const saveAll = async () => {
     setSettingsError('');
-    if (password.trim() || passwordAgain.trim()) {
-      if (password !== passwordAgain) {
-        setSettingsError(t('settings_password_mismatch'));
-        return;
+    try {
+      if (password.trim() || passwordAgain.trim()) {
+        if (password !== passwordAgain) {
+          setSettingsError(t('settings_password_mismatch'));
+          return;
+        }
       }
+      const body = { userId };
+      if (name.trim()) body.name = name.trim();
+      if (password.trim()) body.password = password.trim();
+      if (avatarPreview !== boot.activeUser.avatar) body.avatar = avatarPreview;
+      const updated = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) });
+      await api('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          userId,
+          timezone,
+          locale,
+          heightCm: heightUnit === 'ft-in' ? feetInchesToCm(heightFeet, heightInches) || null : heightCm || null,
+          defaultWeightUnit,
+          gender,
+          birthDate,
+          heightUnit,
+          clockFormat,
+          restSeconds,
+          defaultSets,
+          defaultReps,
+          progressiveOverload,
+          soundRestDone,
+          vibrateRestDone,
+          countdown3s,
+          autoNextSet,
+          notifyWorkout,
+          notifyWorkoutTime,
+          notifyMissedWorkout,
+          notifyMissedWorkoutTime,
+          notifyRecovery: notifyUnfinishedWorkout,
+          notifyUnfinishedAfterMinutes,
+          notifyWeigh: notifyWeighFrequency !== 'off',
+          notifyWeighFrequency,
+          notifyWeighTime,
+          notifyProgressPhoto: notifyProgressPhotoFrequency !== 'off',
+          notifyProgressPhotoFrequency
+        })
+      });
+      localStorage.setItem('familyGymUser', JSON.stringify(updated));
+      location.reload();
+    } catch (error) {
+      setSettingsError(error.message || 'Không lưu được cài đặt');
     }
-    const body = { userId };
-    if (name.trim()) body.name = name.trim();
-    if (password.trim()) body.password = password.trim();
-    if (avatarPreview !== boot.activeUser.avatar) body.avatar = avatarPreview;
-    const updated = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) });
-    await api('/api/settings', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        userId,
-        timezone,
-        locale,
-        heightCm: heightUnit === 'ft-in' ? feetInchesToCm(heightFeet, heightInches) || null : heightCm || null,
-        defaultWeightUnit,
-        gender,
-        birthDate,
-        heightUnit,
-        clockFormat,
-        restSeconds,
-        defaultSets,
-        defaultReps,
-        progressiveOverload,
-        soundRestDone,
-        vibrateRestDone,
-        countdown3s,
-        autoNextSet,
-        notifyWorkout,
-        notifyWorkoutTime,
-        notifyMissedWorkout,
-        notifyMissedWorkoutTime,
-        notifyRecovery: notifyUnfinishedWorkout,
-        notifyUnfinishedAfterMinutes,
-        notifyWeigh: notifyWeighFrequency !== 'off',
-        notifyWeighFrequency,
-        notifyWeighTime,
-        notifyProgressPhoto: notifyProgressPhotoFrequency !== 'off',
-        notifyProgressPhotoFrequency
-      })
-    });
-    localStorage.setItem('familyGymUser', JSON.stringify(updated));
-    location.reload();
   };
   const pickAvatar = (file) => {
     if (!file) return;
