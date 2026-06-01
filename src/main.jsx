@@ -115,6 +115,48 @@ function useOnlineStatus() {
   return online;
 }
 
+async function checkServerAvailable(timeoutMs = 2500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch('/api/health', { cache: 'no-store', signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function useServerStatus(intervalMs = 4000) {
+  const [online, setOnline] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+    const update = async () => {
+      const ok = await checkServerAvailable();
+      if (!cancelled) setOnline(ok);
+    };
+    const schedule = () => {
+      clearInterval(timer);
+      timer = setInterval(update, intervalMs);
+    };
+    update();
+    schedule();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, [intervalMs]);
+  return online;
+}
+
 const OFFLINE_QUEUE_KEY = (userId) => `gymOfflineQueue:${userId}`;
 
 function getOfflineQueue(userId) {
@@ -785,16 +827,16 @@ function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
   const [tab, setTab] = useState('home');
-  const isOnlineApp = useOnlineStatus();
+  const isServerOnline = useServerStatus(4000);
 
   // Sync offline queue ngay khi app online (kể cả sau khi đóng browser)
   const [syncMsg, setSyncMsg] = useState('');
   useEffect(() => {
-    if (!isOnlineApp || !savedUser?.id) return;
-    flushOfflineQueue(savedUser.id).then((synced) => {
+    if (!isServerOnline || !user?.id) return;
+    flushOfflineQueue(user.id).then((synced) => {
       if (synced > 0) setSyncMsg(`✓ Đã đồng bộ ${synced} set`);
     });
-  }, [isOnlineApp]);
+  }, [isServerOnline, user?.id]);
 
   const cachedBoot = useMemo(() => {
     if (!user?.id) return null;
@@ -827,7 +869,7 @@ function App() {
       .catch(() => {
         // Chỉ logout nếu đang có mạng (lỗi auth thật sự)
         // Mất mạng → giữ nguyên, không bao giờ clear user
-        if (navigator.onLine) {
+        if (isServerOnline) {
           clearOfflineAuth(user.username);
           localStorage.removeItem('familyGymUser');
           sessionStorage.removeItem('familyGymUser');
@@ -837,10 +879,10 @@ function App() {
         }
         // Nếu offline + chưa có cachedBoot → vẫn giữ user, hiện màn offline
       });
-  }, [user, refresh]);
+  }, [user, refresh, isServerOnline]);
 
   if (!user) return <Login onLogin={setUser} />;
-  if (!boot && !navigator.onLine) {
+  if (!boot && !isServerOnline) {
     // Offline và chưa có cached data
     return (
       <div className="min-h-screen bg-app grid place-items-center text-center p-6">
@@ -986,7 +1028,7 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
-  const isOnline = useOnlineStatus();
+  const serverOnline = useServerStatus(4000);
   const tryOfflineLogin = async () => {
     const offlineUser = await verifyOfflineAuth(username, password);
     if (!offlineUser) {
@@ -1001,14 +1043,6 @@ function Login({ onLogin }) {
   const submit = async (event) => {
     event.preventDefault();
     setError('');
-    if (!isOnline) {
-      try {
-        await tryOfflineLogin();
-      } catch {
-        setError(t('login_offline_no_cache'));
-      }
-      return;
-    }
     try {
       const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
       const storage = remember ? localStorage : sessionStorage;
@@ -1019,18 +1053,18 @@ function Login({ onLogin }) {
       warmOfflineData(result.user.id).catch(() => {});
       onLogin(result.user);
     } catch (err) {
-      const networkLikeError = !navigator.onLine || /fetch|network|failed|load failed/i.test(err.message || '');
-      if (!navigator.onLine && networkLikeError) {
+      const networkLikeError = /fetch|network|failed|load failed|abort/i.test(err.message || '') || !(await checkServerAvailable(1500));
+      if (networkLikeError) {
         try {
           if (await tryOfflineLogin()) return;
         } catch {}
-        setError(t('login_offline_no_cache'));
+        setError('Không kết nối được server app và máy này chưa có đăng nhập offline hợp lệ.');
         return;
       }
       if (!networkLikeError) {
         clearOfflineAuth(username);
       }
-      setError(networkLikeError ? 'Không kết nối được server app. Kiểm tra đúng URL/Wi-Fi/server đang chạy rồi đăng nhập lại.' : err.message);
+      setError(err.message);
     }
   };
 
@@ -1044,7 +1078,7 @@ function Login({ onLogin }) {
             <p className="text-sm text-teal-950">{t('login_subtitle')}</p>
           </div>
         </div>
-        {!isOnline && (
+        {!serverOnline && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm font-semibold text-amber-800">
             <WifiOff size={15} /> {t('login_offline_hint')}
           </div>
@@ -1074,32 +1108,12 @@ function Header({ user, boot, onLogout }) {
   const t = useLang();
   const [now, setNow] = useState(new Date());
   const [open, setOpen] = useState(false);
-  const [serverOnline, setServerOnline] = useState(true);
+  const serverOnline = useServerStatus(3000);
   const menuRef = React.useRef(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const checkServer = async () => {
-      // Dùng fetch trực tiếp, không qua api() cache
-      if (!navigator.onLine) { if (!cancelled) setServerOnline(false); return; }
-      try {
-        const r = await fetch('/api/health', { cache: 'no-store' });
-        if (!cancelled) setServerOnline(r.ok);
-      } catch {
-        if (!cancelled) setServerOnline(false);
-      }
-    };
-    checkServer();
-    const id = setInterval(checkServer, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
   }, []);
 
   useEffect(() => {
@@ -2811,7 +2825,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
 function WorkoutLogger({ userId, workout, settings, onClose }) {
   const t = useLang();
   const dialog = useAppDialog();
-  const isOnline = useOnlineStatus();
+  const isOnline = useServerStatus(4000);
   const [data, setData] = useState(null);
   const [summary, setSummary] = useState(null);
   const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
