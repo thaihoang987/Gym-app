@@ -1131,6 +1131,17 @@ app.delete('/api/routines/:routineId/groups/:groupId', (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/routines/:id', (req, res) => {
+  const userId = getUserId(req);
+  const routineId = Number(req.params.id);
+  const routine = one('SELECT * FROM routines WHERE id = ? AND user_id = ?', [routineId, userId]);
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
+  const name = (req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Tên không được để trống' });
+  db.prepare('UPDATE routines SET name = ? WHERE id = ? AND user_id = ?').run(name, routineId, userId);
+  res.json({ ok: true });
+});
+
 app.patch('/api/routines/:id/groups-order', (req, res) => {
   const userId = getUserId(req);
   const routineId = Number(req.params.id);

@@ -26,6 +26,8 @@ import {
   Library,
   Lock,
   LogOut,
+  Pencil,
+  X,
   Pause,
   Play,
   Plus,
@@ -1873,6 +1875,26 @@ function Builder({ userId, boot, onStart, onChanged }) {
     await api(`/api/groups/${groupId}/exercises/${exerciseId}?userId=${userId}`, { method: 'DELETE' });
     load();
   };
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
+  const [editingRoutineId, setEditingRoutineId] = useState(null);
+  const [editingRoutineName, setEditingRoutineName] = useState('');
+
+  const startEditGroup = (group) => { setEditingGroupId(group.id); setEditingGroupName(group.name); };
+  const saveEditGroup = async (groupId) => {
+    if (!editingGroupName.trim()) return;
+    await api(`/api/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify({ userId, name: editingGroupName.trim() }) });
+    setEditingGroupId(null);
+    load();
+  };
+  const startEditRoutine = (routine) => { setEditingRoutineId(routine.id); setEditingRoutineName(routine.name); };
+  const saveEditRoutine = async (routineId) => {
+    if (!editingRoutineName.trim()) return;
+    await api(`/api/routines/${routineId}`, { method: 'PATCH', body: JSON.stringify({ userId, name: editingRoutineName.trim() }) });
+    setEditingRoutineId(null);
+    load();
+  };
+
   const deleteGroup = async (groupId) => {
     if (!(await dialog.confirm(t('builder_confirm_delete_group_msg')))) return;
     await api(`/api/groups/${groupId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -1983,7 +2005,18 @@ function Builder({ userId, boot, onStart, onChanged }) {
         {groups.map((group) => (
           <div key={group.id} className="panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="font-bold">{group.name} · {t('builder_exercises_count', group.exercises.length)}</div>
+              {editingGroupId === group.id ? (
+                <div className="flex flex-1 gap-2">
+                  <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
+                  <button className="small-action" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
+                  <button className="icon-btn" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 font-bold">
+                  {group.name} · {t('builder_exercises_count', group.exercises.length)}
+                  <button className="icon-btn" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> {t('start_exercise')}</button>
                 <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> {t('delete')}</button>
@@ -2034,9 +2067,20 @@ function Builder({ userId, boot, onStart, onChanged }) {
             return (
               <article key={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start gap-3">
-                  <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
+                  <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 shrink-0 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-bold">{routine.name}</h3>
+                    {editingRoutineId === routine.id ? (
+                      <div className="flex gap-2">
+                        <input className="input flex-1 py-1 text-sm" autoFocus value={editingRoutineName} onChange={(e) => setEditingRoutineName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditRoutine(routine.id); if (e.key === 'Escape') setEditingRoutineId(null); }} placeholder={t('builder_rename_placeholder')} />
+                        <button className="small-action" onClick={() => saveEditRoutine(routine.id)}><Check size={15} /></button>
+                        <button className="icon-btn" onClick={() => setEditingRoutineId(null)}><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <h3 className="font-bold">{routine.name}</h3>
+                        <button className="icon-btn" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
+                      </div>
+                    )}
                     <p className="text-sm text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                   </div>
                   <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> {t('start_exercise')}</button>
