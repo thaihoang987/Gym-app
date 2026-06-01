@@ -4,11 +4,13 @@ services:
     image: gym-app:latest
     container_name: gym-app
     ports:
-      - "3001:3001"
+      - "${PORT:-3001}:3001"
     volumes:
       - ./data:/app/data
     environment:
       - PORT=3001
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
       - NODE_ENV=production
     restart: unless-stopped
     healthcheck:

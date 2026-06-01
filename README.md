@@ -31,6 +31,14 @@ Default login:
 - Username: `admin`
 - Password: `admin123`
 
+Optional environment setup:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env` before the first Docker run if you want to change `ADMIN_PASSWORD`, `PORT`, or `TZ`.
+
 ## Docker / Unraid
 
 Prerequisites:
@@ -43,6 +51,7 @@ You do not need to download the exercise dataset manually for Docker/Unraid. The
 Build and run from the repo folder:
 
 ```powershell
+Copy-Item .env.example .env
 docker compose up -d --build
 ```
 
@@ -86,6 +95,22 @@ Server logs are written to:
 - `/mnt/user/appdata/gym-app/data/logs/server.log`
 
 This repo also includes `unraid-template.xml` for Community Applications/manual template use.
+
+## Docker image registry
+
+This repo includes a GitHub Actions workflow that builds and pushes a Docker image to GitHub Container Registry on every push to `main`:
+
+- Image: `ghcr.io/thaihoang987/gym-app:latest`
+- SHA tags: `ghcr.io/thaihoang987/gym-app:sha-<commit>`
+- Workflow: `.github/workflows/docker.yml`
+
+If the package is public, Unraid users can run the image directly with:
+
+```text
+ghcr.io/thaihoang987/gym-app:latest
+```
+
+If the package is private, open the package page on GitHub and set visibility to public, or log in to GHCR from Unraid before pulling.
 
 ## Update flow
 
@@ -133,6 +158,74 @@ The dataset folder is not committed to this repo. For Docker builds, it is downl
 The library list renders lightweight JPG cards in batches. GIF files are loaded only when opening exercise detail or entering workout mode.
 
 The bundled exercise dataset is for personal, educational, and non-commercial use according to the dataset README. Exercise images and GIFs may belong to their respective copyright holders. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistributing this repo or Docker image publicly.
+
+## Troubleshooting
+
+### Docker build fails while downloading packages or dataset
+
+The first build needs internet access for npm packages and `hasaneyldrm/exercises-dataset`. Check DNS/network access from the Docker host and run:
+
+```powershell
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Cannot open the app from a phone
+
+Make sure the phone is on the same LAN/VPN as the server. Use:
+
+```text
+http://SERVER_IP:3001
+```
+
+If it still fails, check firewall rules and confirm the container maps host port `3001` to container port `3001`.
+
+### Default password does not change
+
+`ADMIN_PASSWORD` only applies when the database is created for the first time. If `data/gym.sqlite` already exists, change the password inside the app Settings or delete the database only if you intentionally want a fresh install.
+
+### Library is empty in local development
+
+For local `npm run dev`, clone the dataset manually:
+
+```powershell
+git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset.git hasaneyldrm-exercises-dataset
+```
+
+Docker builds download this dataset automatically.
+
+### Uploaded images or GIFs are missing after update
+
+Check that `/app/data` is mapped to persistent storage. Uploaded files live under:
+
+```text
+/app/data/uploads
+```
+
+On Unraid this should be:
+
+```text
+/mnt/user/appdata/gym-app/data/uploads
+```
+
+### Check server logs
+
+Local/Docker Compose:
+
+```powershell
+Get-Content .\data\logs\server.log -Tail 50
+docker logs gym-app
+```
+
+Unraid:
+
+```bash
+tail -f /mnt/user/appdata/gym-app/data/logs/server.log
+```
+
+### Connect / Disconnect indicator is red
+
+The app checks `/api/health` every 10 seconds. Red means the browser cannot reach the backend. Check that the server/container is running and that the phone/browser is using the correct server IP and port.
 
 ## Third-party licenses
 
