@@ -27,12 +27,16 @@ import {
   Lock,
   LogOut,
   Pencil,
+  Share2,
+  Trophy,
+  WifiOff,
   X,
   Pause,
   Play,
   Plus,
   Settings,
   Trash2,
+  TrendingUp,
   UserRound
 } from 'lucide-react';
 import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
@@ -40,6 +44,50 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, T
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
+
+// ── Offline queue ─────────────────────────────────────────────────────────────
+function useOnlineStatus() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  return online;
+}
+
+const OFFLINE_QUEUE_KEY = (userId) => `gymOfflineQueue:${userId}`;
+
+function getOfflineQueue(userId) {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY(userId)) || '[]'); } catch { return []; }
+}
+function saveOfflineQueue(userId, queue) {
+  localStorage.setItem(OFFLINE_QUEUE_KEY(userId), JSON.stringify(queue));
+}
+function addToOfflineQueue(userId, entry) {
+  const q = getOfflineQueue(userId);
+  q.push({ ...entry, tempId: Date.now() + Math.random() });
+  saveOfflineQueue(userId, q);
+}
+async function flushOfflineQueue(userId) {
+  const queue = getOfflineQueue(userId);
+  if (!queue.length) return 0;
+  const failed = [];
+  for (const entry of queue) {
+    try {
+      if (entry.type === 'log') {
+        await api(`/api/sessions/${entry.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps }) });
+      } else if (entry.type === 'complete') {
+        await api(`/api/sessions/${entry.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+      }
+    } catch { failed.push(entry); }
+  }
+  saveOfflineQueue(userId, failed);
+  return queue.length - failed.length;
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('schedule_rolling_panel_title') });
 const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
@@ -2183,10 +2231,96 @@ function ScheduleRules({ rules, onDelete }) {
   );
 }
 
+function WorkoutSummary({ summary, settings, onClose }) {
+  const t = useLang();
+  const { detail, sessionName } = summary;
+  const { summary: s, exercises, session } = detail;
+  const totalVolume = s?.totalVolume || 0;
+  const volumeDisplay = totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume;
+  const grade = s?.improvedCount >= Math.ceil((s?.exerciseCount || 1) * 0.6) ? 'great' : s?.improvedCount > 0 ? 'ok' : 'start';
+  const gradeText = { great: t('summary_great'), ok: t('summary_ok'), start: t('summary_start') }[grade];
+  const gradeGradient = { great: 'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)', ok: 'linear-gradient(135deg,#f05a28,#f59e0b)', start: 'linear-gradient(135deg,#0ea5e9,#14b8a6)' }[grade];
+
+  const handleShare = async () => {
+    const text = `💪 ${sessionName}\n⏱ ${session?.duration_minutes} min · ${s?.exerciseCount} exercises · ${s?.totalSets} sets\n📊 Volume: ${volumeDisplay} kg · ${s?.improvedCount}/${s?.exerciseCount} improved\n\nTracked with Gym App`;
+    if (navigator.share) {
+      await navigator.share({ title: sessionName, text }).catch(() => {});
+    } else {
+      await navigator.clipboard.writeText(text).catch(() => {});
+    }
+  };
+
+  return (
+    <section className="space-y-4 pb-8">
+      {/* Header gradient card */}
+      <div className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
+        <div className="mb-2 flex items-center gap-2">
+          <Trophy size={22} />
+          <span className="text-sm font-bold uppercase tracking-wide opacity-80">{t('summary_title')}</span>
+        </div>
+        <h2 className="text-2xl font-black leading-tight">{sessionName}</h2>
+        <p className="mt-1 text-sm opacity-80">{gradeText}</p>
+
+        {/* Stats row */}
+        <div className="mt-5 grid grid-cols-4 gap-2">
+          {[
+            { label: t('summary_duration'), value: `${session?.duration_minutes}`, unit: 'min' },
+            { label: t('summary_exercises'), value: s?.exerciseCount, unit: '' },
+            { label: t('summary_sets'), value: s?.totalSets, unit: '' },
+            { label: t('summary_volume'), value: volumeDisplay, unit: 'kg' },
+          ].map((stat) => (
+            <div key={stat.label} className="rounded-xl bg-white/15 p-3 text-center">
+              <div className="text-xl font-black">{stat.value}<span className="text-xs font-bold opacity-70"> {stat.unit}</span></div>
+              <div className="mt-0.5 text-[11px] opacity-70">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Improved badge */}
+        {s?.exerciseCount > 0 && (
+          <div className="mt-3 flex items-center gap-1.5 rounded-xl bg-white/20 px-3 py-2 text-sm font-bold">
+            <TrendingUp size={15} />
+            {t('summary_improved', s.improvedCount, s.exerciseCount)}
+          </div>
+        )}
+      </div>
+
+      {/* Exercise list */}
+      <div className="space-y-2">
+        {exercises?.map((exercise) => {
+          const improved = exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight;
+          return (
+            <div key={exercise.id} className={`flex items-center gap-3 rounded-xl border p-3 ${improved ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+              {exercise.imageUrl
+                ? <img src={exercise.imageUrl} className="h-10 w-10 shrink-0 rounded bg-white object-contain" />
+                : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-slate-100 text-xl">🏋️</span>}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold">{exercise.name}</p>
+                <p className="text-xs text-slate-500">{exercise.sets.length} sets · max {exercise.maxWeight} kg · vol {exercise.volume}</p>
+                {improved && <p className="text-xs font-bold text-emerald-600">▲ {exercise.volume > exercise.previousVolume ? `vol +${exercise.volume - exercise.previousVolume}` : ''}{exercise.maxWeight > exercise.previousMaxWeight ? ` max +${exercise.maxWeight - exercise.previousMaxWeight}kg` : ''}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <button className="ghost-btn flex-1 flex items-center justify-center gap-2" onClick={handleShare}>
+          <Share2 size={16} /> {t('summary_share')}
+        </button>
+        <button className="primary flex-1" onClick={onClose}>{t('summary_close')}</button>
+      </div>
+    </section>
+  );
+}
+
 function WorkoutLogger({ userId, workout, settings, onClose }) {
   const t = useLang();
   const dialog = useAppDialog();
+  const isOnline = useOnlineStatus();
   const [data, setData] = useState(null);
+  const [summary, setSummary] = useState(null);
   const savedWorkout = useMemo(() => JSON.parse(localStorage.getItem(`familyGymWorkout:${userId}`) || 'null'), [userId, workout.sessionId]);
   const restoreSaved = savedWorkout?.sessionId === workout.sessionId;
   const [index, setIndex] = useState(() => Number(workout.initialIndex ?? (restoreSaved ? savedWorkout.index : 0) ?? 0));
@@ -2205,6 +2339,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
   useEffect(() => { api(`/api/sessions/${workout.sessionId}?userId=${userId}`).then(setData); }, [workout.sessionId, userId]);
+
+  // Auto-sync offline queue khi có mạng trở lại
+  useEffect(() => {
+    if (!isOnline) return;
+    flushOfflineQueue(userId).then((synced) => {
+      if (synced > 0) dialog.alert(t('offline_synced', synced));
+    });
+  }, [isOnline]);
   const exercise = data?.exercises?.[index];
   useEffect(() => {
     if (!workout.sessionId) return;
@@ -2399,7 +2541,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     // Tick: bắt buộc theo thứ tự
     const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
     if (prevUndone) return;
-    const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit: currentWeightUnit(), reps: set.reps }) });
+    const weightUnit = currentWeightUnit();
+    if (!isOnline) {
+      // Offline: lưu queue, dùng temp ID
+      const tempId = `offline_${Date.now()}`;
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps });
+      setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
+      setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
+      setTimer(Number(settings?.rest_seconds || 60));
+      return;
+    }
+    const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps }) });
     await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
     setData((current) => current ? {
@@ -2422,9 +2574,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       return Number(item.completedSets || item.sets || 0) > 0;
     });
     if (!hasCompletedSet && !(await dialog.confirm(t('workout_confirm_end')))) return;
-    const result = await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    // Offline: queue complete action
+    if (!isOnline) {
+      addToOfflineQueue(userId, { type: 'complete', sessionId: workout.sessionId });
+      localStorage.removeItem(`familyGymWorkout:${userId}`);
+      onClose();
+      return;
+    }
+    await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
-    onClose();
+    // Fetch detail cho summary card
+    try {
+      const detail = await api(`/api/sessions/${workout.sessionId}/detail?userId=${userId}`);
+      setSummary({ detail, sessionName: data?.routine?.name || data?.group?.name || t('workout_session_title') });
+    } catch {
+      onClose();
+    }
   };
   const saveWeightPreference = async (patch) => {
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, ...patch }) });
@@ -2455,8 +2620,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const exerciseGroups = workoutExerciseGroups(data);
 
+  // Hiển thị summary card sau khi hoàn thành
+  if (summary) return <WorkoutSummary summary={summary} settings={settings} onClose={onClose} />;
+
   return (
     <section className="space-y-4 text-black">
+      {!isOnline && (
+        <div className="flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800">
+          <WifiOff size={15} /> {t('offline_badge')}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button className="ghost-btn" onClick={view === 'exercise' ? () => setView('list') : exitWorkout}>
           {view === 'exercise' ? t('workout_nav_list') : t('workout_nav_exit')}
