@@ -8,7 +8,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-app/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-app</Project>
-  <Overview>Family Gym App — Track workouts, exercises, body weight and progress. Supports multiple users, 1300+ exercises with GIFs, custom exercises, workout scheduling, analytics and Excel export.</Overview>
+  <Overview>Gym App - Track workouts, exercises, body weight and progress. Supports multiple users, 1300+ exercises with GIFs, custom exercises, workout scheduling, analytics, Excel export, backup/restore, and PWA install on mobile.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
@@ -33,7 +33,7 @@
     Target="/app/data"
     Default="/mnt/user/appdata/gym-app/data"
     Mode="rw"
-    Description="Where the database and uploaded images are stored. Back this up regularly!"
+    Description="Where the database, uploaded images, and server logs are stored. Back this up regularly!"
     Type="Path"
     Display="always"
     Required="true"

@@ -9,7 +9,34 @@ import { db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, mig
 const app = express();
 const port = process.env.PORT || 3001;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const logDir = path.join(rootDir, 'data', 'logs');
+const serverLogPath = path.join(logDir, 'server.log');
 app.set('trust proxy', true);
+
+fs.mkdirSync(logDir, { recursive: true });
+
+function writeServerLog(level, message, meta = {}) {
+  const entry = {
+    time: new Date().toISOString(),
+    level,
+    message,
+    ...meta
+  };
+  fs.appendFile(serverLogPath, `${JSON.stringify(entry)}\n`, (error) => {
+    if (error) console.error('Failed to write server log', error);
+  });
+}
+
+process.on('uncaughtException', (error) => {
+  writeServerLog('fatal', error.message, { stack: error.stack });
+  console.error(error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  writeServerLog('error', error.message, { stack: error.stack, type: 'unhandledRejection' });
+  console.error(error);
+});
 
 migrate();
 if (db.prepare('SELECT COUNT(*) AS total FROM exercises').get().total === 0) {
@@ -1785,10 +1812,17 @@ app.get(/.*/, (req, res) => {
 });
 
 app.use((error, req, res, next) => {
+  writeServerLog('error', error.message || 'Server error', {
+    method: req.method,
+    path: req.originalUrl,
+    status: error.status || 500,
+    stack: error.stack
+  });
   console.error(error);
   res.status(error.status || 500).json({ error: error.message || 'Server error' });
 });
 
 app.listen(port, () => {
-  console.log(`Family Gym API listening on http://localhost:${port}`);
+  writeServerLog('info', `Gym App listening on http://localhost:${port}`);
+  console.log(`Gym App listening on http://localhost:${port}`);
 });

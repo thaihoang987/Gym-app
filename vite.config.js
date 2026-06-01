@@ -23,9 +23,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'pwa-192.png', 'pwa-512.png'],
       manifest: {
-        name: 'Family Gym',
+        name: 'Gym App',
         short_name: 'Gym',
-        description: 'Ứng dụng quản lý tập gym gia đình self-hosted.',
+        description: 'Self-hosted workout tracker for exercises, routines, body weight, and analytics.',
         theme_color: '#1e3a5f',
         background_color: '#f4f6f1',
         display: 'standalone',

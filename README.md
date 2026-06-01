@@ -38,6 +38,8 @@ Prerequisites:
 - Docker / Docker Compose
 - Internet access during the first image build. The Dockerfile downloads the exercise dataset and bundles it into the image.
 
+You do not need to download the exercise dataset manually for Docker/Unraid. The Dockerfile downloads and bundles it during image build.
+
 Build and run from the repo folder:
 
 ```powershell
@@ -60,6 +62,31 @@ volumes:
   - /mnt/user/appdata/gym-app:/app/data
 ```
 
+Recommended Unraid container settings:
+
+| Setting | Value |
+|---|---|
+| Repository | `ghcr.io/thaihoang987/gym-app:latest` if you publish an image, or build from this repo with Docker Compose |
+| WebUI | `http://[IP]:[PORT:3001]/` |
+| Network | `bridge` |
+| Web Port | Container `3001` to host `3001` |
+| Appdata path | `/mnt/user/appdata/gym-app/data` mapped to `/app/data` |
+| Restart policy | `unless-stopped` |
+| Default username | `admin` |
+| Default password | `admin123`, or the `ADMIN_PASSWORD` variable on a fresh database |
+
+Files to back up:
+
+- `/mnt/user/appdata/gym-app/data/gym.sqlite`
+- `/mnt/user/appdata/gym-app/data/uploads`
+- `/mnt/user/appdata/gym-app/data/exercise-translations` if you add custom translations
+
+Server logs are written to:
+
+- `/mnt/user/appdata/gym-app/data/logs/server.log`
+
+This repo also includes `unraid-template.xml` for Community Applications/manual template use.
+
 ## Update flow
 
 This repo is structured so updates can be pulled and rebuilt without touching user data:
@@ -70,6 +97,28 @@ docker compose up -d --build
 ```
 
 The app keeps persistent workout data in `./data`, which is mounted into the container. Do not commit `data/*.sqlite*` to GitHub.
+
+## Install on phone
+
+Gym App includes PWA support, so it can be installed to the home screen on phones and tablets.
+
+Android Chrome:
+
+1. Open `http://SERVER_IP:3001`.
+2. Open the browser menu.
+3. Tap **Install app** or **Add to Home screen**.
+
+iPhone / iPad Safari:
+
+1. Open `http://SERVER_IP:3001`.
+2. Tap the Share button.
+3. Tap **Add to Home Screen**.
+
+Notes:
+
+- iOS and Android must be on the same network as the server unless you expose the app through a reverse proxy/VPN.
+- Browser notification behavior is limited on iOS/Android and depends on browser permissions.
+- PWA install works best over HTTPS. Local LAN HTTP can still be opened in the browser, but some PWA features may be limited.
 
 ## Included dataset
 
