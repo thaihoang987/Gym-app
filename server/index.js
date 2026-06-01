@@ -662,9 +662,16 @@ function smartSuggestion(userId) {
   };
 }
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
-});
+function healthResponse(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  if (req.method === 'HEAD') return res.status(204).end();
+  res.json({ ok: true, serverTime: new Date().toISOString() });
+}
+
+app.head('/api/health', healthResponse);
+app.get('/api/health', healthResponse);
 
 app.get('/api/events', (req, res) => {
   const userId = getUserId(req);

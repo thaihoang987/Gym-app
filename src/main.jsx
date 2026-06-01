@@ -119,7 +119,12 @@ async function checkServerAvailable(timeoutMs = 2500) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch('/api/health', { cache: 'no-store', signal: controller.signal });
+    const response = await fetch(`/api/health?ping=${Date.now()}-${Math.random()}`, {
+      method: 'HEAD',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { 'Cache-Control': 'no-store, no-cache, max-age=0' }
+    });
     return response.ok;
   } catch {
     return false;
@@ -167,8 +172,21 @@ function saveOfflineQueue(userId, queue) {
 }
 function addToOfflineQueue(userId, entry) {
   let q = getOfflineQueue(userId);
+  if (entry.type === 'createSession') {
+    const existing = q.find((item) => item.type === 'createSession'
+      && item.routineId === entry.routineId
+      && item.groupId === entry.groupId
+      && !q.some((other) => other.type === 'deleteSession' && Number(other.sessionId) === Number(item.sessionId)));
+    if (existing) return existing.sessionId;
+  }
   if (entry.type === 'deleteSession') {
+    const localOnly = q.some((item) => item.type === 'createSession' && Number(item.sessionId) === Number(entry.sessionId));
     q = q.filter((item) => Number(item.sessionId) !== Number(entry.sessionId));
+    if (localOnly) {
+      saveOfflineQueue(userId, q);
+      clearWorkoutApiCaches(userId);
+      return null;
+    }
   }
   if (entry.type === 'complete') {
     q = q.filter((item) => !(item.type === 'complete' && Number(item.sessionId) === Number(entry.sessionId)));
@@ -176,21 +194,40 @@ function addToOfflineQueue(userId, entry) {
   q.push({ ...entry, tempId: Date.now() + Math.random(), queuedAt: new Date().toISOString(), syncStatus: 'pending' });
   saveOfflineQueue(userId, q);
   if (entry.type === 'complete' || entry.type === 'deleteSession') clearWorkoutApiCaches(userId);
+  return entry.sessionId || entry.tempId;
 }
 async function flushOfflineQueue(userId) {
   const queue = getOfflineQueue(userId);
   if (!queue.length) return 0;
   const failed = [];
+  const localSessionIds = new Set(queue.filter((entry) => entry.type === 'createSession').map((entry) => Number(entry.sessionId)));
+  const sessionIdMap = new Map();
   for (const entry of queue) {
     try {
-      if (entry.type === 'log') {
-        await api(`/api/sessions/${entry.sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps }) });
+      if (entry.type === 'createSession') {
+        const created = await api('/api/sessions', {
+          method: 'POST',
+          offlineQueue: false,
+          body: JSON.stringify({ userId, routineId: entry.routineId, groupId: entry.groupId, scheduleMode: entry.scheduleMode || 'FREE' })
+        });
+        sessionIdMap.set(Number(entry.sessionId), created.id);
+      } else if (entry.type === 'log') {
+        const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
+        if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
+        await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps }) });
       } else if (entry.type === 'complete') {
-        await api(`/api/sessions/${entry.sessionId}/complete`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId }) });
+        const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
+        if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
+        await api(`/api/sessions/${sessionId}/complete`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId }) });
       } else if (entry.type === 'deleteSession') {
-        await api(`/api/sessions/${entry.sessionId}`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
+        const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
+        if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) continue;
+        await api(`/api/sessions/${sessionId}`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
       }
-    } catch { failed.push(entry); }
+    } catch {
+      const mappedSessionId = sessionIdMap.get(Number(entry.sessionId));
+      failed.push(mappedSessionId ? { ...entry, sessionId: mappedSessionId } : entry);
+    }
   }
   saveOfflineQueue(userId, failed);
   if (failed.length !== queue.length) clearWorkoutApiCaches(userId);
@@ -210,8 +247,46 @@ function pendingOfflineState(userId) {
   const queue = getOfflineQueue(userId);
   const deletedSessionIds = new Set(queue.filter((entry) => entry.type === 'deleteSession').map((entry) => Number(entry.sessionId)));
   const completedSessionIds = new Set(queue.filter((entry) => entry.type === 'complete').map((entry) => Number(entry.sessionId)));
+  const createdSessions = queue.filter((entry) => entry.type === 'createSession' && !deletedSessionIds.has(Number(entry.sessionId)));
   const logs = queue.filter((entry) => entry.type === 'log' && !deletedSessionIds.has(Number(entry.sessionId)));
-  return { queue, logs, deletedSessionIds, completedSessionIds };
+  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds };
+}
+
+function readApiCache(path) {
+  try { return JSON.parse(localStorage.getItem(API_CACHE_PREFIX + path) || 'null'); } catch { return null; }
+}
+
+function cachedGroups(userId) {
+  return readApiCache(`/api/groups?userId=${userId}`) || [];
+}
+
+function cachedRoutines(userId) {
+  return readApiCache(`/api/routines?userId=${userId}`)?.routines || [];
+}
+
+function offlineSessionPayload(userId, createEntry, pendingLogs = []) {
+  const sessionId = Number(createEntry.sessionId);
+  const routines = cachedRoutines(userId);
+  const groups = cachedGroups(userId);
+  const routine = createEntry.routineId ? routines.find((item) => Number(item.id) === Number(createEntry.routineId)) : null;
+  const group = createEntry.groupId ? groups.find((item) => Number(item.id) === Number(createEntry.groupId)) : null;
+  const baseExercises = routine?.exercises || group?.exercises || [];
+  const exercises = addPendingCountsToExercises(baseExercises, pendingLogs, sessionId);
+  return {
+    session: {
+      id: sessionId,
+      user_id: userId,
+      routine_id: createEntry.routineId || null,
+      group_id: createEntry.groupId || null,
+      schedule_mode: createEntry.scheduleMode || 'FREE',
+      status: 'ACTIVE',
+      started_at: createEntry.queuedAt || new Date().toISOString(),
+      syncStatus: 'pending'
+    },
+    routine,
+    group,
+    exercises
+  };
 }
 
 function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId = null) {
@@ -232,8 +307,8 @@ function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId
 function applyOfflineQueueToCachedApi(path, data) {
   const baseData = data || {};
   const userId = userIdFromApiPath(path);
-  const { logs: pendingLogs, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
-  if (!pendingLogs.length && !deletedSessionIds.size && !completedSessionIds.size) return data;
+  const { logs: pendingLogs, createdSessions, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
+  if (!pendingLogs.length && !createdSessions.length && !deletedSessionIds.size && !completedSessionIds.size) return data;
 
   const sessionExerciseSetsMatch = path.match(/\/api\/sessions\/(\d+)\/exercises\/([^/?]+)\/sets/);
   if (sessionExerciseSetsMatch) {
@@ -264,21 +339,36 @@ function applyOfflineQueueToCachedApi(path, data) {
   if (sessionMatch && !path.includes('/detail')) {
     const sessionId = Number(sessionMatch[1]);
     if (deletedSessionIds.has(sessionId)) return { ...baseData, session: { ...(baseData.session || {}), id: sessionId, status: 'DELETED' }, exercises: [] };
+    const created = createdSessions.find((entry) => Number(entry.sessionId) === sessionId);
+    if (created) return offlineSessionPayload(userId, created, pendingLogs);
     if (completedSessionIds.has(sessionId)) return { ...baseData, session: { ...(baseData.session || {}), id: sessionId, status: 'COMPLETED', syncStatus: 'pending' }, exercises: addPendingCountsToExercises(baseData.exercises || [], pendingLogs, sessionId) };
     return { ...baseData, exercises: addPendingCountsToExercises(baseData.exercises || [], pendingLogs, sessionId) };
   }
 
   if (path.includes('/api/sessions/active')) {
     const sessions = baseData.sessions || (baseData.session ? [baseData] : []);
-    const nextSessions = sessions
+    const onlineSessions = sessions
       .filter((item) => !deletedSessionIds.has(Number(item.session?.id)) && !completedSessionIds.has(Number(item.session?.id)))
       .map((item) => ({
         ...item,
         exercises: addPendingCountsToExercises(item.exercises || [], pendingLogs, item.session?.id)
       }));
+    const offlineSessions = createdSessions
+      .filter((entry) => !completedSessionIds.has(Number(entry.sessionId)))
+      .map((entry) => offlineSessionPayload(userId, entry, pendingLogs));
+    const seen = new Set();
+    const nextSessions = [...onlineSessions, ...offlineSessions].filter((item) => {
+      const id = Number(item.session?.id);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
     return {
       ...baseData,
       ...(baseData.session ? { exercises: nextSessions[0]?.exercises || baseData.exercises } : {}),
+      session: nextSessions[0]?.session || baseData.session,
+      routine: nextSessions[0]?.routine || baseData.routine,
+      group: nextSessions[0]?.group || baseData.group,
       sessions: nextSessions
     };
   }
@@ -658,8 +748,25 @@ async function api(path, options = {}) {
     }
     return isGet ? applyOfflineQueueToCachedApi(path, data) : data;
   } catch (err) {
+    if (offlineQueue && method === 'POST' && path === '/api/sessions') {
+      if (await checkServerAvailable(1000)) throw err;
+      const bodyUserId = userIdFromRequestOptions(options) || 1;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const offlineSessionId = (Date.now() * 1000) + Math.floor(Math.random() * 1000);
+      const storedSessionId = addToOfflineQueue(bodyUserId, {
+        type: 'createSession',
+        sessionId: offlineSessionId,
+        routineId: body.routineId || null,
+        groupId: body.groupId || null,
+        scheduleMode: body.scheduleMode || 'FREE'
+      });
+      clearWorkoutApiCaches(bodyUserId);
+      return { id: storedSessionId || offlineSessionId, offline: true };
+    }
     const sessionDeleteMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
     if (offlineQueue && method === 'DELETE' && sessionDeleteMatch) {
+      if (await checkServerAvailable(1000)) throw err;
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       addToOfflineQueue(userId, { type: 'deleteSession', sessionId: Number(sessionDeleteMatch[1]) });
       clearWorkoutApiCaches(userId);
@@ -3064,8 +3171,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setTimer(Number(settings?.rest_seconds || 60));
       return;
     }
-    const result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps }) });
-    await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
+    let result;
+    try {
+      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps }) });
+      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
+    } catch (error) {
+      if (await checkServerAvailable(1000)) throw error;
+      const tempId = `offline_${Date.now()}`;
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
+      result = { id: tempId };
+    }
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
     setData((current) => current ? {
       ...current,
@@ -3096,7 +3211,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     // Flush offline queue trước khi complete để không mất set nào
     await flushOfflineQueue(userId).catch(() => {});
-    await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    try {
+      await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+    } catch (error) {
+      if (await checkServerAvailable(1000)) throw error;
+      addToOfflineQueue(userId, { type: 'complete', sessionId: workout.sessionId });
+    }
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     // Fetch detail cho summary card
     try {

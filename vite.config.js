@@ -67,7 +67,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/health',
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
