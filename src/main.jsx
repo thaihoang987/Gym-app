@@ -467,6 +467,17 @@ function App() {
   const savedUser = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null');
   const [user, setUser] = useState(savedUser);
   const [tab, setTab] = useState('home');
+  const isOnlineApp = useOnlineStatus();
+
+  // Sync offline queue ngay khi app online (kể cả sau khi đóng browser)
+  const [syncMsg, setSyncMsg] = useState('');
+  useEffect(() => {
+    if (!isOnlineApp || !savedUser?.id) return;
+    flushOfflineQueue(savedUser.id).then((synced) => {
+      if (synced > 0) setSyncMsg(`✓ Đã đồng bộ ${synced} set`);
+    });
+  }, [isOnlineApp]);
+
   const cachedBoot = useMemo(() => {
     if (!savedUser?.id) return null;
     try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(savedUser.id)) || 'null'); } catch { return null; }
@@ -595,6 +606,7 @@ function App() {
         ) : (
           <ErrorBoundary key={tab} t={t}>
             <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); sessionStorage.removeItem('familyGymUser'); setUser(null); }} />
+            {syncMsg && <div className="mx-4 mt-2 rounded-lg bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-800 cursor-pointer" onClick={() => setSyncMsg('')}>{syncMsg} ✕</div>}
             {tab === 'home' && <Dashboard userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} onChanged={() => setRefresh((v) => v + 1)} />}
             {tab === 'start' && <StartWorkoutPage userId={user.id} onStart={startWorkout} refresh={refresh} settings={boot.settings} />}
             {tab === 'library' && <ExerciseLibrary userId={user.id} settings={boot.settings} />}
@@ -2635,7 +2647,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (set.done) {
       const lastDone = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0];
       if (!lastDone || lastDone.setIndex !== set.setIndex) return;
-      if (!set.id) return;
+      // Không cho untick set đã lưu offline (chưa sync lên server)
+      if (!set.id || String(set.id).startsWith('offline_')) return;
       // Optimistic update trước
       setSets((old) => old.map((s) => s.setIndex === set.setIndex ? { ...s, done: false, id: undefined } : s));
       try {
@@ -2692,6 +2705,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       onClose();
       return;
     }
+    // Flush offline queue trước khi complete để không mất set nào
+    await flushOfflineQueue(userId).catch(() => {});
     await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     // Fetch detail cho summary card
