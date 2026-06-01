@@ -708,9 +708,11 @@ function Header({ user, boot, onLogout }) {
   useEffect(() => {
     let cancelled = false;
     const checkServer = async () => {
+      // Dùng fetch trực tiếp, không qua api() cache
+      if (!navigator.onLine) { if (!cancelled) setServerOnline(false); return; }
       try {
-        await api('/api/health');
-        if (!cancelled) setServerOnline(true);
+        const r = await fetch('/api/health', { cache: 'no-store' });
+        if (!cancelled) setServerOnline(r.ok);
       } catch {
         if (!cancelled) setServerOnline(false);
       }
