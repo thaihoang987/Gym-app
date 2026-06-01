@@ -2997,20 +2997,77 @@ function WorkoutSummary({ summary, settings, onClose }) {
   const grade = s?.improvedCount >= Math.ceil((s?.exerciseCount || 1) * 0.6) ? 'great' : s?.improvedCount > 0 ? 'ok' : 'start';
   const gradeText = { great: t('summary_great'), ok: t('summary_ok'), start: t('summary_start') }[grade];
   const gradeGradient = { great: 'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)', ok: 'linear-gradient(135deg,#f05a28,#f59e0b)', start: 'linear-gradient(135deg,#0ea5e9,#14b8a6)' }[grade];
+  const shareCardRef = React.useRef(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [shareImageUrl, setShareImageUrl] = useState(null);
+
+  const generateShareImage = async () => {
+    if (!shareCardRef.current) return null;
+    setGeneratingImage(true);
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(shareCardRef.current, {
+        backgroundColor: null,
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      });
+      const url = canvas.toDataURL('image/png');
+      setShareImageUrl(url);
+      return { canvas, url };
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    const result = shareImageUrl ? { url: shareImageUrl } : await generateShareImage();
+    if (!result) return;
+    const a = document.createElement('a');
+    a.href = result.url;
+    a.download = `gym-${sessionName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
+    a.click();
+  };
 
   const handleShare = async () => {
-    const text = `💪 ${sessionName}\n⏱ ${session?.duration_minutes} min · ${s?.exerciseCount} exercises · ${s?.totalSets} sets\n📊 Volume: ${volumeDisplay} kg · ${s?.improvedCount}/${s?.exerciseCount} improved\n\nTracked with Gym App`;
-    if (navigator.share) {
-      await navigator.share({ title: sessionName, text }).catch(() => {});
+    const result = await generateShareImage();
+    if (!result) return;
+    if (navigator.share && navigator.canShare) {
+      try {
+        result.canvas.toBlob(async (blob) => {
+          const file = new File([blob], 'workout.png', { type: 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: sessionName });
+            return;
+          }
+          // Fallback: share text
+          await navigator.share({ title: sessionName, text: `💪 ${sessionName} — ${session?.duration_minutes} min · ${s?.totalSets} sets` });
+        });
+      } catch {}
     } else {
-      await navigator.clipboard.writeText(text).catch(() => {});
+      // Desktop: download
+      handleDownload();
     }
   };
 
   return (
     <section className="space-y-4 pb-8">
-      {/* Header gradient card */}
-      <div className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
+      {/* Share image preview */}
+      {shareImageUrl && (
+        <div className="rounded-2xl overflow-hidden shadow-soft">
+          <img src={shareImageUrl} alt="Share preview" className="w-full" />
+          <div className="flex gap-2 p-3 bg-white border border-stone-200 rounded-b-2xl">
+            <button className="primary flex-1 flex items-center justify-center gap-2" onClick={handleDownload}>
+              ⬇ {t('summary_download')}
+            </button>
+            <button className="ghost-btn" onClick={() => setShareImageUrl(null)}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* Header gradient card — used for screenshot */}
+      <div ref={shareCardRef} className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
         <div className="mb-2 flex items-center gap-2">
           <Trophy size={22} />
           <span className="text-sm font-bold uppercase tracking-wide opacity-80">{t('summary_title')}</span>
@@ -3062,9 +3119,12 @@ function WorkoutSummary({ summary, settings, onClose }) {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3">
-        <button className="ghost-btn flex-1 flex items-center justify-center gap-2" onClick={handleShare}>
-          <Share2 size={16} /> {t('summary_share')}
+      <div className="flex gap-2">
+        <button className="ghost-btn flex-1 flex items-center justify-center gap-2" disabled={generatingImage} onClick={handleShare}>
+          <Share2 size={16} /> {generatingImage ? '...' : t('summary_share')}
+        </button>
+        <button className="ghost-btn flex items-center justify-center gap-1 px-3" disabled={generatingImage} onClick={handleDownload} title={t('summary_download')}>
+          ⬇
         </button>
         <button className="primary flex-1" onClick={onClose}>{t('summary_close')}</button>
       </div>
