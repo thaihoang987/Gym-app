@@ -2018,8 +2018,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <button className="small-action" onClick={() => startGroup(group)}><Play size={16} /> {t('start_exercise')}</button>
-                <button className="small-danger" onClick={() => deleteGroup(group.id)}><Trash2 size={16} /> {t('delete')}</button>
+                <button className="icon-btn" title={t('start_exercise')} onClick={() => startGroup(group)}><Play size={16} /></button>
+                <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteGroup(group.id)}><Trash2 size={16} /></button>
               </div>
             </div>
             <details className="mt-3">
@@ -2083,8 +2083,8 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     )}
                     <p className="text-sm text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                   </div>
-                  <button className="small-action" onClick={() => startRoutine(routine)}><Play size={16} /> {t('start_exercise')}</button>
-                  <button className="small-danger" onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /> {t('delete')}</button>
+                  <button className="icon-btn" title={t('start_exercise')} onClick={() => startRoutine(routine)}><Play size={16} /></button>
+                  <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /></button>
                 </div>
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_group_list')}</summary>
@@ -3349,21 +3349,19 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_admin')}>
-        <button className="primary" onClick={() => window.open(`/api/export/excel?userId=${userId}`, '_blank')}>{t('settings_export_excel')}</button>
-        <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}`, '_blank')}>{t('settings_export_user_backup')}</button>
-        <label className="ghost-btn cursor-pointer">
-          {t('settings_import_user_backup')}
-          <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0], 'user')} />
-        </label>
-        {boot.activeUser.role === 'ADMIN' && (
-          <>
-            <button className="ghost-btn" onClick={() => window.open(`/api/backup?userId=${userId}&scope=admin`, '_blank')}>{t('settings_export_admin_backup')}</button>
-            <label className="danger-btn cursor-pointer">
-              {t('settings_import_admin_backup')}
-              <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => importBackup(event.target.files?.[0], 'admin')} />
-            </label>
-          </>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <button className="ghost-btn flex-1" onClick={() => {
+            const scope = boot.activeUser.role === 'ADMIN' ? 'admin' : 'user';
+            window.open(`/api/backup?userId=${userId}${scope === 'admin' ? '&scope=admin' : ''}`, '_blank');
+          }}>{t('settings_export_data')}</button>
+          <label className={`flex-1 cursor-pointer text-center ${boot.activeUser.role === 'ADMIN' ? 'danger-btn' : 'ghost-btn'}`}>
+            {t('settings_import_data')}
+            <input className="hidden" type="file" accept="application/json,.json" onChange={(event) => {
+              const scope = boot.activeUser.role === 'ADMIN' ? 'admin' : 'user';
+              importBackup(event.target.files?.[0], scope);
+            }} />
+          </label>
+        </div>
         <p className="mt-2 text-sm text-slate-600">{t('settings_data_note')}</p>
       </SettingsGroup>
 
