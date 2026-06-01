@@ -1553,7 +1553,7 @@ function ExerciseLibrary({ userId, settings }) {
           <Chip active={!target} onClick={() => setTarget('')}>{t('lib_all')}</Chip>
           {meta.targets.slice(0, 18).map((value) => <Chip key={value} active={target === value} onClick={() => setTarget(value)}>{value}</Chip>)}
         </div>
-        <p className="library-play-hint">Bấm vào hình bài tập để chạy GIF.</p>
+        <p className="library-play-hint">{t('lib_gif_hint')}</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {visibleItems.map((exercise) => {
