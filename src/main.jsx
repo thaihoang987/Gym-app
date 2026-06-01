@@ -116,21 +116,29 @@ function useOnlineStatus() {
 }
 
 async function checkServerAvailable(timeoutMs = 2500) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`/api/health?ping=${Date.now()}-${Math.random()}`, {
-      method: 'HEAD',
-      cache: 'no-store',
-      signal: controller.signal,
-      headers: { 'Cache-Control': 'no-store, no-cache, max-age=0' }
-    });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
+  const ping = `${Date.now()}-${Math.random()}`;
+  const attempts = [
+    { method: 'HEAD', url: `/api/health?ping=${ping}` },
+    { method: 'GET', url: `/api/health?ping=${ping}&fallback=1` }
+  ];
+  for (const attempt of attempts) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(attempt.url, {
+        method: attempt.method,
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: { 'Cache-Control': 'no-store, no-cache, max-age=0' }
+      });
+      if (response.ok || response.status === 204) return true;
+    } catch {
+      // Try the next method. Some reverse proxies do not forward HEAD reliably.
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return false;
 }
 
 function useServerStatus(intervalMs = 4000) {
