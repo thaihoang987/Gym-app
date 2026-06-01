@@ -3,7 +3,7 @@
     // nav
     nav_home: 'Home', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
     // login
-    login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123',
+    login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123', login_offline_error: 'No internet connection. Please connect to log in.',
     login_face_title: 'Face verification',
     login_face_checking: 'Checking',
     login_face_available: 'Supported',
@@ -290,7 +290,7 @@
 
   'vi-VN': {
     nav_home: 'Home', nav_start: 'Tiếp tục tập', nav_library: 'Bài tập', nav_builder: 'Lịch tập', nav_analytics: 'Thống kê', nav_settings: 'Cài đặt',
-    login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123',
+    login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123', login_offline_error: 'Không có mạng. Cần kết nối internet để đăng nhập.',
     login_face_title: 'Xác nhận gương mặt',
     login_face_checking: 'Đang kiểm tra',
     login_face_available: 'Có hỗ trợ',

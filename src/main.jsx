@@ -640,9 +640,11 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
+  const isOnline = useOnlineStatus();
   const submit = async (event) => {
     event.preventDefault();
     setError('');
+    if (!isOnline) { setError(t('login_offline_error')); return; }
     try {
       const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
       const storage = remember ? localStorage : sessionStorage;
@@ -665,6 +667,11 @@ function Login({ onLogin }) {
             <p className="text-sm text-teal-950">{t('login_subtitle')}</p>
           </div>
         </div>
+        {!isOnline && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm font-semibold text-amber-800">
+            <WifiOff size={15} /> {t('login_offline_error')}
+          </div>
+        )}
         <label className="label">{t('login_username')}</label>
         <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
         <label className="label mt-4">{t('login_password')}</label>
