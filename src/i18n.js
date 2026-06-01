@@ -3,7 +3,7 @@
     // nav
     nav_home: 'Home', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
     // login
-    login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123', login_offline_error: 'No internet connection. Please connect to log in.',
+    login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123', login_offline_error: 'Offline login requires a previous successful login on this device.',
     login_offline_hint: 'Offline mode: use the last password that logged in on this device.',
     login_offline_no_cache: 'Offline login is not available for this user/password on this device.',
     // header
@@ -279,7 +279,7 @@
 
   'vi-VN': {
     nav_home: 'Home', nav_start: 'Tiếp tục tập', nav_library: 'Bài tập', nav_builder: 'Lịch tập', nav_analytics: 'Thống kê', nav_settings: 'Cài đặt',
-    login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123', login_offline_error: 'Không có mạng. Cần kết nối internet để đăng nhập.',
+    login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123', login_offline_error: 'Đăng nhập offline cần từng đăng nhập thành công trên thiết bị này.',
     login_offline_hint: 'Đang offline: dùng mật khẩu đã đăng nhập thành công gần nhất trên thiết bị này.',
     login_offline_no_cache: 'Thiết bị này chưa có đăng nhập offline hợp lệ cho user/mật khẩu này.',
     logout: 'Đăng xuất', exercises_count: (n) => `${n} bài tập`,

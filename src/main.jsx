@@ -172,7 +172,7 @@ function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId
 }
 
 function applyOfflineQueueToCachedApi(path, data) {
-  if (!data) return data;
+  const baseData = data || {};
   const userId = userIdFromApiPath(path);
   const pendingLogs = pendingOfflineLogs(userId);
   if (!pendingLogs.length) return data;
@@ -181,9 +181,11 @@ function applyOfflineQueueToCachedApi(path, data) {
   if (sessionExerciseSetsMatch) {
     const sessionId = Number(sessionExerciseSetsMatch[1]);
     const exerciseId = decodeURIComponent(sessionExerciseSetsMatch[2]);
-    const current = Array.isArray(data.current) ? data.current : [];
+    const current = Array.isArray(baseData.current) ? baseData.current : [];
+    const existingOfflineKeys = new Set(current.map((row) => `${row.session_id || sessionId}:${row.exercise_id || exerciseId}:${row.set_index || ''}:${row.completed_at || ''}`));
     const queued = pendingLogs
       .filter((entry) => Number(entry.sessionId) === sessionId && entry.exerciseId === exerciseId)
+      .filter((entry, index) => !existingOfflineKeys.has(`${sessionId}:${exerciseId}:${entry.setIndex || current.length + index + 1}:${entry.queuedAt || ''}`))
       .map((entry, index) => ({
         id: entry.id || entry.tempId || `offline_${sessionId}_${exerciseId}_${index}`,
         session_id: sessionId,
@@ -195,31 +197,31 @@ function applyOfflineQueueToCachedApi(path, data) {
         completed_at: entry.queuedAt || new Date().toISOString(),
         offline: true
       }));
-    if (!queued.length) return data;
-    return { ...data, current: [...current, ...queued] };
+    if (!queued.length) return baseData;
+    return { ...baseData, current: [...current, ...queued] };
   }
 
   const sessionMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
   if (sessionMatch && !path.includes('/detail')) {
     const sessionId = Number(sessionMatch[1]);
-    return { ...data, exercises: addPendingCountsToExercises(data.exercises || [], pendingLogs, sessionId) };
+    return { ...baseData, exercises: addPendingCountsToExercises(baseData.exercises || [], pendingLogs, sessionId) };
   }
 
   if (path.includes('/api/sessions/active')) {
-    const sessions = data.sessions || (data.session ? [data] : []);
+    const sessions = baseData.sessions || (baseData.session ? [baseData] : []);
     const nextSessions = sessions.map((item) => ({
       ...item,
       exercises: addPendingCountsToExercises(item.exercises || [], pendingLogs, item.session?.id)
     }));
     return {
-      ...data,
-      ...(data.session ? { exercises: nextSessions[0]?.exercises || data.exercises } : {}),
+      ...baseData,
+      ...(baseData.session ? { exercises: nextSessions[0]?.exercises || baseData.exercises } : {}),
       sessions: nextSessions
     };
   }
 
   if (path.includes('/api/dashboard')) {
-    const byExercise = new Map((data.todaySummary || []).map((row) => [row.exercise_id, { ...row }]));
+    const byExercise = new Map((baseData.todaySummary || []).map((row) => [row.exercise_id, { ...row }]));
     for (const entry of pendingLogs) {
       const row = byExercise.get(entry.exerciseId) || { exercise_id: entry.exerciseId, name: '', sets: 0, max_weight: 0, total_reps: 0, previous_best: null };
       row.sets = Number(row.sets || 0) + 1;
@@ -227,10 +229,10 @@ function applyOfflineQueueToCachedApi(path, data) {
       row.total_reps = Number(row.total_reps || 0) + Number(entry.reps || 0);
       byExercise.set(entry.exerciseId, row);
     }
-    return { ...data, todaySummary: [...byExercise.values()] };
+    return { ...baseData, todaySummary: [...byExercise.values()] };
   }
 
-  return data;
+  return baseData;
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -464,13 +466,13 @@ async function api(path, options = {}) {
     if (isGet && shouldCacheApi(path)) {
       try { localStorage.setItem(API_CACHE_PREFIX + path, JSON.stringify(data)); } catch {}
     }
-    return data;
+    return isGet ? applyOfflineQueueToCachedApi(path, data) : data;
   } catch (err) {
     // Khi mất mạng hoặc server tạm không tới được, trả về cache cho GET requests.
     // Cache được phủ thêm offline queue để set vừa tập vẫn hiện sau khi đổi trang/mở lại app.
     if (isGet && shouldCacheApi(path)) {
       const cached = localStorage.getItem(API_CACHE_PREFIX + path);
-      if (cached) return applyOfflineQueueToCachedApi(path, JSON.parse(cached));
+      return applyOfflineQueueToCachedApi(path, cached ? JSON.parse(cached) : null);
     }
     throw err;
   }
@@ -824,19 +826,23 @@ function Login({ onLogin }) {
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const isOnline = useOnlineStatus();
+  const tryOfflineLogin = async () => {
+    const offlineUser = await verifyOfflineAuth(username, password);
+    if (!offlineUser) {
+      setError(t('login_offline_no_cache'));
+      return false;
+    }
+    localStorage.setItem('familyGymUser', JSON.stringify(offlineUser));
+    sessionStorage.removeItem('familyGymUser');
+    onLogin(offlineUser);
+    return true;
+  };
   const submit = async (event) => {
     event.preventDefault();
     setError('');
     if (!isOnline) {
       try {
-        const offlineUser = await verifyOfflineAuth(username, password);
-        if (!offlineUser) {
-          setError(t('login_offline_no_cache'));
-          return;
-        }
-        localStorage.setItem('familyGymUser', JSON.stringify(offlineUser));
-        sessionStorage.removeItem('familyGymUser');
-        onLogin(offlineUser);
+        await tryOfflineLogin();
       } catch {
         setError(t('login_offline_no_cache'));
       }
@@ -851,8 +857,15 @@ function Login({ onLogin }) {
       await saveOfflineAuth(username, password, result.user);
       onLogin(result.user);
     } catch (err) {
-      clearOfflineAuth(username);
-      setError(err.message);
+      const networkLikeError = !navigator.onLine || /fetch|network|failed|load failed/i.test(err.message || '');
+      if (networkLikeError) {
+        try {
+          if (await tryOfflineLogin()) return;
+        } catch {}
+      } else {
+        clearOfflineAuth(username);
+      }
+      setError(networkLikeError ? t('login_offline_no_cache') : err.message);
     }
   };
 
