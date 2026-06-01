@@ -460,16 +460,31 @@ function App() {
         localStorage.setItem(BOOT_CACHE_KEY(user.id), JSON.stringify(data));
       })
       .catch(() => {
-        // Mất mạng — nếu có cached boot thì dùng tiếp, không clear user
-        if (!cachedBoot) {
+        // Chỉ logout nếu đang có mạng (lỗi auth thật sự)
+        // Mất mạng → giữ nguyên, không bao giờ clear user
+        if (navigator.onLine) {
           localStorage.removeItem('familyGymUser');
           sessionStorage.removeItem('familyGymUser');
           setUser(null);
         }
+        // Nếu offline + chưa có cachedBoot → vẫn giữ user, hiện màn offline
       });
   }, [user, refresh]);
 
   if (!user) return <Login onLogin={setUser} />;
+  if (!boot && !navigator.onLine) {
+    // Offline và chưa có cached data
+    return (
+      <div className="min-h-screen bg-app grid place-items-center text-center p-6">
+        <div>
+          <WifiOff size={48} className="mx-auto mb-4 text-slate-400" />
+          <h2 className="text-xl font-bold text-slate-700">Không có kết nối</h2>
+          <p className="mt-2 text-sm text-slate-500">Mở app lần đầu cần có mạng để tải dữ liệu.</p>
+          <button className="primary mt-6" onClick={() => window.location.reload()}>Thử lại</button>
+        </div>
+      </div>
+    );
+  }
   if (!boot) { const tBoot = createT(savedUser?.locale); return <div className="min-h-screen bg-app grid place-items-center text-slate-950">{tBoot('loading')}</div>; }
 
   const t = createT(boot.settings?.locale);
