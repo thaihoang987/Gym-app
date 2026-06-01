@@ -1020,14 +1020,17 @@ function Login({ onLogin }) {
       onLogin(result.user);
     } catch (err) {
       const networkLikeError = !navigator.onLine || /fetch|network|failed|load failed/i.test(err.message || '');
-      if (networkLikeError) {
+      if (!navigator.onLine && networkLikeError) {
         try {
           if (await tryOfflineLogin()) return;
         } catch {}
-      } else {
+        setError(t('login_offline_no_cache'));
+        return;
+      }
+      if (!networkLikeError) {
         clearOfflineAuth(username);
       }
-      setError(networkLikeError ? t('login_offline_no_cache') : err.message);
+      setError(networkLikeError ? 'Không kết nối được server app. Kiểm tra đúng URL/Wi-Fi/server đang chạy rồi đăng nhập lại.' : err.message);
     }
   };
 
