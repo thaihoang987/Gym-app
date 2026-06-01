@@ -526,6 +526,75 @@ function userIdFromRequestOptions(options = {}) {
   }
 }
 
+function collectCachedExercises(userId) {
+  const byId = new Map();
+  const addExercise = (exercise) => {
+    if (!exercise?.id) return;
+    byId.set(String(exercise.id), { ...byId.get(String(exercise.id)), ...exercise });
+  };
+  const addExercises = (items = []) => items.forEach(addExercise);
+  const visit = (value) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    if (Array.isArray(value.exercises)) addExercises(value.exercises);
+    if (Array.isArray(value.groups)) value.groups.forEach(visit);
+    if (Array.isArray(value.routines)) value.routines.forEach(visit);
+    if (Array.isArray(value.sessions)) value.sessions.forEach(visit);
+    if (value.routine) visit(value.routine);
+    if (value.group) visit(value.group);
+  };
+
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(API_CACHE_PREFIX)) continue;
+    const path = key.slice(API_CACHE_PREFIX.length);
+    if (path.includes('userId=') && !path.includes(`userId=${userId}`)) continue;
+    if (!['/api/exercises', '/api/groups', '/api/routines', '/api/sessions/active', '/api/sessions/'].some((pattern) => path.includes(pattern))) continue;
+    try { visit(JSON.parse(localStorage.getItem(key) || 'null')); } catch {}
+  }
+  return [...byId.values()].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
+function offlineExercisesForPath(path) {
+  const userId = userIdFromApiPath(path);
+  const url = new URL(path, window.location.origin);
+  const q = String(url.searchParams.get('q') || '').trim().toLocaleLowerCase('vi-VN');
+  const target = String(url.searchParams.get('target') || '').trim();
+  let exercises = collectCachedExercises(userId);
+  if (target) exercises = exercises.filter((exercise) => String(exercise.target || '') === target);
+  if (q) {
+    exercises = exercises.filter((exercise) => [
+      exercise.name,
+      exercise.target,
+      exercise.equipment,
+      exercise.bodyPart,
+      exercise.body_part,
+      exercise.nameVi,
+      exercise.targetVi,
+      exercise.equipmentVi,
+      exercise.bodyPartVi,
+      exercise.searchVi
+    ].filter(Boolean).join(' ').toLocaleLowerCase('vi-VN').includes(q));
+  }
+  return exercises;
+}
+
+function offlineExerciseMeta(userId) {
+  const exercises = collectCachedExercises(userId);
+  return {
+    targets: [...new Set(exercises.map((exercise) => exercise.target).filter(Boolean))].sort(),
+    equipment: [...new Set(exercises.map((exercise) => exercise.equipment).filter(Boolean))].sort(),
+    bodyParts: [...new Set(exercises.map((exercise) => exercise.bodyPart || exercise.body_part).filter(Boolean))].sort(),
+    targetsVi: [...new Set(exercises.map((exercise) => exercise.targetVi).filter(Boolean))].sort(),
+    equipmentVi: [...new Set(exercises.map((exercise) => exercise.equipmentVi).filter(Boolean))].sort(),
+    bodyPartsVi: [...new Set(exercises.map((exercise) => exercise.bodyPartVi).filter(Boolean))].sort(),
+    quickSearchVi: []
+  };
+}
+
 async function api(path, options = {}) {
   const isGet = !options.method || options.method === 'GET';
   const method = (options.method || 'GET').toUpperCase();
@@ -558,6 +627,8 @@ async function api(path, options = {}) {
     // Cache được phủ thêm offline queue để set vừa tập vẫn hiện sau khi đổi trang/mở lại app.
     if (isGet && shouldCacheApi(path)) {
       const cached = localStorage.getItem(API_CACHE_PREFIX + path);
+      if (!cached && path.includes('/api/exercises/meta')) return offlineExerciseMeta(userIdFromApiPath(path));
+      if (!cached && path.includes('/api/exercises')) return offlineExercisesForPath(path);
       return applyOfflineQueueToCachedApi(path, cached ? JSON.parse(cached) : null);
     }
     throw err;
