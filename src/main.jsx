@@ -54,7 +54,7 @@ function languageKey(settings = {}) {
   const locale = settings?.locale || fallbackDisplay.locale;
   const map = { en: 'en-US', vi: 'vi-VN', zh: 'zh-CN', es: 'es-ES', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', de: 'de-DE', fr: 'fr-FR', ru: 'ru-RU' };
   const prefix = locale.split('-')[0];
-  return map[prefix] || 'vi-VN';
+  return map[prefix] || 'en-US';
 }
 
 function exerciseDisplayName(exercise, settings = {}) {
@@ -87,7 +87,7 @@ const feetInchesToCm = (feet, inches) => {
   return totalInches ? Number((totalInches * 2.54).toFixed(1)) : '';
 };
 
-const fallbackDisplay = { locale: 'vi-VN', timezone: 'Asia/Ho_Chi_Minh' };
+const fallbackDisplay = { locale: 'en-US', timezone: 'America/New_York' };
 const timezoneOptions = [
   ['Asia/Ho_Chi_Minh', 'Viet Nam'],
   ['Asia/Bangkok', 'Thailand'],
@@ -500,7 +500,7 @@ function App() {
 }
 
 function Login({ onLogin }) {
-  const savedLocale = (() => { try { const u = JSON.parse(localStorage.getItem('familyGymUser') || 'null'); return u?.locale || 'vi-VN'; } catch { return 'vi-VN'; } })();
+  const savedLocale = (() => { try { const u = JSON.parse(localStorage.getItem('familyGymUser') || 'null'); return u?.locale || fallbackDisplay.locale; } catch { return fallbackDisplay.locale; } })();
   const t = createT(savedLocale);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

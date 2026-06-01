@@ -74,8 +74,8 @@ export function migrate() {
       schedule_mode TEXT NOT NULL DEFAULT 'FREE' CHECK (schedule_mode IN ('FREE', 'FIXED', 'ROLLING')),
       current_rolling_index INTEGER NOT NULL DEFAULT 1,
       rest_seconds INTEGER NOT NULL DEFAULT 60,
-      timezone TEXT NOT NULL DEFAULT 'Asia/Ho_Chi_Minh',
-      locale TEXT NOT NULL DEFAULT 'vi-VN',
+      timezone TEXT NOT NULL DEFAULT 'America/New_York',
+      locale TEXT NOT NULL DEFAULT 'en-US',
       default_weight_unit TEXT NOT NULL DEFAULT 'kg',
       gender TEXT,
       birth_date TEXT,
@@ -292,10 +292,10 @@ export function migrate() {
     }
   }
   if (!hasColumn('user_settings', 'timezone')) {
-    db.exec("ALTER TABLE user_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'");
+    db.exec("ALTER TABLE user_settings ADD COLUMN timezone TEXT NOT NULL DEFAULT 'America/New_York'");
   }
   if (!hasColumn('user_settings', 'locale')) {
-    db.exec("ALTER TABLE user_settings ADD COLUMN locale TEXT NOT NULL DEFAULT 'vi-VN'");
+    db.exec("ALTER TABLE user_settings ADD COLUMN locale TEXT NOT NULL DEFAULT 'en-US'");
   }
   if (!hasColumn('user_settings', 'height_cm')) {
     db.exec('ALTER TABLE user_settings ADD COLUMN height_cm REAL');

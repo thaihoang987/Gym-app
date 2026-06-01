@@ -2217,10 +2217,10 @@
 };
 
 export function createT(locale) {
-  const lang = locale?.split('-')[0] || 'vi';
+  const lang = locale?.split('-')[0] || 'en';
   const map = { en: 'en-US', vi: 'vi-VN', zh: 'zh-CN', es: 'es-ES', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', de: 'de-DE', fr: 'fr-FR', ru: 'ru-RU' };
-  const key = map[lang] || 'vi-VN';
-  const dict = translations[key] || translations['vi-VN'];
+  const key = map[lang] || 'en-US';
+  const dict = translations[key] || translations['en-US'];
   const fallbackDict = translations['vi-VN'];
   const englishDict = translations['en-US'];
   return (k, ...args) => {

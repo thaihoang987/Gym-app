@@ -10,7 +10,7 @@ services:
     environment:
       - PORT=3001
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      - TZ=${TZ:-America/New_York}
       - NODE_ENV=production
     restart: unless-stopped
     healthcheck:

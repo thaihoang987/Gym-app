@@ -55,13 +55,13 @@
   <Config
     Name="Timezone"
     Target="TZ"
-    Default="Asia/Ho_Chi_Minh"
+    Default="America/New_York"
     Mode=""
-    Description="Your timezone for correct date/time display. E.g. Asia/Ho_Chi_Minh, America/New_York, Europe/London"
+    Description="Your timezone for correct date/time display. E.g. America/New_York, America/Los_Angeles, Europe/London, Asia/Ho_Chi_Minh"
     Type="Variable"
     Display="always"
     Required="false"
-    Mask="false">Asia/Ho_Chi_Minh</Config>
+    Mask="false">America/New_York</Config>
 
   <!-- PORT ENV -->
   <Config
