@@ -45,6 +45,31 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 
+// ── Live sync via SSE ─────────────────────────────────────────────────────────
+function useLiveSync(userId, onRefresh) {
+  useEffect(() => {
+    if (!userId) return;
+    let es;
+    let retryTimeout;
+    const connect = () => {
+      es = new EventSource(`/api/events?userId=${userId}`);
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'refresh') onRefresh(data);
+        } catch {}
+      };
+      es.onerror = () => {
+        es.close();
+        retryTimeout = setTimeout(connect, 5000);
+      };
+    };
+    connect();
+    return () => { es?.close(); clearTimeout(retryTimeout); };
+  }, [userId]);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Offline media cache ───────────────────────────────────────────────────────
 const MEDIA_CACHE = 'exercise-media';
 
@@ -789,14 +814,19 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   const [groups, setGroups] = useState([]);
   const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
   const [clock, setClock] = useState(new Date());
-
   const [activeSession, setActiveSession] = useState(null);
-  useEffect(() => {
+
+  const loadAll = React.useCallback(() => {
     api(`/api/dashboard?userId=${userId}`).then(setData);
     api(`/api/groups?userId=${userId}`).then(setGroups);
     api(`/api/routines?userId=${userId}`).then(setRoutineData);
     api(`/api/sessions/active?userId=${userId}`).then(setActiveSession);
-  }, [userId, refresh]);
+  }, [userId]);
+
+  useEffect(() => { loadAll(); }, [userId, refresh]);
+
+  // Live sync: tự refresh khi máy khác cập nhật data
+  useLiveSync(userId, loadAll);
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(id);
@@ -2462,6 +2492,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
   useEffect(() => { api(`/api/sessions/${workout.sessionId}?userId=${userId}`).then(setData); }, [workout.sessionId, userId]);
+
+  // Live sync: reload session data khi máy khác cập nhật
+  useLiveSync(userId, () => {
+    api(`/api/sessions/${workout.sessionId}?userId=${userId}`).then(setData).catch(() => {});
+  });
 
   // Auto-sync offline queue khi có mạng trở lại
   useEffect(() => {

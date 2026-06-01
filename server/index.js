@@ -49,6 +49,31 @@ app.use(express.json({ limit: '200mb' }));
 app.use('/media', express.static(path.join(rootDir, 'hasaneyldrm-exercises-dataset')));
 app.use('/uploads', express.static(uploadDir));
 
+// ── SSE live sync ─────────────────────────────────────────────────────────────
+const sseClients = new Map(); // userId -> Set<res>
+
+function broadcastToUser(userId, event) {
+  const clients = sseClients.get(Number(userId));
+  if (!clients || clients.size === 0) return;
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of clients) { try { res.write(data); } catch {} }
+}
+
+// Middleware: broadcast 'refresh' sau mọi write API thành công
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'OPTIONS') return next();
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    originalJson(body);
+    if (res.statusCode < 400) {
+      const userId = getUserId(req);
+      broadcastToUser(userId, { type: 'refresh', method: req.method, path: req.path });
+    }
+  };
+  next();
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 function getUserId(req) {
   return Number(req.query.userId || req.body?.userId || req.headers['x-user-id'] || 1);
 }
@@ -639,6 +664,27 @@ function smartSuggestion(userId) {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/api/events', (req, res) => {
+  const userId = getUserId(req);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable Nginx buffering
+  res.flushHeaders();
+  res.write(':connected\n\n');
+
+  if (!sseClients.has(userId)) sseClients.set(userId, new Set());
+  sseClients.get(userId).add(res);
+
+  const heartbeat = setInterval(() => { try { res.write(':heartbeat\n\n'); } catch {} }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.get(userId)?.delete(res);
+    if (sseClients.get(userId)?.size === 0) sseClients.delete(userId);
+  });
 });
 
 app.get('/api/bootstrap', (req, res) => {
