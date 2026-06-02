@@ -199,6 +199,14 @@ function saveOfflineQueue(userId, queue) {
 }
 function addToOfflineQueue(userId, entry) {
   let q = getOfflineQueue(userId);
+  if (entry.type === 'settingsUpdate') {
+    const previousSettings = q.filter((item) => item.type === 'settingsUpdate');
+    q = q.filter((item) => item.type !== 'settingsUpdate');
+    entry = {
+      ...entry,
+      body: Object.assign({}, ...previousSettings.map((item) => item.body || {}), entry.body || {})
+    };
+  }
   if (entry.type === 'createSession') {
     const existing = q.find((item) => item.type === 'createSession'
       && item.routineId === entry.routineId
@@ -253,6 +261,8 @@ async function flushOfflineQueue(userId) {
         if (!String(entry.ruleId).startsWith('offline_')) {
           await api(`/api/schedule-rules/${entry.ruleId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
         }
+      } else if (entry.type === 'settingsUpdate') {
+        await api('/api/settings', { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.body || {}) }) });
       } else if (entry.type === 'createSession') {
         const created = await api('/api/sessions', {
           method: 'POST',
@@ -314,6 +324,63 @@ function pendingOfflineState(userId) {
 
 function readApiCache(path) {
   try { return JSON.parse(localStorage.getItem(API_CACHE_PREFIX + path) || 'null'); } catch { return null; }
+}
+
+function settingsPatchToCacheFields(body = {}) {
+  const fields = {};
+  const map = {
+    scheduleMode: 'schedule_mode',
+    timezone: 'timezone',
+    locale: 'locale',
+    heightCm: 'height_cm',
+    defaultWeightUnit: 'default_weight_unit',
+    gender: 'gender',
+    birthDate: 'birth_date',
+    heightUnit: 'height_unit',
+    clockFormat: 'clock_format',
+    restSeconds: 'rest_seconds',
+    defaultSets: 'default_sets',
+    defaultReps: 'default_reps',
+    progressiveOverload: 'progressive_overload',
+    soundRestDone: 'sound_rest_done',
+    vibrateRestDone: 'vibrate_rest_done',
+    countdown3s: 'countdown_3s',
+    autoNextSet: 'auto_next_set',
+    keepScreenAwake: 'keep_screen_awake',
+    notifyWorkout: 'notify_workout',
+    notifyWorkoutTime: 'notify_workout_time',
+    notifyMissedWorkout: 'notify_missed_workout',
+    notifyMissedWorkoutTime: 'notify_missed_workout_time',
+    notifyRecovery: 'notify_recovery',
+    notifyUnfinishedAfterMinutes: 'notify_unfinished_after_minutes',
+    notifyWeigh: 'notify_weigh',
+    notifyWeighFrequency: 'notify_weigh_frequency',
+    notifyWeighTime: 'notify_weigh_time',
+    notifyProgressPhoto: 'notify_progress_photo',
+    notifyProgressPhotoFrequency: 'notify_progress_photo_frequency'
+  };
+  for (const [source, target] of Object.entries(map)) {
+    if (body[source] !== undefined) fields[target] = body[source];
+  }
+  if (body.weightStepsKg !== undefined) fields.weight_steps_kg = JSON.stringify(normalizeWeightSteps(body.weightStepsKg, defaultKgOptions, 'kg'));
+  if (body.weightStepsLb !== undefined) fields.weight_steps_lb = JSON.stringify(normalizeWeightSteps(body.weightStepsLb, defaultLbOptions, 'lb'));
+  return fields;
+}
+
+function cacheSettingsMutation(userId, body = {}) {
+  const fields = settingsPatchToCacheFields(body);
+  if (!Object.keys(fields).length) return;
+  const bootKey = BOOT_CACHE_KEY(userId);
+  const boot = readBootCache(userId);
+  if (boot) {
+    const nextBoot = { ...boot, settings: { ...(boot.settings || {}), ...fields } };
+    try { localStorage.setItem(bootKey, JSON.stringify(nextBoot)); } catch {}
+  }
+  const apiKey = API_CACHE_PREFIX + `/api/bootstrap?userId=${userId}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(apiKey) || 'null');
+    if (cached) localStorage.setItem(apiKey, JSON.stringify({ ...cached, settings: { ...(cached.settings || {}), ...fields } }));
+  } catch {}
 }
 
 function cachedGroups(userId) {
@@ -1029,6 +1096,16 @@ async function api(path, options = {}) {
       addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '💪', colorHex: body.colorHex || '#78e0a6' });
       cacheGroupMutations(userId);
       return { id: groupId, offline: true };
+    }
+    if (offlineQueue && method === 'PATCH' && path === '/api/settings') {
+      if (await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = Number(body.userId || userIdFromRequestOptions(options) || userIdFromApiPath(path));
+      const { userId: _ignoredUserId, ...settingsBody } = body;
+      addToOfflineQueue(userId, { type: 'settingsUpdate', body: settingsBody });
+      cacheSettingsMutation(userId, settingsBody);
+      return { ok: true, offline: true };
     }
     const sessionDeleteMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
     if (offlineQueue && method === 'DELETE' && sessionDeleteMatch) {
@@ -4557,6 +4634,46 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [notifyWeighTime, setNotifyWeighTime] = useState(settings.notify_weigh_time || '07:00');
   const [notifyProgressPhotoFrequency, setNotifyProgressPhotoFrequency] = useState(settings.notify_progress_photo_frequency || 'off');
   const [settingsError, setSettingsError] = useState('');
+  const [lockedWeightSteps, setLockedWeightSteps] = useState({ kg: [], lb: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLockedWeightSteps() {
+      try {
+        const active = await api(`/api/sessions/active?userId=${userId}`);
+        const sessions = active?.sessions || (active?.session ? [active] : []);
+        const kg = [];
+        const lb = [];
+        await Promise.all(sessions.flatMap((sessionItem) => {
+          const sessionId = sessionItem.session?.id;
+          if (!sessionId) return [];
+          return (sessionItem.exercises || [])
+            .filter((exercise) => Number(exercise.completedSets || 0) > 0)
+            .map((exercise) => api(`/api/sessions/${sessionId}/exercises/${exercise.id}/sets?userId=${userId}`)
+              .then((payload) => {
+                for (const row of payload.current || []) {
+                  if (String(row.weight_unit || 'kg').toLowerCase() === 'lb') {
+                    lb.push(displayWeight(row.weight_kg, 'lb'));
+                  } else {
+                    kg.push(Number(row.weight_kg || 0));
+                  }
+                }
+              })
+              .catch(() => {}));
+        }));
+        if (!cancelled) {
+          setLockedWeightSteps({
+            kg: normalizeWeightSteps(kg, [], 'kg'),
+            lb: normalizeWeightSteps(lb, [], 'lb')
+          });
+        }
+      } catch {
+        if (!cancelled) setLockedWeightSteps({ kg: [], lb: [] });
+      }
+    }
+    loadLockedWeightSteps();
+    return () => { cancelled = true; };
+  }, [userId]);
 
   // Đếm số settings chưa save
   const initialRef = React.useRef({
@@ -4613,7 +4730,10 @@ function SettingsPage({ userId, boot, onChanged }) {
       if (name.trim()) body.name = name.trim();
       if (password.trim()) body.password = password.trim();
       if (avatarPreview !== boot.activeUser.avatar) body.avatar = avatarPreview;
-      const updated = await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) });
+      const hasUserChanges = body.name !== boot.activeUser.name || Boolean(body.password) || body.avatar !== undefined;
+      const updated = hasUserChanges
+        ? await api(`/api/users/${userId}`, { method: 'PATCH', body: JSON.stringify(body) })
+        : boot.activeUser;
       await api('/api/settings', {
         method: 'PATCH',
         body: JSON.stringify({
@@ -4728,6 +4848,7 @@ function SettingsPage({ userId, boot, onChanged }) {
           onDraft={setNewWeightKg}
           onChange={setWeightStepsKg}
           fallback={defaultKgOptions}
+          lockedValues={lockedWeightSteps.kg}
         />
         <WeightStepsEditor
           title="Mức tạ LBS"
@@ -4737,6 +4858,7 @@ function SettingsPage({ userId, boot, onChanged }) {
           onDraft={setNewWeightLb}
           onChange={setWeightStepsLb}
           fallback={defaultLbOptions}
+          lockedValues={lockedWeightSteps.lb}
         />
         <SwitchSetting label={t('settings_progressive_label')} checked={progressiveOverload} onChange={setProgressiveOverload} />
       </SettingsGroup>
@@ -4918,7 +5040,9 @@ function NumberSetting({ label, value, onChange, min, max, disabled = false }) {
   );
 }
 
-function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback }) {
+function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [] }) {
+  const lockedKeys = useMemo(() => new Set(lockedValues.map((value) => String(Number(value)))), [lockedValues]);
+  const isLocked = (value) => lockedKeys.has(String(Number(value)));
   const addValue = () => {
     const value = Number(draft);
     if (!Number.isFinite(value) || value < 0) return;
@@ -4926,6 +5050,7 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
     onDraft('');
   };
   const removeValue = (value) => {
+    if (isLocked(value)) return;
     const next = values.filter((item) => Number(item) !== Number(value));
     onChange(next.length ? next : [0]);
   };
@@ -4933,21 +5058,29 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <label className="label mb-0">{title}</label>
-        <button type="button" className="tiny-btn" onClick={() => onChange(fallback)}>Mặc định</button>
+        <button type="button" className="tiny-btn" onClick={() => onChange(normalizeWeightSteps([...fallback, ...lockedValues], fallback, unit))}>Mặc định</button>
       </div>
+      {lockedValues.length > 0 && (
+        <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+          Các mức đang có set tập chưa hoàn thành sẽ bị khoá xoá.
+        </p>
+      )}
       <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-md bg-white p-2">
-        {values.map((value) => (
-          <button
-            type="button"
-            key={value}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800"
-            onClick={() => removeValue(value)}
-            title={`Xoá ${value} ${unit}`}
-          >
-            <span>{value} {unit}</span>
-            <span className="text-red-600">-</span>
-          </button>
-        ))}
+        {values.map((value) => {
+          const locked = isLocked(value);
+          return (
+            <button
+              type="button"
+              key={value}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-sm font-bold ${locked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-800'}`}
+              onClick={() => removeValue(value)}
+              title={locked ? `${value} ${unit} đang có set tập chưa hoàn thành` : `Xoá ${value} ${unit}`}
+            >
+              <span>{value} {unit}</span>
+              {!locked && <span className="text-red-600">-</span>}
+            </button>
+          );
+        })}
       </div>
       <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
         <input
