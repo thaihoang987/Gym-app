@@ -298,6 +298,22 @@ async function flushOfflineQueue(userId) {
   return queue.length - failed.length;
 }
 
+async function syncPendingBeforeCatalogLoad(userId) {
+  const queue = getOfflineQueue(userId);
+  if (!queue.length) return;
+  const hasCatalogChanges = queue.some((entry) => [
+    'createGroup',
+    'addGroupExercise',
+    'removeGroupExercise',
+    'reorderGroupExercises',
+    'assignScheduleRule',
+    'deleteScheduleRule'
+  ].includes(entry.type));
+  if (!hasCatalogChanges) return;
+  if (!(await checkServerAvailable(700))) return;
+  await flushOfflineQueue(userId).catch(() => {});
+}
+
 function userIdFromApiPath(path) {
   try {
     const url = new URL(path, window.location.origin);
@@ -1728,7 +1744,8 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   const [clock, setClock] = useState(new Date());
   const [activeSession, setActiveSession] = useState(null);
 
-  const loadAll = React.useCallback(() => {
+  const loadAll = React.useCallback(async () => {
+    await syncPendingBeforeCatalogLoad(userId);
     api(`/api/dashboard?userId=${userId}`).then(setData);
     api(`/api/groups?userId=${userId}`).then(setGroups);
     api(`/api/routines?userId=${userId}`).then(setRoutineData);
@@ -1965,9 +1982,11 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   const [activeSessions, setActiveSessions] = useState([]);
 
   useEffect(() => {
-    api(`/api/groups?userId=${userId}`).then(setGroups);
-    api(`/api/routines?userId=${userId}`).then(setRoutineData);
-    api(`/api/sessions/active?userId=${userId}`).then((payload) => setActiveSessions(payload?.sessions || (payload?.session ? [payload] : [])));
+    syncPendingBeforeCatalogLoad(userId).finally(() => {
+      api(`/api/groups?userId=${userId}`).then(setGroups);
+      api(`/api/routines?userId=${userId}`).then(setRoutineData);
+      api(`/api/sessions/active?userId=${userId}`).then((payload) => setActiveSessions(payload?.sessions || (payload?.session ? [payload] : [])));
+    });
   }, [userId, refresh]);
 
   const startRoutine = async (routine, scheduleMode = 'FREE') => {
@@ -2539,7 +2558,8 @@ function ExerciseLibrary({ userId, settings }) {
   const [previewGifId, setPreviewGifId] = useState(null);
   const [pinnedGifIds, setPinnedGifIds] = useState(() => new Set());
 
-  const refreshLibrary = () => {
+  const refreshLibrary = async () => {
+    await syncPendingBeforeCatalogLoad(userId);
     setVisibleCount(60);
     setPreviewGifId(null);
     setPinnedGifIds(new Set());
@@ -2558,7 +2578,12 @@ function ExerciseLibrary({ userId, settings }) {
     api(`/api/exercises/meta?userId=${userId}`).then(setMeta);
   };
 
-  useEffect(() => { api(`/api/exercises/meta?userId=${userId}`).then(setMeta); api(`/api/groups?userId=${userId}`).then(setGroups); }, [userId]);
+  useEffect(() => {
+    syncPendingBeforeCatalogLoad(userId).finally(() => {
+      api(`/api/exercises/meta?userId=${userId}`).then(setMeta);
+      api(`/api/groups?userId=${userId}`).then(setGroups);
+    });
+  }, [userId]);
   useEffect(() => {
     setSelectedExercise(null);
     refreshLibrary();
@@ -2979,11 +3004,14 @@ function Builder({ userId, boot, onStart, onChanged }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const load = () => {
+  const load = React.useCallback(async () => {
+    await syncPendingBeforeCatalogLoad(userId);
     api(`/api/groups?userId=${userId}`).then(setGroups);
     api(`/api/routines?userId=${userId}`).then(setRoutineData);
-  };
-  useEffect(load, [userId]);
+  }, [userId]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const createGroup = async () => {
     if (!groupName.trim()) return;
