@@ -4653,9 +4653,9 @@ function SettingsPage({ userId, boot, onChanged }) {
               .then((payload) => {
                 for (const row of payload.current || []) {
                   if (String(row.weight_unit || 'kg').toLowerCase() === 'lb') {
-                    lb.push(displayWeight(row.weight_kg, 'lb'));
+                    lb.push(nearestOption(displayWeight(row.weight_kg, 'lb'), weightStepsLb));
                   } else {
-                    kg.push(Number(row.weight_kg || 0));
+                    kg.push(nearestOption(Number(row.weight_kg || 0), weightStepsKg));
                   }
                 }
               })
@@ -4673,7 +4673,7 @@ function SettingsPage({ userId, boot, onChanged }) {
     }
     loadLockedWeightSteps();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, weightStepsKg, weightStepsLb]);
 
   // Đếm số settings chưa save
   const initialRef = React.useRef({
@@ -5107,6 +5107,7 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
     setSelectedValue(normalized[0] ?? 0);
   };
   const selectedLocked = isLocked(selectedValue);
+  const removeDisabled = selectedLocked || values.length <= 1;
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -5129,10 +5130,10 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
         />
         <button
           type="button"
-          className={`grid h-12 w-12 place-items-center rounded-xl border text-2xl font-black ${selectedLocked ? 'border-amber-200 bg-amber-50 text-amber-300' : 'border-red-200 bg-red-50 text-red-700'}`}
-          disabled={selectedLocked || values.length <= 1}
+          className={`grid h-12 w-12 place-items-center rounded-xl border text-2xl font-black ${removeDisabled ? 'border-slate-200 bg-slate-100 text-slate-300 opacity-45' : 'border-red-200 bg-red-50 text-red-700'}`}
+          disabled={removeDisabled}
           onClick={() => removeValue(selectedValue)}
-          title={selectedLocked ? `${selectedValue} ${unit} đang có set tập chưa hoàn thành` : `Xoá ${selectedValue} ${unit}`}
+          title={selectedLocked ? `${selectedValue} ${unit} đang có set tập chưa hoàn thành` : values.length <= 1 ? 'Phải giữ ít nhất 1 mức tạ' : `Xoá ${selectedValue} ${unit}`}
         >
           {selectedLocked ? <Lock size={18} /> : '-'}
         </button>
