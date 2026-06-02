@@ -4841,6 +4841,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         <NumberSetting label={t('settings_default_sets_label')} value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
         <NumberSetting label={t('settings_default_reps_label')} value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
         <WeightStepsSettings
+          t={t}
           kg={{
             values: weightStepsKg,
             draft: newWeightKg,
@@ -5037,21 +5038,21 @@ function NumberSetting({ label, value, onChange, min, max, disabled = false }) {
   );
 }
 
-function WeightStepsSettings({ kg, lb, onConfirm }) {
+function WeightStepsSettings({ t, kg, lb, onConfirm }) {
   const resetKg = async () => {
-    if (!(await onConfirm('Bạn muốn reset mức tạ KG về mặc định?'))) return;
+    if (!(await onConfirm(t('settings_weight_steps_reset_kg_confirm')))) return;
     kg.onChange(normalizeWeightSteps([...defaultKgOptions, ...(kg.lockedValues || [])], defaultKgOptions, 'kg'));
   };
   const resetLb = async () => {
-    if (!(await onConfirm('Bạn muốn reset mức tạ LBS về mặc định?'))) return;
+    if (!(await onConfirm(t('settings_weight_steps_reset_lb_confirm')))) return;
     lb.onChange(normalizeWeightSteps([...defaultLbOptions, ...(lb.lockedValues || [])], defaultLbOptions, 'lb'));
   };
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-black text-slate-950">Mức tạ</h3>
-          <p className="text-xs font-semibold text-slate-500">Chỉnh danh sách wheel picker dùng trong bài tập.</p>
+          <h3 className="text-base font-black text-slate-950">{t('settings_weight_steps_title')}</h3>
+          <p className="text-xs font-semibold text-slate-500">{t('settings_weight_steps_desc')}</p>
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
@@ -5065,6 +5066,7 @@ function WeightStepsSettings({ kg, lb, onConfirm }) {
           fallback={defaultKgOptions}
           lockedValues={kg.lockedValues}
           onReset={resetKg}
+          t={t}
         />
         <WeightStepsEditor
           title="LBS"
@@ -5076,13 +5078,14 @@ function WeightStepsSettings({ kg, lb, onConfirm }) {
           fallback={defaultLbOptions}
           lockedValues={lb.lockedValues}
           onReset={resetLb}
+          t={t}
         />
       </div>
     </div>
   );
 }
 
-function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [], onReset }) {
+function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [], onReset, t }) {
   const lockedKeys = useMemo(() => new Set(lockedValues.map((value) => String(Number(value)))), [lockedValues]);
   const isLocked = (value) => lockedKeys.has(String(Number(value)));
   const [selectedValue, setSelectedValue] = useState(() => values[0] ?? 0);
@@ -5113,12 +5116,12 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
       <div className="mb-2 flex items-center justify-between gap-2">
         <label className="label mb-0">{title}</label>
         <button type="button" className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-100" onClick={onReset}>
-          Reset mặc định
+          {t('settings_weight_steps_reset')}
         </button>
       </div>
       {lockedValues.length > 0 && (
         <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
-          Các mức đang có set tập chưa hoàn thành sẽ bị khoá xoá.
+          {t('settings_weight_steps_locked_note')}
         </p>
       )}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md bg-white p-2">
@@ -5133,7 +5136,7 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
           className={`grid h-12 w-12 place-items-center rounded-xl border text-2xl font-black ${removeDisabled ? 'border-slate-200 bg-slate-100 text-slate-300 opacity-45' : 'border-red-200 bg-red-50 text-red-700'}`}
           disabled={removeDisabled}
           onClick={() => removeValue(selectedValue)}
-          title={selectedLocked ? `${selectedValue} ${unit} đang có set tập chưa hoàn thành` : values.length <= 1 ? 'Phải giữ ít nhất 1 mức tạ' : `Xoá ${selectedValue} ${unit}`}
+          title={selectedLocked ? t('settings_weight_steps_locked_title', selectedValue, unit) : values.length <= 1 ? t('settings_weight_steps_keep_one') : t('settings_weight_steps_delete_title', selectedValue, unit)}
         >
           {selectedLocked ? <Lock size={18} /> : '-'}
         </button>
