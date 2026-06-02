@@ -4840,25 +4840,22 @@ function SettingsPage({ userId, boot, onChanged }) {
         <NumberSetting label={t('settings_rest_label')} value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
         <NumberSetting label={t('settings_default_sets_label')} value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
         <NumberSetting label={t('settings_default_reps_label')} value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
-        <WeightStepsEditor
-          title="Mức tạ KG"
-          unit="kg"
-          values={weightStepsKg}
-          draft={newWeightKg}
-          onDraft={setNewWeightKg}
-          onChange={setWeightStepsKg}
-          fallback={defaultKgOptions}
-          lockedValues={lockedWeightSteps.kg}
-        />
-        <WeightStepsEditor
-          title="Mức tạ LBS"
-          unit="lb"
-          values={weightStepsLb}
-          draft={newWeightLb}
-          onDraft={setNewWeightLb}
-          onChange={setWeightStepsLb}
-          fallback={defaultLbOptions}
-          lockedValues={lockedWeightSteps.lb}
+        <WeightStepsSettings
+          kg={{
+            values: weightStepsKg,
+            draft: newWeightKg,
+            onDraft: setNewWeightKg,
+            onChange: setWeightStepsKg,
+            lockedValues: lockedWeightSteps.kg
+          }}
+          lb={{
+            values: weightStepsLb,
+            draft: newWeightLb,
+            onDraft: setNewWeightLb,
+            onChange: setWeightStepsLb,
+            lockedValues: lockedWeightSteps.lb
+          }}
+          onConfirm={dialog.confirm}
         />
         <SwitchSetting label={t('settings_progressive_label')} checked={progressiveOverload} onChange={setProgressiveOverload} />
       </SettingsGroup>
@@ -5040,7 +5037,52 @@ function NumberSetting({ label, value, onChange, min, max, disabled = false }) {
   );
 }
 
-function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [] }) {
+function WeightStepsSettings({ kg, lb, onConfirm }) {
+  const resetKg = async () => {
+    if (!(await onConfirm('Bạn muốn reset mức tạ KG về mặc định?'))) return;
+    kg.onChange(normalizeWeightSteps([...defaultKgOptions, ...(kg.lockedValues || [])], defaultKgOptions, 'kg'));
+  };
+  const resetLb = async () => {
+    if (!(await onConfirm('Bạn muốn reset mức tạ LBS về mặc định?'))) return;
+    lb.onChange(normalizeWeightSteps([...defaultLbOptions, ...(lb.lockedValues || [])], defaultLbOptions, 'lb'));
+  };
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-black text-slate-950">Mức tạ</h3>
+          <p className="text-xs font-semibold text-slate-500">Chỉnh danh sách wheel picker dùng trong bài tập.</p>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <WeightStepsEditor
+          title="KG"
+          unit="kg"
+          values={kg.values}
+          draft={kg.draft}
+          onDraft={kg.onDraft}
+          onChange={kg.onChange}
+          fallback={defaultKgOptions}
+          lockedValues={kg.lockedValues}
+          onReset={resetKg}
+        />
+        <WeightStepsEditor
+          title="LBS"
+          unit="lb"
+          values={lb.values}
+          draft={lb.draft}
+          onDraft={lb.onDraft}
+          onChange={lb.onChange}
+          fallback={defaultLbOptions}
+          lockedValues={lb.lockedValues}
+          onReset={resetLb}
+        />
+      </div>
+    </div>
+  );
+}
+
+function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [], onReset }) {
   const lockedKeys = useMemo(() => new Set(lockedValues.map((value) => String(Number(value)))), [lockedValues]);
   const isLocked = (value) => lockedKeys.has(String(Number(value)));
   const [selectedValue, setSelectedValue] = useState(() => values[0] ?? 0);
@@ -5066,19 +5108,11 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
   };
   const selectedLocked = isLocked(selectedValue);
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <label className="label mb-0">{title}</label>
-        <button
-          type="button"
-          className="tiny-btn"
-          onClick={() => {
-            const next = normalizeWeightSteps([...fallback, ...lockedValues], fallback, unit);
-            onChange(next);
-            setSelectedValue(next[0] ?? 0);
-          }}
-        >
-          Mặc định
+        <button type="button" className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-100" onClick={onReset}>
+          Reset mặc định
         </button>
       </div>
       {lockedValues.length > 0 && (
