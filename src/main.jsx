@@ -3663,6 +3663,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const isRight = swipeDx < -10;
         return (
         <div className="relative">
+          {/* Hint thường trực - trái */}
+          {canPrev && (
+            <div className="pointer-events-none fixed left-3 z-[9998]"
+              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isLeft ? 0 : 0.15 }}>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-xl font-black text-white">‹</div>
+            </div>
+          )}
+          {/* Hint thường trực - phải */}
+          {canNext && (
+            <div className="pointer-events-none fixed right-3 z-[9998]"
+              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isRight ? 0 : 0.15 }}>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-xl font-black text-white">›</div>
+            </div>
+          )}
           {/* Arrow trái - fixed giữa màn hình dọc, to dần theo lực kéo */}
           {canPrev && isLeft && (
             <div className="pointer-events-none fixed left-3 z-[9999]"
