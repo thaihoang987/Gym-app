@@ -562,8 +562,10 @@ function applyOfflineQueueToCachedApi(path, data) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('schedule_rolling_panel_title') });
-const kgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
-const lbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
+const defaultKgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
+const defaultLbOptions = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 95, 110, 125, 140, 155, 170, 185, 200, 220, 240];
+const kgOptions = defaultKgOptions;
+const lbOptions = defaultLbOptions;
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
 const getCustomTargetOptions = (t) => t('custom_targets');
@@ -572,6 +574,23 @@ const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
 const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+function normalizeWeightSteps(values, fallback, unit = 'kg') {
+  const max = unit === 'lb' ? 1000 : 500;
+  const step = unit === 'lb' ? 0.5 : 0.25;
+  const list = [...new Set((Array.isArray(values) ? values : [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item >= 0 && item <= max)
+    .map((item) => Number((Math.round(item / step) * step).toFixed(2))))].sort((a, b) => a - b);
+  return list.length ? list : fallback;
+}
+function parseWeightSteps(value, fallback, unit = 'kg') {
+  try {
+    const parsed = typeof value === 'string' && value.trim() ? JSON.parse(value) : value;
+    return normalizeWeightSteps(parsed, fallback, unit);
+  } catch {
+    return fallback;
+  }
+}
 function languageKey(settings = {}) {
   const locale = settings?.locale || fallbackDisplay.locale;
   const map = { en: 'en-US', vi: 'vi-VN', zh: 'zh-CN', es: 'es-ES', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', de: 'de-DE', fr: 'fr-FR', ru: 'ru-RU' };
@@ -3443,6 +3462,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   }, []);
   const previousTimer = React.useRef(0);
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
+  const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
+  const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
   const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
   useEffect(() => {
@@ -3978,11 +3999,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                       />
                     ) : weightMode === 'LB' ? (
                       <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
-                        <WheelPicker value={nearestOption(kgToLb(set.weightKg), lbOptions)} options={lbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+                        <WheelPicker value={nearestOption(kgToLb(set.weightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
                       </div>
                     ) : (
                       <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
-                        <WheelPicker value={nearestOption(set.weightKg, kgOptions)} options={kgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                        <WheelPicker value={nearestOption(set.weightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
                       </div>
                     )}
                     <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
@@ -4517,6 +4538,10 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [restSeconds, setRestSeconds] = useState(settings.rest_seconds || 60);
   const [defaultSets, setDefaultSets] = useState(settings.default_sets || 3);
   const [defaultReps, setDefaultReps] = useState(settings.default_reps || 12);
+  const [weightStepsKg, setWeightStepsKg] = useState(() => parseWeightSteps(settings.weight_steps_kg, defaultKgOptions, 'kg'));
+  const [weightStepsLb, setWeightStepsLb] = useState(() => parseWeightSteps(settings.weight_steps_lb, defaultLbOptions, 'lb'));
+  const [newWeightKg, setNewWeightKg] = useState('');
+  const [newWeightLb, setNewWeightLb] = useState('');
   const [progressiveOverload, setProgressiveOverload] = useState(Boolean(settings.progressive_overload));
   const [soundRestDone, setSoundRestDone] = useState(Boolean(settings.sound_rest_done));
   const [vibrateRestDone, setVibrateRestDone] = useState(Boolean(settings.vibrate_rest_done));
@@ -4541,6 +4566,8 @@ function SettingsPage({ userId, boot, onChanged }) {
     birthDate: settings.birth_date || '', clockFormat: settings.clock_format || '24h',
     restSeconds: settings.rest_seconds || 60, defaultSets: settings.default_sets || 3,
     defaultReps: settings.default_reps || 12, progressiveOverload: Boolean(settings.progressive_overload),
+    weightStepsKg: parseWeightSteps(settings.weight_steps_kg, defaultKgOptions, 'kg'),
+    weightStepsLb: parseWeightSteps(settings.weight_steps_lb, defaultLbOptions, 'lb'),
     soundRestDone: Boolean(settings.sound_rest_done), vibrateRestDone: Boolean(settings.vibrate_rest_done),
     countdown3s: Boolean(settings.countdown_3s), autoNextSet: Boolean(settings.auto_next_set),
   });
@@ -4553,13 +4580,15 @@ function SettingsPage({ userId, boot, onChanged }) {
       birthDate !== init.birthDate, clockFormat !== init.clockFormat,
       restSeconds !== init.restSeconds, defaultSets !== init.defaultSets,
       defaultReps !== init.defaultReps, progressiveOverload !== init.progressiveOverload,
+      JSON.stringify(weightStepsKg) !== JSON.stringify(init.weightStepsKg),
+      JSON.stringify(weightStepsLb) !== JSON.stringify(init.weightStepsLb),
       soundRestDone !== init.soundRestDone, vibrateRestDone !== init.vibrateRestDone,
       countdown3s !== init.countdown3s, autoNextSet !== init.autoNextSet,
       avatarPreview !== (boot.activeUser.avatar || ''),
     ].filter(Boolean).length;
   }, [name, password, timezone, locale, heightCm, defaultWeightUnit, gender, birthDate,
       clockFormat, restSeconds, defaultSets, defaultReps, progressiveOverload, soundRestDone,
-      vibrateRestDone, countdown3s, autoNextSet, avatarPreview]);
+      vibrateRestDone, countdown3s, autoNextSet, avatarPreview, weightStepsKg, weightStepsLb]);
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
     const name = await dialog.prompt(t('settings_name'));
@@ -4600,6 +4629,8 @@ function SettingsPage({ userId, boot, onChanged }) {
           restSeconds,
           defaultSets,
           defaultReps,
+          weightStepsKg,
+          weightStepsLb,
           progressiveOverload,
           soundRestDone,
           vibrateRestDone,
@@ -4689,6 +4720,24 @@ function SettingsPage({ userId, boot, onChanged }) {
         <NumberSetting label={t('settings_rest_label')} value={restSeconds} onChange={setRestSeconds} min={10} max={600} />
         <NumberSetting label={t('settings_default_sets_label')} value={defaultSets} onChange={setDefaultSets} min={1} max={20} />
         <NumberSetting label={t('settings_default_reps_label')} value={defaultReps} onChange={setDefaultReps} min={1} max={100} />
+        <WeightStepsEditor
+          title="Mức tạ KG"
+          unit="kg"
+          values={weightStepsKg}
+          draft={newWeightKg}
+          onDraft={setNewWeightKg}
+          onChange={setWeightStepsKg}
+          fallback={defaultKgOptions}
+        />
+        <WeightStepsEditor
+          title="Mức tạ LBS"
+          unit="lb"
+          values={weightStepsLb}
+          draft={newWeightLb}
+          onDraft={setNewWeightLb}
+          onChange={setWeightStepsLb}
+          fallback={defaultLbOptions}
+        />
         <SwitchSetting label={t('settings_progressive_label')} checked={progressiveOverload} onChange={setProgressiveOverload} />
       </SettingsGroup>
 
@@ -4865,6 +4914,54 @@ function NumberSetting({ label, value, onChange, min, max, disabled = false }) {
     <div>
       <label className="label">{label}</label>
       <input className="input" type="number" min={min} max={max} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
+function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback }) {
+  const addValue = () => {
+    const value = Number(draft);
+    if (!Number.isFinite(value) || value < 0) return;
+    onChange(normalizeWeightSteps([...values, value], fallback, unit));
+    onDraft('');
+  };
+  const removeValue = (value) => {
+    const next = values.filter((item) => Number(item) !== Number(value));
+    onChange(next.length ? next : [0]);
+  };
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <label className="label mb-0">{title}</label>
+        <button type="button" className="tiny-btn" onClick={() => onChange(fallback)}>Mặc định</button>
+      </div>
+      <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-md bg-white p-2">
+        {values.map((value) => (
+          <button
+            type="button"
+            key={value}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800"
+            onClick={() => removeValue(value)}
+            title={`Xoá ${value} ${unit}`}
+          >
+            <span>{value} {unit}</span>
+            <span className="text-red-600">-</span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+        <input
+          className="input"
+          type="number"
+          min="0"
+          step={unit === 'lb' ? '0.5' : '0.25'}
+          value={draft}
+          onChange={(event) => onDraft(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addValue(); } }}
+          placeholder={`Thêm ${unit}`}
+        />
+        <button type="button" className="small-action" onClick={addValue}>Thêm</button>
+      </div>
     </div>
   );
 }

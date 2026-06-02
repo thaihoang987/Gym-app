@@ -780,6 +780,17 @@ app.patch('/api/settings', (req, res) => {
     updates.push(`${column} = ?`);
     params.push(value);
   };
+  const normalizeWeightSteps = (value, unit) => {
+    const source = Array.isArray(value) ? value : [];
+    const max = unit === 'lb' ? 1000 : 500;
+    const step = unit === 'lb' ? 0.5 : 0.25;
+    const list = [...new Set(source
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item >= 0 && item <= max)
+      .map((item) => Number((Math.round(item / step) * step).toFixed(2))))].sort((a, b) => a - b);
+    if (!list.includes(0)) list.unshift(0);
+    return JSON.stringify(list.slice(0, 250));
+  };
 
   if (req.body.scheduleMode !== undefined) {
     if (!['FREE', 'FIXED', 'ROLLING'].includes(req.body.scheduleMode)) {
@@ -825,6 +836,8 @@ app.patch('/api/settings', (req, res) => {
   if (req.body.clockFormat !== undefined && ['12h', '24h'].includes(req.body.clockFormat)) addUpdate('clock_format', req.body.clockFormat);
   if (req.body.defaultSets !== undefined) addUpdate('default_sets', Math.max(1, Math.min(20, Number(req.body.defaultSets || 3))));
   if (req.body.defaultReps !== undefined) addUpdate('default_reps', Math.max(1, Math.min(100, Number(req.body.defaultReps || 12))));
+  if (req.body.weightStepsKg !== undefined) addUpdate('weight_steps_kg', normalizeWeightSteps(req.body.weightStepsKg, 'kg'));
+  if (req.body.weightStepsLb !== undefined) addUpdate('weight_steps_lb', normalizeWeightSteps(req.body.weightStepsLb, 'lb'));
   if (req.body.restSeconds !== undefined) addUpdate('rest_seconds', Math.max(10, Math.min(600, Number(req.body.restSeconds || 60))));
   if (req.body.notifyWorkoutTime !== undefined && /^\d{2}:\d{2}$/.test(req.body.notifyWorkoutTime)) addUpdate('notify_workout_time', req.body.notifyWorkoutTime);
   if (req.body.notifyMissedWorkoutTime !== undefined && /^\d{2}:\d{2}$/.test(req.body.notifyMissedWorkoutTime)) addUpdate('notify_missed_workout_time', req.body.notifyMissedWorkoutTime);
