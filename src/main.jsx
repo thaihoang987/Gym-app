@@ -3209,6 +3209,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
   const [swipeDx, setSwipeDx] = useState(0);
+  const [slideDir, setSlideDir] = useState(null); // 'out-left' | 'out-right' | 'in-left' | 'in-right' | null
   const swipeStartX = React.useRef(0);
   const swipeContainerRef = React.useRef(null);
 
@@ -3386,8 +3387,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   }
 
   const openExercise = (nextIndex) => {
-    setIndex(nextIndex);
-    setView('exercise');
+    const goNext = nextIndex > index;
+    setSlideDir(goNext ? 'out-left' : 'out-right');
+    setTimeout(() => {
+      setIndex(nextIndex);
+      setView('exercise');
+      setSlideDir(goNext ? 'in-right' : 'in-left');
+      setTimeout(() => setSlideDir(null), 220);
+    }, 150);
   };
   const updateSet = async (setIndex, patch) => {
     const current = sets.find((set) => set.setIndex === setIndex);
@@ -3674,7 +3681,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           )}
           <div
             ref={swipeContainerRef}
-            className="workout-card space-y-4"
+            className={`workout-card space-y-4 ${
+              slideDir === 'out-left' ? 'slide-out-left' :
+              slideDir === 'out-right' ? 'slide-out-right' :
+              slideDir === 'in-right' ? 'slide-in-from-right' :
+              slideDir === 'in-left' ? 'slide-in-from-left' : ''
+            }`}
             onTouchStart={(e) => { setSwipeDx(0); swipeStartX.current = e.touches[0].clientX; }}
             onTouchMove={(e) => {
               const dx = e.touches[0].clientX - swipeStartX.current;

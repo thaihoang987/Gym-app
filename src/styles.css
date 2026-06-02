@@ -605,6 +605,28 @@ button:disabled {
   @apply grid h-12 w-12 place-items-center rounded-md bg-slate-100 text-2xl font-bold text-slate-950;
 }
 
+/* Exercise slide transitions */
+@keyframes slideInFromRight {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideInFromLeft {
+  from { transform: translateX(-40px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes slideOutLeft {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(-30px); opacity: 0; }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0);   opacity: 1; }
+  to   { transform: translateX(30px); opacity: 0; }
+}
+.slide-out-left       { animation: slideOutLeft     0.15s ease forwards; }
+.slide-out-right      { animation: slideOutRight    0.15s ease forwards; }
+.slide-in-from-right  { animation: slideInFromRight 0.2s ease forwards; }
+.slide-in-from-left   { animation: slideInFromLeft  0.2s ease forwards; }
+
 .timer-pop {
   @apply fixed left-4 right-4 z-[9998] rounded-2xl bg-[#1f2933] px-5 py-4 text-white shadow-xl;
   bottom: calc(5.5rem + env(safe-area-inset-bottom));
