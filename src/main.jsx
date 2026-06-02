@@ -229,12 +229,24 @@ async function flushOfflineQueue(userId) {
   const failed = [];
   const localSessionIds = new Set(queue.filter((entry) => entry.type === 'createSession').map((entry) => Number(entry.sessionId)));
   const sessionIdMap = new Map();
+  const groupIdMap = new Map();
   for (const entry of queue) {
     try {
-      if (entry.type === 'addGroupExercise') {
-        await api(`/api/groups/${entry.groupId}/exercises`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId }) });
+      if (entry.type === 'createGroup') {
+        const created = await api('/api/groups', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, colorHex: entry.colorHex }) });
+        groupIdMap.set(String(entry.groupId), created.id);
+      } else if (entry.type === 'addGroupExercise') {
+        const groupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
+        if (String(entry.groupId).startsWith('offline_') && !groupIdMap.has(String(entry.groupId))) throw new Error('Offline group has not synced yet');
+        await api(`/api/groups/${groupId}/exercises`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId }) });
       } else if (entry.type === 'removeGroupExercise') {
-        await api(`/api/groups/${entry.groupId}/exercises/${entry.exerciseId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
+        const groupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
+        if (String(entry.groupId).startsWith('offline_') && !groupIdMap.has(String(entry.groupId))) continue;
+        await api(`/api/groups/${groupId}/exercises/${entry.exerciseId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
+      } else if (entry.type === 'reorderGroupExercises') {
+        const groupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
+        if (String(entry.groupId).startsWith('offline_') && !groupIdMap.has(String(entry.groupId))) throw new Error('Offline group has not synced yet');
+        await api(`/api/groups/${groupId}/exercises-order`, { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, exerciseIds: entry.exerciseIds }) });
       } else if (entry.type === 'assignScheduleRule') {
         await api('/api/schedule-rules', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, routineId: entry.routineId, mode: entry.mode, dayOfWeek: entry.dayOfWeek, orderIndex: entry.orderIndex }) });
       } else if (entry.type === 'deleteScheduleRule') {
@@ -263,7 +275,12 @@ async function flushOfflineQueue(userId) {
       }
     } catch {
       const mappedSessionId = sessionIdMap.get(Number(entry.sessionId));
-      failed.push(mappedSessionId ? { ...entry, sessionId: mappedSessionId } : entry);
+      const mappedGroupId = groupIdMap.get(String(entry.groupId));
+      failed.push({
+        ...entry,
+        ...(mappedSessionId ? { sessionId: mappedSessionId } : {}),
+        ...(mappedGroupId ? { groupId: mappedGroupId } : {})
+      });
     }
   }
   saveOfflineQueue(userId, failed);
@@ -282,15 +299,17 @@ function userIdFromApiPath(path) {
 
 function pendingOfflineState(userId) {
   const queue = getOfflineQueue(userId);
+  const createdGroups = queue.filter((entry) => entry.type === 'createGroup');
   const addGroupExercises = queue.filter((entry) => entry.type === 'addGroupExercise');
   const removeGroupExercises = queue.filter((entry) => entry.type === 'removeGroupExercise');
+  const reorderedGroupExercises = queue.filter((entry) => entry.type === 'reorderGroupExercises');
   const assignedScheduleRules = queue.filter((entry) => entry.type === 'assignScheduleRule');
   const deletedScheduleRuleIds = new Set(queue.filter((entry) => entry.type === 'deleteScheduleRule').map((entry) => String(entry.ruleId)));
   const deletedSessionIds = new Set(queue.filter((entry) => entry.type === 'deleteSession').map((entry) => Number(entry.sessionId)));
   const completedSessionIds = new Set(queue.filter((entry) => entry.type === 'complete').map((entry) => Number(entry.sessionId)));
   const createdSessions = queue.filter((entry) => entry.type === 'createSession' && !deletedSessionIds.has(Number(entry.sessionId)));
   const logs = queue.filter((entry) => entry.type === 'log' && !deletedSessionIds.has(Number(entry.sessionId)));
-  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, addGroupExercises, removeGroupExercises, assignedScheduleRules, deletedScheduleRuleIds };
+  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, addGroupExercises, removeGroupExercises, reorderedGroupExercises, assignedScheduleRules, deletedScheduleRuleIds };
 }
 
 function readApiCache(path) {
@@ -350,12 +369,25 @@ function findOfflineSessionPayload(userId, sessionId) {
 }
 
 function applyOfflineGroupMutations(userId, groups) {
-  const { addGroupExercises, removeGroupExercises } = pendingOfflineState(userId);
-  if (!addGroupExercises.length && !removeGroupExercises.length) return groups;
+  const { createdGroups, addGroupExercises, removeGroupExercises, reorderedGroupExercises } = pendingOfflineState(userId);
+  if (!createdGroups.length && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length) return groups;
   const exercises = collectCachedExercises(userId);
   const byId = new Map(exercises.map((exercise) => [String(exercise.id), exercise]));
   const removeKeys = new Set(removeGroupExercises.map((entry) => `${entry.groupId}:${entry.exerciseId}`));
-  return (groups || []).map((group) => {
+  const byGroupId = new Map((groups || []).map((group) => [String(group.id), { ...group, exercises: [...(group.exercises || [])] }]));
+  for (const entry of createdGroups) {
+    if (!byGroupId.has(String(entry.groupId))) {
+      byGroupId.set(String(entry.groupId), {
+        id: entry.groupId,
+        name: entry.name,
+        icon: entry.icon || '💪',
+        color_hex: entry.colorHex || '#78e0a6',
+        exercises: [],
+        syncStatus: 'pending'
+      });
+    }
+  }
+  return [...byGroupId.values()].map((group) => {
     let nextExercises = (group.exercises || []).filter((exercise) => !removeKeys.has(`${group.id}:${exercise.id}`));
     const existingIds = new Set(nextExercises.map((exercise) => String(exercise.id)));
     for (const entry of addGroupExercises) {
@@ -365,6 +397,11 @@ function applyOfflineGroupMutations(userId, groups) {
         nextExercises = [...nextExercises, { ...exercise, syncStatus: 'pending' }];
         existingIds.add(String(entry.exerciseId));
       }
+    }
+    const reorder = [...reorderedGroupExercises].reverse().find((entry) => String(entry.groupId) === String(group.id));
+    if (reorder?.exerciseIds?.length) {
+      const order = new Map(reorder.exerciseIds.map((id, index) => [String(id), index]));
+      nextExercises = [...nextExercises].sort((a, b) => (order.get(String(a.id)) ?? 9999) - (order.get(String(b.id)) ?? 9999));
     }
     return { ...group, exercises: nextExercises };
   });
@@ -808,6 +845,11 @@ function cacheAddGroupExercise(userId, groupId, exerciseId) {
   writeGroupsCache(userId, groups);
 }
 
+function cacheGroupMutations(userId) {
+  const groups = applyOfflineGroupMutations(userId, cachedGroups(userId));
+  writeGroupsCache(userId, groups);
+}
+
 function cacheRemoveGroupExercise(userId, groupId, exerciseId) {
   const groups = applyOfflineGroupMutations(userId, cachedGroups(userId));
   writeGroupsCache(userId, groups);
@@ -959,6 +1001,16 @@ async function api(path, options = {}) {
       clearWorkoutApiCaches(bodyUserId);
       return { id: storedSessionId || offlineSessionId, offline: true };
     }
+    if (offlineQueue && method === 'POST' && path === '/api/groups') {
+      if (await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = `offline_group_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '💪', colorHex: body.colorHex || '#78e0a6' });
+      cacheGroupMutations(userId);
+      return { id: groupId, offline: true };
+    }
     const sessionDeleteMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
     if (offlineQueue && method === 'DELETE' && sessionDeleteMatch) {
       if (await checkServerAvailable(1000)) throw err;
@@ -977,6 +1029,17 @@ async function api(path, options = {}) {
       cacheAddGroupExercise(userId, Number(addGroupExerciseMatch[1]), body.exerciseId);
       return { ok: true, offline: true };
     }
+    const addOfflineGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises$/);
+    if (offlineQueue && method === 'POST' && addOfflineGroupExerciseMatch) {
+      if (await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = decodeURIComponent(addOfflineGroupExerciseMatch[1]);
+      addToOfflineQueue(userId, { type: 'addGroupExercise', groupId, exerciseId: body.exerciseId });
+      cacheAddGroupExercise(userId, groupId, body.exerciseId);
+      return { ok: true, offline: true };
+    }
     const removeGroupExerciseMatch = path.match(/\/api\/groups\/(\d+)\/exercises\/([^/?]+)/);
     if (offlineQueue && method === 'DELETE' && removeGroupExerciseMatch) {
       if (await checkServerAvailable(1000)) throw err;
@@ -985,6 +1048,27 @@ async function api(path, options = {}) {
       const exerciseId = decodeURIComponent(removeGroupExerciseMatch[2]);
       addToOfflineQueue(userId, { type: 'removeGroupExercise', groupId, exerciseId });
       cacheRemoveGroupExercise(userId, groupId, exerciseId);
+      return { ok: true, offline: true };
+    }
+    const removeOfflineGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises\/([^/?]+)/);
+    if (offlineQueue && method === 'DELETE' && removeOfflineGroupExerciseMatch) {
+      if (await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = decodeURIComponent(removeOfflineGroupExerciseMatch[1]);
+      const exerciseId = decodeURIComponent(removeOfflineGroupExerciseMatch[2]);
+      addToOfflineQueue(userId, { type: 'removeGroupExercise', groupId, exerciseId });
+      cacheRemoveGroupExercise(userId, groupId, exerciseId);
+      return { ok: true, offline: true };
+    }
+    const reorderGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises-order$/);
+    if (offlineQueue && method === 'PATCH' && reorderGroupExerciseMatch) {
+      if (await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = decodeURIComponent(reorderGroupExerciseMatch[1]);
+      addToOfflineQueue(userId, { type: 'reorderGroupExercises', groupId, exerciseIds: body.exerciseIds || [] });
+      cacheGroupMutations(userId);
       return { ok: true, offline: true };
     }
     if (offlineQueue && method === 'POST' && path === '/api/schedule-rules') {
