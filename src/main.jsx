@@ -458,7 +458,7 @@ function applyOfflineGroupMutations(userId, groups) {
     let nextExercises = (group.exercises || []).filter((exercise) => !removeKeys.has(`${group.id}:${exercise.id}`));
     const existingIds = new Set(nextExercises.map((exercise) => String(exercise.id)));
     for (const entry of addGroupExercises) {
-      if (Number(entry.groupId) !== Number(group.id) || removeKeys.has(`${entry.groupId}:${entry.exerciseId}`) || existingIds.has(String(entry.exerciseId))) continue;
+      if (String(entry.groupId) !== String(group.id) || removeKeys.has(`${entry.groupId}:${entry.exerciseId}`) || existingIds.has(String(entry.exerciseId))) continue;
       const exercise = byId.get(String(entry.exerciseId));
       if (exercise) {
         nextExercises = [...nextExercises, { ...exercise, syncStatus: 'pending' }];
@@ -2585,6 +2585,8 @@ function ExerciseLibrary({ userId, settings }) {
       const name = await dialog.prompt(t('builder_group_name'));
       if (!name?.trim()) return;
       const created = await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: name.trim() }) });
+      const afterCreate = await api(`/api/groups?userId=${userId}`);
+      setGroups(afterCreate);
       await addToGroup(created.id, exerciseId);
       return;
     }
