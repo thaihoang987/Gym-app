@@ -3207,6 +3207,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [weightMode, setWeightMode] = useState('KG');
   const [manualWeight, setManualWeight] = useState('');
   const [timer, setTimer] = useState(0);
+  const timerEndAt = React.useRef(0); // timestamp khi timer hết
   const [swipeDx, setSwipeDx] = useState(0);
   const swipeStartX = React.useRef(0);
   const previousTimer = React.useRef(0);
@@ -3281,11 +3282,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       }
     });
   }, [exercise?.id, userId, workout.sessionId]);
+  // startTimer: set thời điểm kết thúc theo thời gian thực
+  const startTimer = React.useCallback((seconds) => {
+    timerEndAt.current = Date.now() + seconds * 1000;
+    setTimer(seconds);
+  }, []);
+
   useEffect(() => {
-    if (!timer) return;
-    const id = setInterval(() => setTimer((value) => Math.max(0, value - 1)), 1000);
+    if (!timerEndAt.current) return;
+    const id = setInterval(() => {
+      const remaining = Math.round((timerEndAt.current - Date.now()) / 1000);
+      const clamped = Math.max(0, remaining);
+      setTimer(clamped);
+      if (clamped === 0) timerEndAt.current = 0;
+    }, 500);
     return () => clearInterval(id);
-  }, [timer]);
+  }, [timerEndAt.current > 0 ? timerEndAt.current : 0]);
   useEffect(() => {
     if (previousTimer.current > 0 && timer === 0) {
       if (settings?.vibrate_rest_done && navigator.vibrate) navigator.vibrate([180, 80, 180]);
@@ -3457,7 +3469,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
-      setTimer(Number(settings?.rest_seconds || 60));
+      startTimer(Number(settings?.rest_seconds || 60));
       return;
     }
     let result;
@@ -3479,7 +3491,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           : item
       ))
     } : current);
-    setTimer(Number(settings?.rest_seconds || 60));
+    startTimer(Number(settings?.rest_seconds || 60));
   };
   const saveNote = async (value) => {
     setNote(value);
@@ -3644,7 +3656,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           )}
           <div
             className="workout-card space-y-4"
-            style={{ transform: `translateX(${swipeDx * 0.4}px)`, transition: swipeDx === 0 ? 'transform 0.25s ease' : 'none', willChange: 'transform' }}
             onTouchStart={(e) => { setSwipeDx(0); swipeStartX.current = e.touches[0].clientX; }}
             onTouchMove={(e) => {
               const dx = e.touches[0].clientX - swipeStartX.current;
@@ -3776,8 +3787,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             {timer >= 60 ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : `${timer}s`}
           </div>
           <div className="timer-pop-actions">
-            <button className="timer-pop-btn" onClick={() => setTimer((v) => v + 30)}>+30s</button>
-            <button className="timer-pop-dismiss" onClick={() => setTimer(0)}>{t('workout_timer_off')}</button>
+            <button className="timer-pop-btn" onClick={() => startTimer(timer + 30)}>+30s</button>
+            <button className="timer-pop-dismiss" onClick={() => { timerEndAt.current = 0; setTimer(0); }}>{t('workout_timer_off')}</button>
           </div>
         </div>
       )}
