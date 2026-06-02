@@ -3207,6 +3207,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [weightMode, setWeightMode] = useState('KG');
   const [manualWeight, setManualWeight] = useState('');
   const [timer, setTimer] = useState(0);
+  const [swipeDx, setSwipeDx] = useState(0);
+  const swipeStartX = React.useRef(0);
   const previousTimer = React.useRef(0);
   const wakeLock = React.useRef(null);
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
@@ -3618,18 +3620,45 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           </div>
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
-      ) : (
-        <div
-          className="workout-card space-y-4"
-          onTouchStart={(e) => { e._swipeStartX = e.touches[0].clientX; }}
-          onTouchEnd={(e) => {
-            const dx = e.changedTouches[0].clientX - (e._swipeStartX ?? e.changedTouches[0].clientX);
-            if (Math.abs(dx) > 60) {
-              if (dx < 0 && index < data.exercises.length - 1) openExercise(index + 1);
-              if (dx > 0 && index > 0) openExercise(index - 1);
-            }
-          }}
-        >
+      ) : (() => {
+        const THRESHOLD = 80;
+        const canPrev = index > 0;
+        const canNext = index < data.exercises.length - 1;
+        const arrowOpacity = Math.min(1, Math.abs(swipeDx) / 40);
+        const arrowScale = 0.7 + 0.3 * Math.min(1, Math.abs(swipeDx) / THRESHOLD);
+        return (
+        <div className="relative">
+          {/* Arrow trái */}
+          {canPrev && (
+            <div className="pointer-events-none absolute -left-2 top-1/2 z-10 -translate-y-1/2 transition-all"
+              style={{ opacity: swipeDx > 10 ? arrowOpacity : 0, transform: `translateY(-50%) scale(${arrowScale})` }}>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">‹</div>
+            </div>
+          )}
+          {/* Arrow phải */}
+          {canNext && (
+            <div className="pointer-events-none absolute -right-2 top-1/2 z-10 -translate-y-1/2 transition-all"
+              style={{ opacity: swipeDx < -10 ? arrowOpacity : 0, transform: `translateY(-50%) scale(${arrowScale})` }}>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">›</div>
+            </div>
+          )}
+          <div
+            className="workout-card space-y-4"
+            style={{ transform: `translateX(${swipeDx * 0.4}px)`, transition: swipeDx === 0 ? 'transform 0.25s ease' : 'none', willChange: 'transform' }}
+            onTouchStart={(e) => { setSwipeDx(0); swipeStartX.current = e.touches[0].clientX; }}
+            onTouchMove={(e) => {
+              const dx = e.touches[0].clientX - swipeStartX.current;
+              if (!canPrev && dx > 0) return;
+              if (!canNext && dx < 0) return;
+              setSwipeDx(dx);
+            }}
+            onTouchEnd={() => {
+              const dx = swipeDx;
+              setSwipeDx(0);
+              if (dx < -THRESHOLD && canNext) openExercise(index + 1);
+              else if (dx > THRESHOLD && canPrev) openExercise(index - 1);
+            }}
+          >
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (
               <img
@@ -3734,8 +3763,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           </div>
 
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
+          </div>
         </div>
-      )}
+        );
+      })()}
       {timer > 0 && (
         <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>
           <div className="timer-pop-label">
