@@ -3619,7 +3619,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       ) : (
-        <div className="workout-card space-y-4">
+        <div
+          className="workout-card space-y-4"
+          onTouchStart={(e) => { e._swipeStartX = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            const dx = e.changedTouches[0].clientX - (e._swipeStartX ?? e.changedTouches[0].clientX);
+            if (Math.abs(dx) > 60) {
+              if (dx < 0 && index < data.exercises.length - 1) openExercise(index + 1);
+              if (dx > 0 && index > 0) openExercise(index - 1);
+            }
+          }}
+        >
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (
               <img
@@ -3726,7 +3736,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
         </div>
       )}
-      {timer > 0 && <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>{settings?.countdown_3s && timer <= 3 ? `${t('workout_timer_prepare')} ` : `${t('workout_timer_rest')} `}{timer}s <button onClick={() => setTimer((v) => v + 30)}>+30s</button><button onClick={() => setTimer(0)}>{t('workout_timer_off')}</button></div>}
+      {timer > 0 && (
+        <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>
+          <div className="timer-pop-label">
+            {settings?.countdown_3s && timer <= 3 ? t('workout_timer_prepare') : t('workout_timer_rest')}
+          </div>
+          <div className="timer-pop-time">
+            {timer >= 60 ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : `${timer}s`}
+          </div>
+          <div className="timer-pop-actions">
+            <button className="timer-pop-btn" onClick={() => setTimer((v) => v + 30)}>+30s</button>
+            <button className="timer-pop-dismiss" onClick={() => setTimer(0)}>{t('workout_timer_off')}</button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -4224,6 +4247,34 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [notifyWeighTime, setNotifyWeighTime] = useState(settings.notify_weigh_time || '07:00');
   const [notifyProgressPhotoFrequency, setNotifyProgressPhotoFrequency] = useState(settings.notify_progress_photo_frequency || 'off');
   const [settingsError, setSettingsError] = useState('');
+
+  // Đếm số settings chưa save
+  const initialRef = React.useRef({
+    name: boot.activeUser.name, timezone: boot.settings.timezone || fallbackDisplay.timezone,
+    locale: boot.settings.locale || fallbackDisplay.locale, heightCm: boot.settings.height_cm || '',
+    defaultWeightUnit: boot.settings.default_weight_unit || 'kg', gender: settings.gender || '',
+    birthDate: settings.birth_date || '', clockFormat: settings.clock_format || '24h',
+    restSeconds: settings.rest_seconds || 60, defaultSets: settings.default_sets || 3,
+    defaultReps: settings.default_reps || 12, progressiveOverload: Boolean(settings.progressive_overload),
+    soundRestDone: Boolean(settings.sound_rest_done), vibrateRestDone: Boolean(settings.vibrate_rest_done),
+    countdown3s: Boolean(settings.countdown_3s), autoNextSet: Boolean(settings.auto_next_set),
+  });
+  const dirtyCount = useMemo(() => {
+    const init = initialRef.current;
+    return [
+      name !== init.name, password.trim() !== '', timezone !== init.timezone,
+      locale !== init.locale, String(heightCm) !== String(init.heightCm),
+      defaultWeightUnit !== init.defaultWeightUnit, gender !== init.gender,
+      birthDate !== init.birthDate, clockFormat !== init.clockFormat,
+      restSeconds !== init.restSeconds, defaultSets !== init.defaultSets,
+      defaultReps !== init.defaultReps, progressiveOverload !== init.progressiveOverload,
+      soundRestDone !== init.soundRestDone, vibrateRestDone !== init.vibrateRestDone,
+      countdown3s !== init.countdown3s, autoNextSet !== init.autoNextSet,
+      avatarPreview !== (boot.activeUser.avatar || ''),
+    ].filter(Boolean).length;
+  }, [name, password, timezone, locale, heightCm, defaultWeightUnit, gender, birthDate,
+      clockFormat, restSeconds, defaultSets, defaultReps, progressiveOverload, soundRestDone,
+      vibrateRestDone, countdown3s, autoNextSet, avatarPreview]);
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
     const name = await dialog.prompt(t('settings_name'));
@@ -4475,12 +4526,24 @@ function SettingsPage({ userId, boot, onChanged }) {
       </SettingsGroup>
 
       {settingsError && <p className="rounded-md bg-red-50 p-3 text-sm font-bold text-red-700">{settingsError}</p>}
+      <div className="h-20" />{/* spacer cho floating button */}
+
+      {/* Floating Save button */}
       <button
         onClick={saveAll}
-        className="flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white"
-        style={{background:'linear-gradient(135deg,#2563eb,#7c3aed)', boxShadow:'0 4px 14px rgba(124,58,237,0.4)'}}
+        className="fixed right-4 z-50 flex items-center gap-2 rounded-full px-5 py-3 font-bold text-white shadow-xl transition-all"
+        style={{
+          bottom: 'calc(5rem + env(safe-area-inset-bottom))',
+          background: dirtyCount > 0 ? 'linear-gradient(135deg,#2563eb,#7c3aed)' : '#94a3b8',
+          boxShadow: dirtyCount > 0 ? '0 4px 20px rgba(124,58,237,0.5)' : 'none',
+        }}
       >
-        {t('settings_save')} · Save changes
+        {t('settings_save')}
+        {dirtyCount > 0 && (
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-indigo-600">
+            {dirtyCount}
+          </span>
+        )}
       </button>
       {boot.activeUser.role === 'ADMIN' && <div className="panel">
         <h2 className="section-title">{t('settings_users')}</h2>
