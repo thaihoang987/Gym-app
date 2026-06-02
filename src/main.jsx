@@ -3210,6 +3210,19 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
   const [swipeDx, setSwipeDx] = useState(0);
   const swipeStartX = React.useRef(0);
+  const swipeContainerRef = React.useRef(null);
+
+  // Gắn touchmove với passive:false để preventDefault hoạt động
+  useEffect(() => {
+    const el = swipeContainerRef.current;
+    if (!el) return;
+    const handleMove = (e) => {
+      const dx = e.touches[0].clientX - swipeStartX.current;
+      if (Math.abs(dx) > 10) e.preventDefault();
+    };
+    el.addEventListener('touchmove', handleMove, { passive: false });
+    return () => el.removeEventListener('touchmove', handleMove);
+  }, []);
   const previousTimer = React.useRef(0);
   const wakeLock = React.useRef(null);
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
@@ -3636,25 +3649,29 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const THRESHOLD = 80;
         const canPrev = index > 0;
         const canNext = index < data.exercises.length - 1;
-        const arrowOpacity = Math.min(1, Math.abs(swipeDx) / 40);
-        const arrowScale = 0.7 + 0.3 * Math.min(1, Math.abs(swipeDx) / THRESHOLD);
+        const progress = Math.min(1, Math.abs(swipeDx) / THRESHOLD);
+        // Mũi tên trái: hiện khi kéo phải, di chuyển cùng hướng kéo
+        const leftArrowX = swipeDx > 10 ? Math.min(swipeDx * 0.6, 40) : -40;
+        // Mũi tên phải: hiện khi kéo trái, di chuyển cùng hướng kéo
+        const rightArrowX = swipeDx < -10 ? Math.max(swipeDx * 0.6, -40) : 40;
         return (
-        <div className="relative">
-          {/* Arrow trái */}
+        <div className="relative overflow-hidden rounded-xl">
+          {/* Arrow trái - kéo cùng hướng sang phải */}
           {canPrev && (
-            <div className="pointer-events-none absolute -left-2 top-1/2 z-10 -translate-y-1/2 transition-all"
-              style={{ opacity: swipeDx > 10 ? arrowOpacity : 0, transform: `translateY(-50%) scale(${arrowScale})` }}>
+            <div className="pointer-events-none absolute left-2 top-1/2 z-10"
+              style={{ transform: `translateY(-50%) translateX(${leftArrowX}px)`, opacity: swipeDx > 10 ? progress : 0, transition: swipeDx === 0 ? 'all 0.2s ease' : 'none' }}>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">‹</div>
             </div>
           )}
-          {/* Arrow phải */}
+          {/* Arrow phải - kéo cùng hướng sang trái */}
           {canNext && (
-            <div className="pointer-events-none absolute -right-2 top-1/2 z-10 -translate-y-1/2 transition-all"
-              style={{ opacity: swipeDx < -10 ? arrowOpacity : 0, transform: `translateY(-50%) scale(${arrowScale})` }}>
+            <div className="pointer-events-none absolute right-2 top-1/2 z-10"
+              style={{ transform: `translateY(-50%) translateX(${rightArrowX}px)`, opacity: swipeDx < -10 ? progress : 0, transition: swipeDx === 0 ? 'all 0.2s ease' : 'none' }}>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">›</div>
             </div>
           )}
           <div
+            ref={swipeContainerRef}
             className="workout-card space-y-4"
             onTouchStart={(e) => { setSwipeDx(0); swipeStartX.current = e.touches[0].clientX; }}
             onTouchMove={(e) => {
