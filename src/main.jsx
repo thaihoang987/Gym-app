@@ -5150,9 +5150,9 @@ function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fall
           value={draft}
           onChange={(event) => onDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addValue(); } }}
-          placeholder={`Thêm ${unit}`}
+          placeholder={t('settings_weight_steps_add_placeholder', unit)}
         />
-        <button type="button" className="small-action" onClick={addValue}>Thêm</button>
+        <button type="button" className="small-action" onClick={addValue}>{t('settings_weight_steps_add')}</button>
       </div>
     </div>
   );
