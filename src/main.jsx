@@ -3225,7 +3225,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     return () => el.removeEventListener('touchmove', handleMove);
   }, []);
   const previousTimer = React.useRef(0);
-  const wakeLock = React.useRef(null);
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
   const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
 
@@ -3332,24 +3331,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     previousTimer.current = timer;
   }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done]);
-  useEffect(() => {
-    let cancelled = false;
-    const requestWakeLock = async () => {
-      if (!settings?.keep_screen_awake || !navigator.wakeLock) return;
-      try {
-        wakeLock.current = await navigator.wakeLock.request('screen');
-      } catch {
-        wakeLock.current = null;
-      }
-    };
-    requestWakeLock();
-    return () => {
-      cancelled = true;
-      if (!cancelled && wakeLock.current) wakeLock.current.release();
-      else if (wakeLock.current) wakeLock.current.release();
-      wakeLock.current = null;
-    };
-  }, [settings?.keep_screen_awake, workout.sessionId]);
 
   if (!data) {
     // Sau 1s loading → thử fallback cache offline
@@ -3666,14 +3647,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           {/* Hint thường trực - trái */}
           {canPrev && (
             <div className="pointer-events-none fixed left-3 z-[9998]"
-              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isLeft ? 0 : 0.15 }}>
+              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isLeft ? 0 : 0.10 }}>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-xl font-black text-white">‹</div>
             </div>
           )}
           {/* Hint thường trực - phải */}
           {canNext && (
             <div className="pointer-events-none fixed right-3 z-[9998]"
-              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isRight ? 0 : 0.15 }}>
+              style={{ top: '50%', transform: 'translateY(-50%)', opacity: isRight ? 0 : 0.10 }}>
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-xl font-black text-white">›</div>
             </div>
           )}
@@ -4500,7 +4481,6 @@ function SettingsPage({ userId, boot, onChanged }) {
         <SwitchSetting label={t('settings_vibrate_rest_label')} checked={vibrateRestDone} onChange={setVibrateRestDone} />
         <SwitchSetting label={t('settings_countdown_label')} checked={countdown3s} onChange={setCountdown3s} />
         <SwitchSetting label={t('settings_auto_next_label')} checked={autoNextSet} onChange={setAutoNextSet} />
-        <SwitchSetting label={t('settings_keep_awake_label')} checked={Boolean(settings.keep_screen_awake)} onChange={() => {}} />
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_notify_section')}>
