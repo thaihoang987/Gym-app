@@ -3650,24 +3650,26 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const canPrev = index > 0;
         const canNext = index < data.exercises.length - 1;
         const progress = Math.min(1, Math.abs(swipeDx) / THRESHOLD);
-        // Mũi tên trái: hiện khi kéo phải, di chuyển cùng hướng kéo
-        const leftArrowX = swipeDx > 10 ? Math.min(swipeDx * 0.6, 40) : -40;
-        // Mũi tên phải: hiện khi kéo trái, di chuyển cùng hướng kéo
-        const rightArrowX = swipeDx < -10 ? Math.max(swipeDx * 0.6, -40) : 40;
+        // Scale mũi tên: nhỏ → to theo lực kéo
+        const arrowSize = 40 + progress * 40; // 40px → 80px
+        const isLeft = swipeDx > 10;
+        const isRight = swipeDx < -10;
         return (
-        <div className="relative overflow-hidden rounded-xl">
-          {/* Arrow trái - kéo cùng hướng sang phải */}
-          {canPrev && (
-            <div className="pointer-events-none absolute left-2 top-1/2 z-10"
-              style={{ transform: `translateY(-50%) translateX(${leftArrowX}px)`, opacity: swipeDx > 10 ? progress : 0, transition: swipeDx === 0 ? 'all 0.2s ease' : 'none' }}>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">‹</div>
+        <div className="relative">
+          {/* Arrow trái - fixed giữa màn hình dọc, to dần theo lực kéo */}
+          {canPrev && isLeft && (
+            <div className="pointer-events-none fixed left-3 z-[9999]"
+              style={{ top: '50%', transform: 'translateY(-50%)', transition: swipeDx === 0 ? 'all 0.2s ease' : 'none', opacity: progress }}>
+              <div className="flex items-center justify-center rounded-full bg-slate-800 font-black text-white shadow-2xl"
+                style={{ width: arrowSize, height: arrowSize, fontSize: arrowSize * 0.5 }}>‹</div>
             </div>
           )}
-          {/* Arrow phải - kéo cùng hướng sang trái */}
-          {canNext && (
-            <div className="pointer-events-none absolute right-2 top-1/2 z-10"
-              style={{ transform: `translateY(-50%) translateX(${rightArrowX}px)`, opacity: swipeDx < -10 ? progress : 0, transition: swipeDx === 0 ? 'all 0.2s ease' : 'none' }}>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-2xl font-black text-white shadow-xl">›</div>
+          {/* Arrow phải - fixed giữa màn hình dọc, to dần theo lực kéo */}
+          {canNext && isRight && (
+            <div className="pointer-events-none fixed right-3 z-[9999]"
+              style={{ top: '50%', transform: 'translateY(-50%)', transition: swipeDx === 0 ? 'all 0.2s ease' : 'none', opacity: progress }}>
+              <div className="flex items-center justify-center rounded-full bg-slate-800 font-black text-white shadow-2xl"
+                style={{ width: arrowSize, height: arrowSize, fontSize: arrowSize * 0.5 }}>›</div>
             </div>
           )}
           <div
