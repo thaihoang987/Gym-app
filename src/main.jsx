@@ -5043,44 +5043,65 @@ function NumberSetting({ label, value, onChange, min, max, disabled = false }) {
 function WeightStepsEditor({ title, unit, values, draft, onDraft, onChange, fallback, lockedValues = [] }) {
   const lockedKeys = useMemo(() => new Set(lockedValues.map((value) => String(Number(value)))), [lockedValues]);
   const isLocked = (value) => lockedKeys.has(String(Number(value)));
+  const [selectedValue, setSelectedValue] = useState(() => values[0] ?? 0);
+  useEffect(() => {
+    if (!values.some((value) => Number(value) === Number(selectedValue))) {
+      setSelectedValue(values[0] ?? 0);
+    }
+  }, [values, selectedValue]);
   const addValue = () => {
     const value = Number(draft);
     if (!Number.isFinite(value) || value < 0) return;
-    onChange(normalizeWeightSteps([...values, value], fallback, unit));
+    const next = normalizeWeightSteps([...values, value], fallback, unit);
+    onChange(next);
+    setSelectedValue(value);
     onDraft('');
   };
   const removeValue = (value) => {
     if (isLocked(value)) return;
     const next = values.filter((item) => Number(item) !== Number(value));
-    onChange(next.length ? next : [0]);
+    const normalized = next.length ? next : [0];
+    onChange(normalized);
+    setSelectedValue(normalized[0] ?? 0);
   };
+  const selectedLocked = isLocked(selectedValue);
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <label className="label mb-0">{title}</label>
-        <button type="button" className="tiny-btn" onClick={() => onChange(normalizeWeightSteps([...fallback, ...lockedValues], fallback, unit))}>Mặc định</button>
+        <button
+          type="button"
+          className="tiny-btn"
+          onClick={() => {
+            const next = normalizeWeightSteps([...fallback, ...lockedValues], fallback, unit);
+            onChange(next);
+            setSelectedValue(next[0] ?? 0);
+          }}
+        >
+          Mặc định
+        </button>
       </div>
       {lockedValues.length > 0 && (
         <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
           Các mức đang có set tập chưa hoàn thành sẽ bị khoá xoá.
         </p>
       )}
-      <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-md bg-white p-2">
-        {values.map((value) => {
-          const locked = isLocked(value);
-          return (
-            <button
-              type="button"
-              key={value}
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-sm font-bold ${locked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-800'}`}
-              onClick={() => removeValue(value)}
-              title={locked ? `${value} ${unit} đang có set tập chưa hoàn thành` : `Xoá ${value} ${unit}`}
-            >
-              <span>{value} {unit}</span>
-              {!locked && <span className="text-red-600">-</span>}
-            </button>
-          );
-        })}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md bg-white p-2">
+        <WheelPicker
+          value={nearestOption(selectedValue, values)}
+          options={values}
+          suffix={unit}
+          onChange={setSelectedValue}
+        />
+        <button
+          type="button"
+          className={`grid h-12 w-12 place-items-center rounded-xl border text-2xl font-black ${selectedLocked ? 'border-amber-200 bg-amber-50 text-amber-300' : 'border-red-200 bg-red-50 text-red-700'}`}
+          disabled={selectedLocked || values.length <= 1}
+          onClick={() => removeValue(selectedValue)}
+          title={selectedLocked ? `${selectedValue} ${unit} đang có set tập chưa hoàn thành` : `Xoá ${selectedValue} ${unit}`}
+        >
+          {selectedLocked ? <Lock size={18} /> : '-'}
+        </button>
       </div>
       <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
         <input
