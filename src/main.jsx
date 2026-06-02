@@ -2576,6 +2576,20 @@ function ExerciseLibrary({ userId, settings }) {
       for (const url of urls) { try { if (!(await cache.match(url))) await cache.add(url); } catch {} }
     }
   };
+  const handleAddToGroupSelect = async (event, exerciseId) => {
+    event.stopPropagation();
+    const value = event.target.value;
+    event.target.value = '';
+    if (!value) return;
+    if (value === '__new_group__') {
+      const name = await dialog.prompt(t('builder_group_name'));
+      if (!name?.trim()) return;
+      const created = await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: name.trim() }) });
+      await addToGroup(created.id, exerciseId);
+      return;
+    }
+    await addToGroup(value, exerciseId);
+  };
   const playSmallGif = (exercise) => {
     if (exercise.displayMedia === 'icon' || exercise.displayMedia === 'image') return;
     if (exercise.gifUrl) {
@@ -2630,9 +2644,10 @@ function ExerciseLibrary({ userId, settings }) {
             <p className="mt-1 text-sm text-slate-600">{t('lib_detail_secondary')} {selectedExercise.secondaryMuscles.join(', ')}</p>
           )}
           <ExerciseInstructions exercise={selectedExercise} settings={settings} />
-          <select onChange={(e) => e.target.value && addToGroup(e.target.value, selectedExercise.id)} className="input mt-4 py-2 text-sm">
+          <select onChange={(e) => handleAddToGroupSelect(e, selectedExercise.id)} className="input mt-4 py-2 text-sm">
             <option value="">{t('lib_add_to_group_option')}</option>
             {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+            <option value="__new_group__">{t('lib_add_new_group_option')}</option>
           </select>
           {selectedExercise.isCustom && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -2715,9 +2730,10 @@ function ExerciseLibrary({ userId, settings }) {
                   {exercise.isCustom && <span className="rounded bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-600">{t('lib_custom_badge')}</span>}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">{exercise.target} · {exercise.equipment}</p>
-                <select onClick={(event) => event.stopPropagation()} onChange={(e) => e.target.value && addToGroup(e.target.value, exercise.id)} className="input mt-3 py-2 text-sm">
+                <select onClick={(event) => event.stopPropagation()} onChange={(e) => handleAddToGroupSelect(e, exercise.id)} className="input mt-3 py-2 text-sm">
                   <option value="">{t('lib_add_to_group_option')}</option>
                   {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                  <option value="__new_group__">{t('lib_add_new_group_option')}</option>
                 </select>
               </div>
             </div>
