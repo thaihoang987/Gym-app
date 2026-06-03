@@ -583,7 +583,10 @@ function getWeekStartIso(resetDay = 0) {
 function getWeeklyStatus(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const resetDay = Number(settings?.weekly_reset_day || 0);
-  const weekStartIso = getWeekStartIso(resetDay);
+  const naturalStart = getWeekStartIso(resetDay);
+  const manualReset = settings?.weekly_last_reset_at || null;
+  // Lấy mốc gần nhất (manual reset luôn ưu tiên nếu đứng sau natural week start)
+  const weekStartIso = manualReset && String(manualReset) > naturalStart ? String(manualReset) : naturalStart;
   // Lấy list routine_ids từ rolling rules (giữ ngữ nghĩa cũ)
   const rules = all(`
     SELECT routine_id FROM routine_schedule_rules
@@ -597,7 +600,7 @@ function getWeeklyStatus(userId) {
     const countRow = one(`
       SELECT COUNT(*) AS n FROM workout_sessions
       WHERE user_id = ? AND routine_id = ? AND status = 'COMPLETED'
-        AND date(completed_at, 'localtime') >= ?
+        AND completed_at >= ?
     `, [userId, rule.routine_id, weekStartIso]);
     return {
       ...routine,
@@ -1363,6 +1366,13 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
     duration_minutes: formatMinutes(row.duration_seconds)
   }));
 }
+
+app.post('/api/weekly/reset', (req, res) => {
+  const userId = getUserId(req);
+  const nowIso = new Date().toISOString();
+  db.prepare('UPDATE user_settings SET weekly_last_reset_at = ? WHERE user_id = ?').run(nowIso, userId);
+  res.json({ ok: true, weeklyLastResetAt: nowIso, suggestion: smartSuggestion(userId) });
+});
 
 app.get('/api/dashboard', (req, res) => {
   const userId = getUserId(req);

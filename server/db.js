@@ -352,7 +352,9 @@ export function migrate() {
     ['privacy_pin_lock', 'INTEGER NOT NULL DEFAULT 0'],
     ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0'],
     // Weekly Goal mode: ngày reset chu kỳ (0=Mon, 6=Sun)
-    ['weekly_reset_day', 'INTEGER NOT NULL DEFAULT 0']
+    ['weekly_reset_day', 'INTEGER NOT NULL DEFAULT 0'],
+    // Mốc reset thủ công gần nhất (ISO string). Lấy max(naturalWeekStart, this) để tính tuần
+    ['weekly_last_reset_at', 'TEXT']
   ];
   for (const [column, definition] of userSettingColumns) {
     if (!hasColumn('user_settings', column)) {

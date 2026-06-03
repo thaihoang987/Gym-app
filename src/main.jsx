@@ -562,6 +562,8 @@ async function flushOfflineQueue(userId) {
         }
       } else if (entry.type === 'settingsUpdate') {
         await api('/api/settings', { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.body || {}) }) });
+      } else if (entry.type === 'resetWeekly') {
+        await api(`/api/weekly/reset?userId=${userId}`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId }) });
       } else if (entry.type === 'createSession') {
         const created = await api('/api/sessions', {
           method: 'POST',
@@ -1541,6 +1543,22 @@ async function api(path, options = {}) {
       });
       return { id: groupId, offline: true };
     }
+    if (offlineQueue && method === 'POST' && path.startsWith('/api/weekly/reset')) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'resetWeekly' });
+      // Optimistic: set weekly counters về 0 trong dashboard cache
+      const dashKey = `/api/dashboard?userId=${userId}`;
+      try {
+        const cached = readApiCache(dashKey);
+        if (cached?.suggestion?.weekly) {
+          cached.suggestion.weekly = cached.suggestion.weekly.map((r) => ({ ...r, completedCount: 0 }));
+          localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(cached));
+          routeGetResponseToStore(dashKey, cached);
+        }
+      } catch {}
+      return { ok: true, offline: true };
+    }
     if (offlineQueue && method === 'PATCH' && path === '/api/settings') {
       if (!browserOffline && await checkServerAvailable(1000)) throw err;
       let body = {};
@@ -2381,7 +2399,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   return (
     <section className="space-y-5">
       <BodyWeightInput userId={userId} settings={settings} />
-      <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} />
+      <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} userId={userId} onChanged={loadAll} />
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
       <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
@@ -2435,11 +2453,22 @@ function BodyWeightInput({ userId, settings }) {
   );
 }
 
-function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine }) {
+function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, onChanged }) {
   const t = useLang();
+  const dialog = useAppDialog();
   const weekly = suggestion?.weekly || [];
   const total = weekly.length;
   const doneCount = weekly.filter((r) => r.completedCount > 0).length;
+  const resetWeek = async () => {
+    if (!(await dialog.confirm(t('weekly_reset_confirm')))) return;
+    try {
+      await api(`/api/weekly/reset?userId=${userId}`, { method: 'POST', body: JSON.stringify({ userId }) });
+      onChanged?.();
+    } catch {
+      // offline: queue đã được thêm trong api() fallback
+      onChanged?.();
+    }
+  };
   return (
     <div className="panel-green">
       <div className="flex items-start justify-between gap-3">
@@ -2448,7 +2477,18 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine }) {
           <h2 className="mt-1 text-2xl font-bold">{t('schedule_rolling_panel_title')}</h2>
           <p className="mt-2 text-sm text-emerald-200">{suggestion?.title || ''}</p>
         </div>
-        <CalendarDays size={34} />
+        <div className="flex items-center gap-2">
+          {doneCount > 0 && (
+            <button
+              onClick={resetWeek}
+              className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/25"
+              title={t('weekly_reset')}
+            >
+              ⟲ {t('weekly_reset')}
+            </button>
+          )}
+          <CalendarDays size={34} />
+        </div>
       </div>
       {total === 0 ? (
         <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">{t('today_go_schedule')}</p>
@@ -2491,11 +2531,11 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine }) {
   );
 }
 
-function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings, activeSession }) {
+function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings, activeSession, userId, onChanged }) {
   const t = useLang();
   // Weekly Goal mode (formerly ROLLING) → hiện checklist mới
   if (suggestion?.mode === 'ROLLING') {
-    return <WeeklyGoalCard suggestion={suggestion} clock={clock} settings={settings} onStartRoutine={onStartRoutine} />;
+    return <WeeklyGoalCard suggestion={suggestion} clock={clock} settings={settings} onStartRoutine={onStartRoutine} userId={userId} onChanged={onChanged} />;
   }
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
