@@ -1250,6 +1250,24 @@ function cacheGroupMutations(userId) {
   writeGroupsCache(userId, groups);
 }
 
+function optimisticOfflineGroup(userId, group) {
+  const nextGroup = {
+    id: group.id,
+    name: group.name,
+    icon: group.icon || '💪',
+    color_hex: group.color_hex || group.colorHex || '#78e0a6',
+    exercises: group.exercises || [],
+    syncStatus: 'pending'
+  };
+  const groups = applyOfflineGroupMutations(userId, [
+    ...cachedGroups(userId).filter((item) => String(item.id) !== String(nextGroup.id)),
+    nextGroup
+  ]);
+  writeGroupsCache(userId, groups);
+  routeGetResponseToStore(`/api/groups?userId=${userId}`, groups);
+  return nextGroup;
+}
+
 function cacheRemoveGroupExercise(userId, groupId, exerciseId) {
   const groups = applyOfflineGroupMutations(userId, cachedGroups(userId));
   writeGroupsCache(userId, groups);
@@ -1442,15 +1460,12 @@ async function api(path, options = {}) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       const groupId = `offline_group_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '💪', colorHex: body.colorHex || '#78e0a6' });
-      cacheGroupMutations(userId);
-      // Optimistic update gymStore: thêm group pending ngay vào store
-      upsertEntity(userId, 'groups', {
+      optimisticOfflineGroup(userId, {
         id: groupId,
         name: body.name,
         icon: body.icon || '💪',
         color_hex: body.colorHex || '#78e0a6',
-        exercises: [],
-        syncStatus: 'pending'
+        exercises: []
       });
       return { id: groupId, offline: true };
     }
@@ -3491,8 +3506,12 @@ function Builder({ userId, boot, onStart, onChanged }) {
   const setRoutineData = () => load();
 
   const createGroup = async () => {
-    if (!groupName.trim()) return;
-    const result = await api('/api/groups', { method: 'POST', forceOffline: !serverOnline, body: JSON.stringify({ userId, name: groupName }) });
+    const name = groupName.trim();
+    if (!name) return;
+    const result = await api('/api/groups', { method: 'POST', forceOffline: !serverOnline, body: JSON.stringify({ userId, name }) });
+    if (result?.offline && result.id) {
+      optimisticOfflineGroup(userId, { id: result.id, name, icon: '💪', color_hex: '#78e0a6', exercises: [] });
+    }
     setGroupName('');
     if (!result?.offline) load();
   };
