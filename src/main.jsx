@@ -127,9 +127,14 @@ function pendingQueueIds(userId) {
 
 function replaceCollection(userId, key, items) {
   updateStore(userId, (store) => {
-    const synced = (items || []).map((it) => ({ ...it, syncStatus: 'synced' }));
-    const serverIds = new Set((items || []).map((it) => String(it.id)));
     const { groupIds, ruleIds } = pendingQueueIds(userId);
+    const isStillPending = (it) => {
+      if (key === 'groups') return groupIds.has(String(it.id));
+      if (key === 'scheduleRules') return ruleIds.has(String(it.id));
+      return false;
+    };
+    const synced = (items || []).map((it) => ({ ...it, syncStatus: isStillPending(it) ? 'pending' : 'synced' }));
+    const serverIds = new Set((items || []).map((it) => String(it.id)));
     const pending = (store[key] || []).filter((it) => {
       if (it.syncStatus !== 'pending') return false;
       if (serverIds.has(String(it.id))) return false; // đã có trên server → bỏ
@@ -785,6 +790,8 @@ function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId
 function applyOfflineQueueToCachedApi(path, data) {
   const baseData = data || {};
   const userId = userIdFromApiPath(path);
+  if (path.includes('/api/groups')) return applyOfflineGroupMutations(userId, Array.isArray(data) ? data : []);
+  if (path.includes('/api/routines')) return applyOfflineScheduleMutations(userId, data || { routines: [], rules: [] });
   const { logs: pendingLogs, createdSessions, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
   if (!pendingLogs.length && !createdSessions.length && !deletedSessionIds.size && !completedSessionIds.size) return data;
 
@@ -1328,18 +1335,17 @@ async function api(path, options = {}) {
     clearTimeout(timeoutId);
     if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
     const data = await response.json();
+    const dataWithOffline = isGet ? applyOfflineQueueToCachedApi(path, data) : data;
     // Cache GET responses vào localStorage (legacy) + gymStore (new)
     if (isGet && shouldCacheApi(path)) {
-      try { localStorage.setItem(API_CACHE_PREFIX + path, JSON.stringify(data)); } catch {}
-      routeGetResponseToStore(path, data);
+      try { localStorage.setItem(API_CACHE_PREFIX + path, JSON.stringify(dataWithOffline)); } catch {}
+      routeGetResponseToStore(path, dataWithOffline);
     }
     if (!isGet) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       clearWorkoutApiCaches(userId);
     }
-    if (isGet && path.includes('/api/groups')) return applyOfflineGroupMutations(userIdFromApiPath(path), data);
-    if (isGet && path.includes('/api/routines')) return applyOfflineScheduleMutations(userIdFromApiPath(path), data);
-    return isGet ? applyOfflineQueueToCachedApi(path, data) : data;
+    return dataWithOffline;
   } catch (err) {
     clearTimeout(timeoutId);
     if (offlineQueue && method === 'POST' && path === '/api/sessions') {
@@ -5687,6 +5693,3 @@ createRoot(document.getElementById('root')).render(
     </DialogProvider>
   </ServerStatusProvider>
 );
-
-
-
