@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.5'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.6'; // tăng khi data schema thay đổi
 
 function bustCacheIfNeeded() {
   try {
@@ -1288,7 +1288,26 @@ function offlineSuggestion(userId) {
   const index = Number(settings.current_rolling_index || 1);
   const rule = rules.find((item) => item.mode === 'ROLLING' && Number(item.order_index) === index);
   const routine = rule ? routines.find((item) => Number(item.id) === Number(rule.routine_id)) : null;
-  return { mode: 'ROLLING', rollingIndex: index, title: rule ? `Buổi ${index} trong chu kỳ` : 'Chu kỳ chưa hoàn tất', routine: routine || null };
+  // Tính weekly list từ cache routines + rules (không có completedCount offline)
+  const rollingRules = rules.filter((item) => item.mode === 'ROLLING').sort((a, b) => Number(a.order_index) - Number(b.order_index));
+  const weekly = rollingRules.map((r) => {
+    const rt = routines.find((item) => Number(item.id) === Number(r.routine_id));
+    if (!rt) return null;
+    // completedCount: lấy từ dashboard cache nếu có
+    const dashCache = readApiCache(`/api/dashboard?userId=${userId}`);
+    const cachedWeekly = dashCache?.suggestion?.weekly || [];
+    const cachedItem = cachedWeekly.find((w) => Number(w.id) === Number(rt.id));
+    return { ...rt, completedCount: cachedItem?.completedCount || 0, directCount: cachedItem?.directCount || 0, groupCoverage: cachedItem?.groupCoverage || 0 };
+  }).filter(Boolean);
+  const total = weekly.length;
+  const done = weekly.filter((r) => r.completedCount > 0).length;
+  return {
+    mode: 'ROLLING',
+    weekly,
+    rollingIndex: index,
+    routine: routine || null,
+    title: total === 0 ? 'Chưa có buổi nào trong tuần' : `${done}/${total} buổi tập tuần này`
+  };
 }
 
 function offlineDashboardData(userId) {
@@ -2437,8 +2456,9 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
 
   const loadAll = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
-    // api() success sẽ tự ghi vào gymStore
-    api(`/api/dashboard?userId=${userId}`).catch(() => {});
+    // api() success sẽ tự ghi vào gymStore via routeGetResponseToStore
+    // Chờ dashboard để weekly count cập nhật ngay
+    await api(`/api/dashboard?userId=${userId}`).catch(() => {});
     api(`/api/groups?userId=${userId}`).catch(() => {});
     api(`/api/routines?userId=${userId}`).catch(() => {});
     api(`/api/sessions/active?userId=${userId}`).catch(() => {});
