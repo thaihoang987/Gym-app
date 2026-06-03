@@ -45,6 +45,171 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// gymStore — Single source of truth cho mọi data của user
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mọi UI đọc qua gymStore.read(userId). Mọi mutation đi qua gymStore.upsert/delete.
+// Mỗi entity có field syncStatus: 'synced' | 'pending' | 'failed'.
+// pendingMutations chứa các thao tác chờ sync lên server.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const STORE_KEY = (userId) => `gymStore:${userId}`;
+const STORE_VERSION = 1;
+
+function createEmptyStore() {
+  return {
+    version: STORE_VERSION,
+    groups: [],                 // { id, name, icon, color_hex, exercises: [], syncStatus, tempId? }
+    routines: [],               // { id, name, groups: [], exercises: [], syncStatus }
+    scheduleRules: [],          // { id, mode, day_of_week, order_index, routine_id, syncStatus }
+    customExercises: [],        // { id, ...fields, syncStatus }
+    sessions: [],               // { id, ...fields, syncStatus }
+    workoutLogs: [],            // { id, sessionId, exerciseId, ..., syncStatus }
+    bodyWeights: [],
+    settings: null,
+    bootstrap: null,            // cache bootstrap response
+    dashboard: null,            // cache dashboard
+    pendingMutations: [],       // [{ id, type, payload, createdAt, attempts }]
+    lastFullSync: 0
+  };
+}
+
+const storeListeners = new Map(); // userId → Set<callback>
+
+function notifyStoreListeners(userId) {
+  const listeners = storeListeners.get(Number(userId));
+  if (!listeners) return;
+  for (const cb of listeners) { try { cb(); } catch {} }
+}
+
+function subscribeStore(userId, callback) {
+  const uid = Number(userId);
+  if (!storeListeners.has(uid)) storeListeners.set(uid, new Set());
+  storeListeners.get(uid).add(callback);
+  return () => storeListeners.get(uid)?.delete(callback);
+}
+
+function readStore(userId) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY(userId)) || 'null');
+    if (!raw || raw.version !== STORE_VERSION) return createEmptyStore();
+    return { ...createEmptyStore(), ...raw };
+  } catch {
+    return createEmptyStore();
+  }
+}
+
+function writeStore(userId, store) {
+  try {
+    localStorage.setItem(STORE_KEY(userId), JSON.stringify(store));
+    notifyStoreListeners(userId);
+  } catch {}
+}
+
+function updateStore(userId, updater) {
+  const current = readStore(userId);
+  const next = updater(current) || current;
+  writeStore(userId, next);
+  return next;
+}
+
+// Replace toàn bộ collection sau khi fetch server (server là nguồn chuẩn).
+// Giữ lại pending entities (chưa có id thực) ở cuối.
+function replaceCollection(userId, key, items) {
+  updateStore(userId, (store) => {
+    const synced = (items || []).map((it) => ({ ...it, syncStatus: 'synced' }));
+    const pending = (store[key] || []).filter((it) => it.syncStatus === 'pending' && String(it.id || '').startsWith('temp_'));
+    return { ...store, [key]: [...synced, ...pending] };
+  });
+}
+
+function upsertEntity(userId, key, entity) {
+  updateStore(userId, (store) => {
+    const items = store[key] || [];
+    const idx = items.findIndex((it) => String(it.id) === String(entity.id));
+    const next = idx >= 0
+      ? items.map((it, i) => i === idx ? { ...it, ...entity } : it)
+      : [...items, entity];
+    return { ...store, [key]: next };
+  });
+}
+
+function deleteEntity(userId, key, id) {
+  updateStore(userId, (store) => ({
+    ...store,
+    [key]: (store[key] || []).filter((it) => String(it.id) !== String(id))
+  }));
+}
+
+function replacePendingId(userId, key, tempId, realEntity) {
+  updateStore(userId, (store) => ({
+    ...store,
+    [key]: (store[key] || []).map((it) => String(it.id) === String(tempId) ? { ...realEntity, syncStatus: 'synced' } : it)
+  }));
+}
+
+function setScalarField(userId, key, value) {
+  updateStore(userId, (store) => ({ ...store, [key]: value }));
+}
+
+// Pending mutations queue
+function enqueueMutation(userId, mutation) {
+  const id = `mut_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  updateStore(userId, (store) => ({
+    ...store,
+    pendingMutations: [...(store.pendingMutations || []), { id, attempts: 0, createdAt: Date.now(), ...mutation }]
+  }));
+  return id;
+}
+
+function removeMutation(userId, mutationId) {
+  updateStore(userId, (store) => ({
+    ...store,
+    pendingMutations: (store.pendingMutations || []).filter((m) => m.id !== mutationId)
+  }));
+}
+
+function getMutations(userId) {
+  return readStore(userId).pendingMutations || [];
+}
+
+function bumpMutationAttempt(userId, mutationId) {
+  updateStore(userId, (store) => ({
+    ...store,
+    pendingMutations: (store.pendingMutations || []).map((m) => m.id === mutationId ? { ...m, attempts: (m.attempts || 0) + 1, lastError: undefined } : m)
+  }));
+}
+
+const gymStore = {
+  read: readStore,
+  write: writeStore,
+  update: updateStore,
+  replaceCollection,
+  upsert: upsertEntity,
+  delete: deleteEntity,
+  replacePendingId,
+  setScalar: setScalarField,
+  enqueue: enqueueMutation,
+  removeMutation,
+  getMutations,
+  bumpAttempt: bumpMutationAttempt,
+  subscribe: subscribeStore,
+  notify: notifyStoreListeners
+};
+
+// React hook: đọc store + auto-rerender khi store thay đổi
+function useGymStore(userId, selector) {
+  const select = selector || ((s) => s);
+  const [snapshot, setSnapshot] = useState(() => select(readStore(userId)));
+  useEffect(() => {
+    if (!userId) return;
+    setSnapshot(select(readStore(userId)));
+    return subscribeStore(userId, () => setSnapshot(select(readStore(userId))));
+  }, [userId]);
+  return snapshot;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ── Live sync via SSE ─────────────────────────────────────────────────────────
 function useLiveSync(userId, onRefresh) {
   useEffect(() => {
@@ -1059,6 +1224,30 @@ function offlineExerciseMeta(userId) {
   };
 }
 
+// Route GET responses vào gymStore — đảm bảo store luôn fresh sau mỗi API call success
+function routeGetResponseToStore(path, data) {
+  try {
+    const userId = userIdFromApiPath(path);
+    if (path.startsWith('/api/groups?') || path === '/api/groups') {
+      if (Array.isArray(data)) replaceCollection(userId, 'groups', data);
+    } else if (path.startsWith('/api/routines?') || path === '/api/routines') {
+      if (data && Array.isArray(data.routines)) replaceCollection(userId, 'routines', data.routines);
+      if (data && Array.isArray(data.rules)) replaceCollection(userId, 'scheduleRules', data.rules);
+    } else if (path.startsWith('/api/bootstrap')) {
+      if (data) {
+        setScalarField(userId, 'bootstrap', data);
+        if (data.settings) setScalarField(userId, 'settings', data.settings);
+      }
+    } else if (path.startsWith('/api/dashboard')) {
+      if (data) setScalarField(userId, 'dashboard', data);
+    } else if (path.startsWith('/api/sessions/active')) {
+      if (data) setScalarField(userId, 'activeSessions', data);
+    } else if (path.startsWith('/api/body-weight/recent')) {
+      if (Array.isArray(data)) replaceCollection(userId, 'bodyWeights', data);
+    }
+  } catch {}
+}
+
 async function api(path, options = {}) {
   const isGet = !options.method || options.method === 'GET';
   const method = (options.method || 'GET').toUpperCase();
@@ -1074,9 +1263,10 @@ async function api(path, options = {}) {
     clearTimeout(timeoutId);
     if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
     const data = await response.json();
-    // Cache GET responses vào localStorage
+    // Cache GET responses vào localStorage (legacy) + gymStore (new)
     if (isGet && shouldCacheApi(path)) {
       try { localStorage.setItem(API_CACHE_PREFIX + path, JSON.stringify(data)); } catch {}
+      routeGetResponseToStore(path, data);
     }
     if (!isGet) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
@@ -1333,6 +1523,34 @@ function useLang() { return React.useContext(LangContext); }
 const BOOT_CACHE_KEY = (userId) => `familyGymBoot:${userId}`;
 const OFFLINE_AUTH_PREFIX = 'familyGymOfflineAuth:';
 
+// Migrate dữ liệu từ legacy API cache vào gymStore (gọi 1 lần khi App mount cho mỗi user)
+function migrateLegacyCacheToStore(userId) {
+  if (!userId) return;
+  const store = readStore(userId);
+  if (store.lastFullSync) return; // đã migrate
+  try {
+    const groupsCache = localStorage.getItem(API_CACHE_PREFIX + `/api/groups?userId=${userId}`);
+    if (groupsCache) replaceCollection(userId, 'groups', JSON.parse(groupsCache));
+    const routinesCache = localStorage.getItem(API_CACHE_PREFIX + `/api/routines?userId=${userId}`);
+    if (routinesCache) {
+      const parsed = JSON.parse(routinesCache);
+      if (Array.isArray(parsed?.routines)) replaceCollection(userId, 'routines', parsed.routines);
+      if (Array.isArray(parsed?.rules)) replaceCollection(userId, 'scheduleRules', parsed.rules);
+    }
+    const dashboardCache = localStorage.getItem(API_CACHE_PREFIX + `/api/dashboard?userId=${userId}`);
+    if (dashboardCache) setScalarField(userId, 'dashboard', JSON.parse(dashboardCache));
+    const activeCache = localStorage.getItem(API_CACHE_PREFIX + `/api/sessions/active?userId=${userId}`);
+    if (activeCache) setScalarField(userId, 'activeSessions', JSON.parse(activeCache));
+    const bootCache = localStorage.getItem(BOOT_CACHE_KEY(userId));
+    if (bootCache) {
+      const parsed = JSON.parse(bootCache);
+      setScalarField(userId, 'bootstrap', parsed);
+      if (parsed?.settings) setScalarField(userId, 'settings', parsed.settings);
+    }
+    setScalarField(userId, 'lastFullSync', Date.now());
+  } catch {}
+}
+
 function bytesToBase64(bytes) {
   return btoa(String.fromCharCode(...new Uint8Array(bytes)));
 }
@@ -1383,6 +1601,11 @@ function App() {
   const [tab, setTab] = useState('home');
   const { online: isServerOnline, forceCheck: recheckServer } = useServerStatus();
   const wasOnlineRef = React.useRef(isServerOnline);
+
+  // Migrate dữ liệu legacy cache → gymStore lần đầu mount
+  useEffect(() => {
+    if (savedUser?.id) migrateLegacyCacheToStore(savedUser.id);
+  }, [savedUser?.id]);
 
   // Sync offline queue ngay khi vừa có mạng lại (chỉ trigger lúc offline→online)
   const [syncMsg, setSyncMsg] = useState('');
@@ -1738,18 +1961,28 @@ function Header({ user, boot, onLogout }) {
 }
 
 function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
-  const [data, setData] = useState(null);
-  const [groups, setGroups] = useState([]);
-  const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
+  // Đọc từ gymStore (single source of truth)
+  const data = useGymStore(userId, (s) => s.dashboard);
+  const groups = useGymStore(userId, (s) => s.groups || []);
+  const routines = useGymStore(userId, (s) => s.routines || []);
+  const rules = useGymStore(userId, (s) => s.scheduleRules || []);
+  const routineData = { routines, rules };
+  const activeSession = useGymStore(userId, (s) => s.activeSessions);
   const [clock, setClock] = useState(new Date());
-  const [activeSession, setActiveSession] = useState(null);
+
+  // Wrapper setters cho compatibility với code cũ trong handlers (setData để update local optimistic)
+  const setData = (updater) => {
+    const userIdNum = Number(userId);
+    updateStore(userIdNum, (store) => ({ ...store, dashboard: typeof updater === 'function' ? updater(store.dashboard) : updater }));
+  };
 
   const loadAll = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
-    api(`/api/dashboard?userId=${userId}`).then(setData);
-    api(`/api/groups?userId=${userId}`).then(setGroups);
-    api(`/api/routines?userId=${userId}`).then(setRoutineData);
-    api(`/api/sessions/active?userId=${userId}`).then(setActiveSession);
+    // api() success sẽ tự ghi vào gymStore
+    api(`/api/dashboard?userId=${userId}`).catch(() => {});
+    api(`/api/groups?userId=${userId}`).catch(() => {});
+    api(`/api/routines?userId=${userId}`).catch(() => {});
+    api(`/api/sessions/active?userId=${userId}`).catch(() => {});
   }, [userId]);
 
   useEffect(() => { loadAll(); }, [userId, refresh]);
@@ -2994,8 +3227,11 @@ function SortableRoutineGroupRow({ group, onRemove }) {
 function Builder({ userId, boot, onStart, onChanged }) {
   const t = useLang();
   const dialog = useAppDialog();
-  const [groups, setGroups] = useState([]);
-  const [routineData, setRoutineData] = useState({ routines: [], rules: [] });
+  // Đọc từ gymStore (single source). Local state đã được bỏ.
+  const groups = useGymStore(userId, (s) => s.groups || []);
+  const routines = useGymStore(userId, (s) => s.routines || []);
+  const rules = useGymStore(userId, (s) => s.scheduleRules || []);
+  const routineData = { routines, rules };
   const [groupName, setGroupName] = useState('');
   const [routineName, setRoutineName] = useState('');
   const [selectedGroups, setSelectedGroups] = useState([]);
@@ -3006,12 +3242,14 @@ function Builder({ userId, boot, onStart, onChanged }) {
 
   const load = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
-    api(`/api/groups?userId=${userId}`).then(setGroups);
-    api(`/api/routines?userId=${userId}`).then(setRoutineData);
+    // api() success sẽ tự ghi vào gymStore via routeGetResponseToStore
+    api(`/api/groups?userId=${userId}`).catch(() => {});
+    api(`/api/routines?userId=${userId}`).catch(() => {});
   }, [userId]);
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+  // Stub setters cho backward compat trong handlers cũ
+  const setGroups = () => load();
+  const setRoutineData = () => load();
 
   const createGroup = async () => {
     if (!groupName.trim()) return;
