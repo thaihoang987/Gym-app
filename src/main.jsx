@@ -3579,16 +3579,24 @@ function SortableRoutineGroupRow({ group, onRemove }) {
 function SortableBuilderCard({ id, children, className = 'panel' }) {
   const t = useLang();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // children có thể là function nhận dragHandle để render vào vị trí mong muốn
+  const dragHandle = (
+    <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}>
+      <GripVertical size={18} />
+    </button>
+  );
   return (
     <div
       ref={setNodeRef}
       className={`${className} ${isDragging ? 'dragging' : ''}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      <div className="mb-2 flex justify-end">
-        <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
-      </div>
-      {children}
+      {typeof children === 'function' ? children(dragHandle) : (
+        <>
+          <div className="mb-2 flex justify-end">{dragHandle}</div>
+          {children}
+        </>
+      )}
     </div>
   );
 }
@@ -3833,15 +3841,18 @@ function Builder({ userId, boot, onStart, onChanged }) {
           <SortableContext items={groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
         {groups.map((group) => (
           <SortableBuilderCard key={group.id} id={group.id}>
+            {(dragHandle) => (<>
             <div className="flex flex-wrap items-center justify-between gap-2">
               {editingGroupId === group.id ? (
-                <div className="flex flex-1 gap-2">
+                <div className="flex flex-1 items-center gap-2">
+                  {dragHandle}
                   <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
                   <button className="small-action" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
                   <button className="icon-btn" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 font-bold">
+                  {dragHandle}
                   {group.name} · {t('builder_exercises_count', group.exercises.length)}
                   {group.syncStatus === 'pending' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                   <button className="icon-btn" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
@@ -3865,6 +3876,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 </DndContext>
               </div>
             </details>
+            </>)}
           </SortableBuilderCard>
         ))}
           </SortableContext>
@@ -3900,7 +3912,9 @@ function Builder({ userId, boot, onStart, onChanged }) {
             const availableGroups = groups.filter((group) => !routine.groups.some((item) => item.id === group.id));
             return (
               <SortableBuilderCard key={routine.id} id={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                {(dragHandle) => (<>
                 <div className="flex flex-wrap items-start gap-3">
+                  {dragHandle}
                   <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 shrink-0 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     {editingRoutineId === routine.id ? (
@@ -3936,6 +3950,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   <option value="">{t('builder_select_groups')}</option>
                   {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
+                </>)}
               </SortableBuilderCard>
             );
           })}
