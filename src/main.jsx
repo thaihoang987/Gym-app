@@ -20,6 +20,7 @@ import {
   BarChart3,
   CalendarDays,
   Check,
+  ChevronRight,
   Dumbbell,
   GripVertical,
   Home,
@@ -3866,7 +3867,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
               </div>
               {editingGroupId !== group.id && (
                 <>
-                  <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
+                  <button
+                    onClick={() => startEditGroup(group)}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition-all hover:bg-slate-200 active:scale-95"
+                    title={t('builder_rename_group')}
+                  >
+                    <Pencil size={16} />
+                  </button>
                   <button
                     onClick={() => startGroup(group)}
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f05a28] text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
@@ -3877,9 +3884,12 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 </>
               )}
             </div>
-            <details className="mt-3 group">
+            <details className="details-arrow mt-3">
               <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-bold text-teal-950">
-                <span>{t('builder_exercise_list')}</span>
+                <span className="flex items-center gap-1.5">
+                  <ChevronRight size={14} className="details-chevron transition-transform" />
+                  {t('builder_exercise_list')}
+                </span>
                 {editingGroupId !== group.id && (
                   <button
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteGroup(group.id); }}
@@ -3957,7 +3967,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   </div>
                   {editingRoutineId !== routine.id && (
                     <>
-                      <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
+                      <button
+                        onClick={() => startEditRoutine(routine)}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition-all hover:bg-slate-200 active:scale-95"
+                        title={t('builder_rename_routine')}
+                      >
+                        <Pencil size={16} />
+                      </button>
                       <button
                         onClick={() => startRoutine(routine)}
                         className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f05a28] text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
@@ -3968,9 +3984,12 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     </>
                   )}
                 </div>
-                <details className="mt-3">
+                <details className="details-arrow mt-3">
                   <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-bold text-teal-950">
-                    <span>{t('builder_group_list')}</span>
+                    <span className="flex items-center gap-1.5">
+                      <ChevronRight size={14} className="details-chevron transition-transform" />
+                      {t('builder_group_list')}
+                    </span>
                     {editingRoutineId !== routine.id && (
                       <button
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteRoutine(routine.id); }}

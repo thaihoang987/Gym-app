@@ -605,6 +605,11 @@ button:disabled {
   @apply grid h-12 w-12 place-items-center rounded-md bg-slate-100 text-2xl font-bold text-slate-950;
 }
 
+/* Details arrow custom chevron */
+.details-arrow > summary { list-style: none; }
+.details-arrow > summary::-webkit-details-marker { display: none; }
+.details-arrow[open] .details-chevron { transform: rotate(90deg); }
+
 /* Exercise slide transitions */
 @keyframes slideInFromRight {
   from { transform: translateX(40px); opacity: 0; }
