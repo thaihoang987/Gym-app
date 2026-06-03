@@ -116,13 +116,27 @@ function updateStore(userId, updater) {
 
 // Replace toàn bộ collection sau khi fetch server (server là nguồn chuẩn).
 // Giữ lại pending entities (chưa sync lên server) ở cuối.
-// pending = items trong store có syncStatus='pending' VÀ ID không tồn tại trong server response.
+// Chỉ giữ pending entities còn trong offline queue — tránh ghost pending sau khi sync.
+function pendingQueueIds(userId) {
+  const queue = getOfflineQueue(Number(userId));
+  return {
+    groupIds: new Set(queue.filter((e) => e.type === 'createGroup').map((e) => String(e.groupId))),
+    ruleIds: new Set(queue.filter((e) => e.type === 'assignScheduleRule').map((e) => String(e.ruleId)))
+  };
+}
+
 function replaceCollection(userId, key, items) {
   updateStore(userId, (store) => {
     const synced = (items || []).map((it) => ({ ...it, syncStatus: 'synced' }));
     const serverIds = new Set((items || []).map((it) => String(it.id)));
-    // Giữ lại các pending entities chưa có trên server (tempId / offline_xxx)
-    const pending = (store[key] || []).filter((it) => it.syncStatus === 'pending' && !serverIds.has(String(it.id)));
+    const { groupIds, ruleIds } = pendingQueueIds(userId);
+    const pending = (store[key] || []).filter((it) => {
+      if (it.syncStatus !== 'pending') return false;
+      if (serverIds.has(String(it.id))) return false; // đã có trên server → bỏ
+      if (key === 'groups') return groupIds.has(String(it.id));
+      if (key === 'scheduleRules') return ruleIds.has(String(it.id));
+      return false;
+    });
     return { ...store, [key]: [...synced, ...pending] };
   });
 }
@@ -475,14 +489,6 @@ async function flushOfflineQueue(userId) {
       api(`/api/groups?userId=${userId}`).catch(() => {}),
       api(`/api/routines?userId=${userId}`).catch(() => {})
     ]);
-  }
-  // Nếu queue rỗng: clear mọi pending markers còn sót trong store (tránh stale badge)
-  if (!failed.length) {
-    updateStore(Number(userId), (store) => ({
-      ...store,
-      groups: (store.groups || []).map((g) => g.syncStatus === 'pending' ? { ...g, syncStatus: 'synced' } : g),
-      scheduleRules: (store.scheduleRules || []).map((r) => r.syncStatus === 'pending' ? { ...r, syncStatus: 'synced' } : r)
-    }));
   }
   return queue.length - failed.length;
 }
@@ -2313,14 +2319,15 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
 function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   const t = useLang();
   const dialog = useAppDialog();
-  const [groups, setGroups] = useState([]);
-  const [routineData, setRoutineData] = useState({ routines: [] });
+  const groups = useGymStore(userId, (s) => s.groups || []);
+  const routines = useGymStore(userId, (s) => s.routines || []);
+  const routineData = { routines };
   const [activeSessions, setActiveSessions] = useState([]);
 
   useEffect(() => {
     syncPendingBeforeCatalogLoad(userId).finally(() => {
-      api(`/api/groups?userId=${userId}`).then(setGroups);
-      api(`/api/routines?userId=${userId}`).then(setRoutineData);
+      api(`/api/groups?userId=${userId}`).catch(() => {});
+      api(`/api/routines?userId=${userId}`).catch(() => {});
       api(`/api/sessions/active?userId=${userId}`).then((payload) => setActiveSessions(payload?.sessions || (payload?.session ? [payload] : [])));
     });
   }, [userId, refresh]);
