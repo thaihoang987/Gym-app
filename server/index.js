@@ -515,7 +515,7 @@ function getRoutine(routineId, userId) {
   if (!routine) return null;
 
   const groups = all(`
-    SELECT cg.*, rg.order_index
+    SELECT cg.*, rg.order_index AS routine_group_order
     FROM routine_groups rg
     JOIN custom_groups cg ON cg.id = rg.group_id
     WHERE rg.routine_id = ?
@@ -1156,7 +1156,7 @@ app.get('/api/routines', (req, res) => {
     FROM routine_schedule_rules rsr
     JOIN routines r ON r.id = rsr.routine_id
     WHERE rsr.user_id = ?
-    ORDER BY mode, COALESCE(day_of_week, order_index)
+    ORDER BY rsr.mode, COALESCE(rsr.day_of_week, rsr.order_index)
   `, [userId]);
   res.json({ routines, rules });
 });
