@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.8'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.9'; // tăng khi data schema thay đổi
 
 function bustCacheIfNeeded() {
   try {
@@ -2459,7 +2459,13 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       api(`/api/routines?userId=${userId}`).catch(() => {}),
       api(`/api/sessions/active?userId=${userId}`).then(setActiveSession).catch(() => {})
     ]);
-    if (dash) setData(dash);
+    if (dash) {
+      setData(dash);
+    } else {
+      // fallback: nếu offline, đọc từ cache + apply offline state
+      const cached = readApiCache(`/api/dashboard?userId=${userId}`);
+      if (cached) setData(applyOfflineQueueToCachedApi(`/api/dashboard?userId=${userId}`, cached));
+    }
   }, [userId]);
 
   useEffect(() => { loadAll(); }, [userId, refresh]);
