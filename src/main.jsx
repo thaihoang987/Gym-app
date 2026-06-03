@@ -1216,6 +1216,23 @@ function localIsoDate(date) {
 
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
+const CACHE_BUST_KEY = 'gymCacheVersion';
+const CURRENT_CACHE_VERSION = '0.3.5'; // tăng khi data schema thay đổi
+
+function bustCacheIfNeeded() {
+  try {
+    const stored = localStorage.getItem(CACHE_BUST_KEY);
+    if (stored === CURRENT_CACHE_VERSION) return;
+    // Xoá tất cả API cache cũ để force fresh fetch
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(API_CACHE_PREFIX) || key.startsWith('gymStore:')) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem(CACHE_BUST_KEY, CURRENT_CACHE_VERSION);
+  } catch {}
+}
+bustCacheIfNeeded();
 const API_CACHE_GET_PATTERNS = ['/api/bootstrap', '/api/groups', '/api/routines', '/api/dashboard', '/api/history', '/api/sessions/active', '/api/sessions/', '/api/exercises', '/api/body-weight', '/api/analytics'];
 const WORKOUT_CACHE_PATTERNS = ['/api/dashboard', '/api/history', '/api/sessions/active', '/api/sessions/', '/api/analytics'];
 
