@@ -3842,8 +3842,11 @@ function Builder({ userId, boot, onStart, onChanged }) {
         {groups.map((group) => (
           <SortableBuilderCard key={group.id} id={group.id}>
             {(dragHandle) => (<>
-            <div className="flex items-start gap-2">
-              <div className="shrink-0 pt-1">{dragHandle}</div>
+            <div className="flex items-center gap-3">
+              <div className="shrink-0 text-slate-400">{dragHandle}</div>
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-700">
+                <Dumbbell size={20} />
+              </div>
               <div className="min-w-0 flex-1">
                 {editingGroupId === group.id ? (
                   <div className="flex items-center gap-2">
@@ -3856,17 +3859,30 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     <div className="flex items-center gap-1.5">
                       <span className="break-words font-bold leading-tight">{group.name}</span>
                       {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
-                      <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={13} /></button>
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', group.exercises.length)}</p>
                   </>
                 )}
               </div>
+              {editingGroupId !== group.id && (
+                <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
+              )}
             </div>
             {editingGroupId !== group.id && (
-              <div className="mt-2 flex justify-end gap-1">
-                <button className="icon-btn" title={t('start_exercise')} onClick={() => startGroup(group)}><Play size={16} /></button>
-                <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteGroup(group.id)}><Trash2 size={16} /></button>
+              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                <button
+                  onClick={() => startGroup(group)}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-[#f05a28] px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
+                >
+                  <Play size={15} /> {t('start_exercise')}
+                </button>
+                <button
+                  onClick={() => deleteGroup(group.id)}
+                  className="grid h-9 w-9 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
+                  title={t('delete')}
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             )}
             <details className="mt-3">
@@ -3919,9 +3935,9 @@ function Builder({ userId, boot, onStart, onChanged }) {
             return (
               <SortableBuilderCard key={routine.id} id={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 {(dragHandle) => (<>
-                <div className="flex items-center gap-2">
-                  <div className="shrink-0">{dragHandle}</div>
-                  <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 shrink-0 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 text-slate-400">{dragHandle}</div>
+                  <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-11 w-11 shrink-0 rounded-full bg-slate-50 object-contain ring-2 ring-slate-100" />
                   <div className="min-w-0 flex-1">
                     {editingRoutineId === routine.id ? (
                       <div className="flex items-center gap-2">
@@ -3931,19 +3947,30 @@ function Builder({ userId, boot, onStart, onChanged }) {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center gap-1">
-                          <h3 className="break-words font-bold leading-tight">{routine.name}</h3>
-                          <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={13} /></button>
-                        </div>
+                        <h3 className="break-words font-bold leading-tight">{routine.name}</h3>
                         <p className="mt-0.5 text-xs text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                       </>
                     )}
                   </div>
+                  {editingRoutineId !== routine.id && (
+                    <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
+                  )}
                 </div>
                 {editingRoutineId !== routine.id && (
-                  <div className="mt-2 flex justify-end gap-1">
-                    <button className="icon-btn" title={t('start_exercise')} onClick={() => startRoutine(routine)}><Play size={16} /></button>
-                    <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /></button>
+                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                    <button
+                      onClick={() => startRoutine(routine)}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-[#f05a28] px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
+                    >
+                      <Play size={15} /> {t('start_exercise')}
+                    </button>
+                    <button
+                      onClick={() => deleteRoutine(routine.id)}
+                      className="grid h-9 w-9 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
+                      title={t('delete')}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 )}
                 <details className="mt-3">
