@@ -216,15 +216,19 @@ const gymStore = {
 };
 
 // React hook: đọc store + auto-rerender khi store thay đổi
-// Dùng useSyncExternalStore để tránh tearing và missed notifications
 function useGymStore(userId, selector) {
   const uid = Number(userId);
-  const select = React.useCallback(selector || ((s) => s), []);
-  return React.useSyncExternalStore(
-    React.useCallback((cb) => subscribeStore(uid, cb), [uid]),
-    React.useCallback(() => select(readStore(uid)), [uid, select]),
-    React.useCallback(() => select(createEmptyStore()), [select])
-  );
+  // Luôn dùng selector mới nhất nhờ ref
+  const selectorRef = React.useRef(selector);
+  selectorRef.current = selector;
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    // Re-render ngay khi subscribe để lấy latest value
+    forceUpdate((v) => v + 1);
+    return subscribeStore(uid, () => forceUpdate((v) => v + 1));
+  }, [uid]);
+  const select = selectorRef.current || ((s) => s);
+  return select(readStore(uid));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
