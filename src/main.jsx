@@ -3842,23 +3842,27 @@ function Builder({ userId, boot, onStart, onChanged }) {
         {groups.map((group) => (
           <SortableBuilderCard key={group.id} id={group.id}>
             {(dragHandle) => (<>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              {editingGroupId === group.id ? (
-                <div className="flex flex-1 items-center gap-2">
-                  {dragHandle}
-                  <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
-                  <button className="small-action" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
-                  <button className="icon-btn" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 font-bold">
-                  {dragHandle}
-                  {group.name} · {t('builder_exercises_count', group.exercises.length)}
-                  {group.syncStatus === 'pending' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
-                  <button className="icon-btn" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
+            <div className="flex items-start gap-2">
+              <div className="shrink-0 pt-1">{dragHandle}</div>
+              <div className="min-w-0 flex-1">
+                {editingGroupId === group.id ? (
+                  <div className="flex items-center gap-2">
+                    <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
+                    <button className="small-action shrink-0" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
+                    <button className="icon-btn shrink-0" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-bold">{group.name}</span>
+                      {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
+                      <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={13} /></button>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', group.exercises.length)}</p>
+                  </>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-1">
                 <button className="icon-btn" title={t('start_exercise')} onClick={() => startGroup(group)}><Play size={16} /></button>
                 <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteGroup(group.id)}><Trash2 size={16} /></button>
               </div>
@@ -3913,26 +3917,30 @@ function Builder({ userId, boot, onStart, onChanged }) {
             return (
               <SortableBuilderCard key={routine.id} id={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 {(dragHandle) => (<>
-                <div className="flex flex-wrap items-start gap-3">
-                  {dragHandle}
+                <div className="flex items-center gap-2">
+                  <div className="shrink-0">{dragHandle}</div>
                   <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 shrink-0 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
                     {editingRoutineId === routine.id ? (
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <input className="input flex-1 py-1 text-sm" autoFocus value={editingRoutineName} onChange={(e) => setEditingRoutineName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditRoutine(routine.id); if (e.key === 'Escape') setEditingRoutineId(null); }} placeholder={t('builder_rename_placeholder')} />
-                        <button className="small-action" onClick={() => saveEditRoutine(routine.id)}><Check size={15} /></button>
-                        <button className="icon-btn" onClick={() => setEditingRoutineId(null)}><X size={15} /></button>
+                        <button className="small-action shrink-0" onClick={() => saveEditRoutine(routine.id)}><Check size={15} /></button>
+                        <button className="icon-btn shrink-0" onClick={() => setEditingRoutineId(null)}><X size={15} /></button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1">
-                        <h3 className="font-bold">{routine.name}</h3>
-                        <button className="icon-btn" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
-                      </div>
+                      <>
+                        <div className="flex items-center gap-1">
+                          <h3 className="truncate font-bold">{routine.name}</h3>
+                          <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={13} /></button>
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
+                      </>
                     )}
-                    <p className="text-sm text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                   </div>
-                  <button className="icon-btn" title={t('start_exercise')} onClick={() => startRoutine(routine)}><Play size={16} /></button>
-                  <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /></button>
+                  <div className="flex shrink-0 gap-1">
+                    <button className="icon-btn" title={t('start_exercise')} onClick={() => startRoutine(routine)}><Play size={16} /></button>
+                    <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /></button>
+                  </div>
                 </div>
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_group_list')}</summary>
