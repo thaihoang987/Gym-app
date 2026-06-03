@@ -2495,8 +2495,24 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
       ) : (
         <div className="mt-5 space-y-3">
           <div className="rounded-lg bg-white/8 p-3">
-            <p className="text-sm text-emerald-200">{t('weekly_progress')}</p>
-            <p className="mt-1 text-xl font-bold">{doneCount}/{total} {t('weekly_done')}</p>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm text-emerald-200">{t('weekly_progress')}</p>
+                <p className="mt-1 text-xl font-bold">{doneCount}/{total} {t('weekly_done')}</p>
+              </div>
+              <p className="text-2xl font-black text-white">{Math.round((doneCount / total) * 100)}%</p>
+            </div>
+            {/* Progress bar màu đậm dần theo % */}
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/15">
+              <div
+                className="h-full rounded-full transition-all duration-500 ease-out"
+                style={{
+                  width: `${Math.round((doneCount / total) * 100)}%`,
+                  background: `linear-gradient(90deg, rgba(110,231,183,${0.4 + (doneCount / total) * 0.6}), rgba(16,185,129,${0.6 + (doneCount / total) * 0.4}))`,
+                  boxShadow: doneCount === total ? '0 0 12px rgba(16,185,129,0.6)' : 'none'
+                }}
+              />
+            </div>
           </div>
           <div className="space-y-2">
             {weekly.map((routine) => {
