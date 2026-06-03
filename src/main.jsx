@@ -4827,7 +4827,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
-              <p className="mt-1 text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_kg} kg x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
+              <p className="mt-1 text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_unit === 'lb' ? Number(kgToLb(previousSets[0].weight_kg).toFixed(1)) + ' lb' : previousSets[0].weight_kg + ' kg'} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <div className="weight-mode-controls">
@@ -4855,7 +4855,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 return (
                   <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''}`}>
                     <strong className="set-number">{set.setIndex}</strong>
-                    <span className="set-previous">{previous ? `${previous.weight_kg}kg × ${previous.reps}` : '-'}</span>
+                    <span className="set-previous">{previous ? `${previous.weight_unit === 'lb' ? Number(kgToLb(previous.weight_kg).toFixed(1)) + 'lb' : previous.weight_kg + 'kg'} × ${previous.reps}` : '-'}</span>
                     {weightMode === 'MANUAL' ? (
                       <input
                         className="manual-weight-input"
