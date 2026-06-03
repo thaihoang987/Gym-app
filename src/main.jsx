@@ -408,6 +408,7 @@ function saveOfflineQueue(userId, queue) {
 }
 function normalizeOfflineQueueEntries(queue) {
   const deletedSessionIds = new Set(queue.filter((entry) => entry.type === 'deleteSession').map((entry) => String(entry.sessionId)));
+  const deletedExerciseIds = new Set(queue.filter((entry) => entry.type === 'deleteCustomExercise').map((entry) => String(entry.exerciseId)));
   const createdGroupIds = new Set(queue.filter((entry) => entry.type === 'createGroup').map((entry) => String(entry.groupId)));
   const deletedGroupIds = new Set(queue.filter((entry) => entry.type === 'deleteGroup').map((entry) => String(entry.groupId)));
   const localDeletedGroupIds = new Set([...deletedGroupIds].filter((groupId) => createdGroupIds.has(groupId) || groupId.startsWith('offline_')));
@@ -415,6 +416,7 @@ function normalizeOfflineQueueEntries(queue) {
   return queue.filter((entry) => {
     if (!entry?.type) return false;
     if (entry.sessionId !== undefined && deletedSessionIds.has(String(entry.sessionId)) && entry.type !== 'deleteSession') return false;
+    if (entry.exerciseId !== undefined && deletedExerciseIds.has(String(entry.exerciseId)) && !['deleteCustomExercise', 'log'].includes(entry.type)) return false;
     if (localDeletedGroupIds.has(String(entry.groupId))) return false;
     if (deletedGroupIds.has(String(entry.groupId)) && ['addGroupExercise', 'removeGroupExercise', 'reorderGroupExercises'].includes(entry.type)) return false;
     if (entry.type === 'deleteGroup' && localDeletedGroupIds.has(String(entry.groupId))) return false;
@@ -429,7 +431,7 @@ function normalizeOfflineQueueEntries(queue) {
       entry.dayOfWeek ?? '',
       entry.orderIndex ?? ''
     ].join('|');
-    if (['complete', 'deleteSession', 'deleteGroup', 'deleteScheduleRule'].includes(entry.type)) {
+    if (['complete', 'deleteSession', 'deleteGroup', 'deleteScheduleRule', 'deleteCustomExercise'].includes(entry.type)) {
       if (seen.has(key)) return false;
       seen.add(key);
     }
@@ -492,6 +494,19 @@ function addToOfflineQueue(userId, entry) {
       return null;
     }
   }
+  if (entry.type === 'deleteCustomExercise') {
+    const exerciseId = String(entry.exerciseId);
+    q = q.filter((item) => {
+      if (String(item.exerciseId) !== exerciseId) return true;
+      return !['addGroupExercise', 'removeGroupExercise', 'reorderGroupExercises'].includes(item.type);
+    });
+  }
+  if (entry.type === 'reorderGroups') {
+    q = q.filter((item) => item.type !== 'reorderGroups');
+  }
+  if (entry.type === 'reorderRoutines') {
+    q = q.filter((item) => item.type !== 'reorderRoutines');
+  }
   if (entry.type === 'complete') {
     q = q.filter((item) => !(item.type === 'complete' && Number(item.sessionId) === Number(entry.sessionId)));
   }
@@ -517,6 +532,15 @@ async function flushOfflineQueue(userId) {
       } else if (entry.type === 'createGroup') {
         const created = await api('/api/groups', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, colorHex: entry.colorHex }) });
         groupIdMap.set(String(entry.groupId), created.id);
+      } else if (entry.type === 'deleteCustomExercise') {
+        await api(`/api/exercises/${entry.exerciseId}/custom`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
+      } else if (entry.type === 'reorderGroups') {
+        const groupIds = (entry.groupIds || []).map((groupId) => groupIdMap.get(String(groupId)) || groupId).filter((groupId) => !String(groupId).startsWith('offline_'));
+        if (groupIds.length) {
+          await api('/api/groups-order', { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, groupIds }) });
+        }
+      } else if (entry.type === 'reorderRoutines') {
+        await api('/api/routines-order', { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, routineIds: entry.routineIds || [] }) });
       } else if (entry.type === 'addGroupExercise') {
         const groupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
         if (String(entry.groupId).startsWith('offline_') && !groupIdMap.has(String(entry.groupId))) throw new Error('Offline group has not synced yet');
@@ -588,6 +612,9 @@ async function syncPendingBeforeCatalogLoad(userId) {
     'addGroupExercise',
     'removeGroupExercise',
     'reorderGroupExercises',
+    'reorderGroups',
+    'reorderRoutines',
+    'deleteCustomExercise',
     'deleteGroup',
     'assignScheduleRule',
     'deleteScheduleRule'
@@ -610,16 +637,19 @@ function pendingOfflineState(userId) {
   const queue = getOfflineQueue(userId);
   const createdGroups = queue.filter((entry) => entry.type === 'createGroup');
   const deletedGroupIds = new Set(queue.filter((entry) => entry.type === 'deleteGroup').map((entry) => String(entry.groupId)));
+  const deletedExerciseIds = new Set(queue.filter((entry) => entry.type === 'deleteCustomExercise').map((entry) => String(entry.exerciseId)));
   const addGroupExercises = queue.filter((entry) => entry.type === 'addGroupExercise');
   const removeGroupExercises = queue.filter((entry) => entry.type === 'removeGroupExercise');
   const reorderedGroupExercises = queue.filter((entry) => entry.type === 'reorderGroupExercises');
+  const reorderedGroups = queue.filter((entry) => entry.type === 'reorderGroups');
+  const reorderedRoutines = queue.filter((entry) => entry.type === 'reorderRoutines');
   const assignedScheduleRules = queue.filter((entry) => entry.type === 'assignScheduleRule');
   const deletedScheduleRuleIds = new Set(queue.filter((entry) => entry.type === 'deleteScheduleRule').map((entry) => String(entry.ruleId)));
   const deletedSessionIds = new Set(queue.filter((entry) => entry.type === 'deleteSession').map((entry) => Number(entry.sessionId)));
   const completedSessionIds = new Set(queue.filter((entry) => entry.type === 'complete').map((entry) => Number(entry.sessionId)));
   const createdSessions = queue.filter((entry) => entry.type === 'createSession' && !deletedSessionIds.has(Number(entry.sessionId)));
   const logs = queue.filter((entry) => entry.type === 'log' && !deletedSessionIds.has(Number(entry.sessionId)));
-  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, deletedGroupIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, assignedScheduleRules, deletedScheduleRuleIds };
+  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups, reorderedRoutines, assignedScheduleRules, deletedScheduleRuleIds };
 }
 
 function readApiCache(path) {
@@ -760,8 +790,8 @@ function findOfflineSessionPayload(userId, sessionId) {
 }
 
 function applyOfflineGroupMutations(userId, groups) {
-  const { createdGroups, deletedGroupIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises } = pendingOfflineState(userId);
-  if (!createdGroups.length && !deletedGroupIds.size && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length) return groups;
+  const { createdGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups } = pendingOfflineState(userId);
+  if (!createdGroups.length && !deletedGroupIds.size && !deletedExerciseIds.size && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length && !reorderedGroups.length) return groups;
   const exercises = collectCachedExercises(userId);
   const byId = new Map(exercises.map((exercise) => [String(exercise.id), exercise]));
   const removeKeys = new Set(removeGroupExercises.map((entry) => `${entry.groupId}:${entry.exerciseId}`));
@@ -782,11 +812,11 @@ function applyOfflineGroupMutations(userId, groups) {
     }
   }
   return [...byGroupId.values()].map((group) => {
-    let nextExercises = (group.exercises || []).filter((exercise) => !removeKeys.has(`${group.id}:${exercise.id}`));
+    let nextExercises = (group.exercises || []).filter((exercise) => !removeKeys.has(`${group.id}:${exercise.id}`) && !deletedExerciseIds.has(String(exercise.id)));
     const existingIds = new Set(nextExercises.map((exercise) => String(exercise.id)));
     for (const entry of addGroupExercises) {
       if (deletedGroupIds.has(String(entry.groupId))) continue;
-      if (String(entry.groupId) !== String(group.id) || removeKeys.has(`${entry.groupId}:${entry.exerciseId}`) || existingIds.has(String(entry.exerciseId))) continue;
+      if (String(entry.groupId) !== String(group.id) || removeKeys.has(`${entry.groupId}:${entry.exerciseId}`) || deletedExerciseIds.has(String(entry.exerciseId)) || existingIds.has(String(entry.exerciseId))) continue;
       const exercise = byId.get(String(entry.exerciseId));
       if (exercise) {
         nextExercises = [...nextExercises, { ...exercise, syncStatus: 'pending' }];
@@ -799,20 +829,29 @@ function applyOfflineGroupMutations(userId, groups) {
       nextExercises = [...nextExercises].sort((a, b) => (order.get(String(a.id)) ?? 9999) - (order.get(String(b.id)) ?? 9999));
     }
     return { ...group, exercises: nextExercises };
+  }).sort((a, b) => {
+    const reorder = [...reorderedGroups].reverse().find((entry) => Array.isArray(entry.groupIds));
+    if (!reorder) return 0;
+    const order = new Map(reorder.groupIds.map((id, index) => [String(id), index]));
+    return (order.get(String(a.id)) ?? 9999) - (order.get(String(b.id)) ?? 9999);
   });
 }
 
 function applyOfflineScheduleMutations(userId, payload = {}) {
-  const { assignedScheduleRules, deletedScheduleRuleIds, deletedGroupIds } = pendingOfflineState(userId);
-  if (!assignedScheduleRules.length && !deletedScheduleRuleIds.size && !deletedGroupIds.size) return payload;
+  const { assignedScheduleRules, deletedScheduleRuleIds, deletedGroupIds, deletedExerciseIds, reorderedRoutines } = pendingOfflineState(userId);
+  if (!assignedScheduleRules.length && !deletedScheduleRuleIds.size && !deletedGroupIds.size && !deletedExerciseIds.size && !reorderedRoutines.length) return payload;
   const routines = (payload.routines || []).map((routine) => {
-    if (!deletedGroupIds.size) return routine;
     const groups = (routine.groups || []).filter((group) => !deletedGroupIds.has(String(group.id)));
     const deletedExerciseGroupNames = new Set((routine.groups || [])
       .filter((group) => deletedGroupIds.has(String(group.id)))
       .map((group) => String(group.name)));
-    const exercises = (routine.exercises || []).filter((exercise) => !deletedExerciseGroupNames.has(String(exercise.groupName || '')));
+    const exercises = (routine.exercises || []).filter((exercise) => !deletedExerciseGroupNames.has(String(exercise.groupName || '')) && !deletedExerciseIds.has(String(exercise.id)));
     return { ...routine, groups, exercises };
+  }).sort((a, b) => {
+    const reorder = [...reorderedRoutines].reverse().find((entry) => Array.isArray(entry.routineIds));
+    if (!reorder) return 0;
+    const order = new Map(reorder.routineIds.map((id, index) => [String(id), index]));
+    return (order.get(String(a.id)) ?? 9999) - (order.get(String(b.id)) ?? 9999);
   });
   let rules = (payload.rules || []).filter((rule) => !deletedScheduleRuleIds.has(String(rule.id)));
   for (const entry of assignedScheduleRules) {
@@ -1273,6 +1312,35 @@ function cacheRemoveGroupExercise(userId, groupId, exerciseId) {
   writeGroupsCache(userId, groups);
 }
 
+function cacheDeleteCustomExercise(userId, exerciseId) {
+  const exerciseKey = String(exerciseId);
+  const groups = applyOfflineGroupMutations(userId, cachedGroups(userId)).map((group) => ({
+    ...group,
+    exercises: (group.exercises || []).filter((exercise) => String(exercise.id) !== exerciseKey)
+  }));
+  writeGroupsCache(userId, groups);
+  const routinePayload = applyOfflineScheduleMutations(userId, readApiCache(`/api/routines?userId=${userId}`) || { routines: [], rules: [] });
+  routinePayload.routines = (routinePayload.routines || []).map((routine) => ({
+    ...routine,
+    exercises: (routine.exercises || []).filter((exercise) => String(exercise.id) !== exerciseKey)
+  }));
+  writeRoutinesCache(userId, routinePayload);
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(API_CACHE_PREFIX)) continue;
+    const path = key.slice(API_CACHE_PREFIX.length);
+    if (!path.startsWith('/api/exercises')) continue;
+    if (path.includes('userId=') && !path.includes(`userId=${userId}`)) continue;
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || 'null');
+      if (Array.isArray(cached)) {
+        localStorage.setItem(key, JSON.stringify(cached.filter((exercise) => String(exercise.id) !== exerciseKey)));
+      }
+    } catch {}
+  }
+  routeGetResponseToStore(`/api/groups?userId=${userId}`, groups);
+  routeGetResponseToStore(`/api/routines?userId=${userId}`, routinePayload);
+}
+
 function cacheAssignScheduleRule(userId) {
   const payload = applyOfflineScheduleMutations(userId, readApiCache(`/api/routines?userId=${userId}`) || { routines: [], rules: [] });
   writeRoutinesCache(userId, payload);
@@ -1307,9 +1375,11 @@ function userIdFromRequestOptions(options = {}) {
 }
 
 function collectCachedExercises(userId) {
+  const { deletedExerciseIds } = pendingOfflineState(userId);
   const byId = new Map();
   const addExercise = (exercise) => {
     if (!exercise?.id) return;
+    if (deletedExerciseIds.has(String(exercise.id))) return;
     byId.set(String(exercise.id), { ...byId.get(String(exercise.id)), ...exercise });
   };
   const addExercises = (items = []) => items.forEach(addExercise);
@@ -1487,6 +1557,15 @@ async function api(path, options = {}) {
       clearWorkoutApiCaches(userId);
       return { ok: true, offline: true };
     }
+    const deleteCustomExerciseMatch = path.match(/\/api\/exercises\/([^/]+)\/custom(?:\?|$)/);
+    if (offlineQueue && method === 'DELETE' && deleteCustomExerciseMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const exerciseId = decodeURIComponent(deleteCustomExerciseMatch[1]);
+      addToOfflineQueue(userId, { type: 'deleteCustomExercise', exerciseId });
+      cacheDeleteCustomExercise(userId, exerciseId);
+      return { ok: true, offline: true };
+    }
     const addGroupExerciseMatch = path.match(/\/api\/groups\/(\d+)\/exercises$/);
     if (offlineQueue && method === 'POST' && addGroupExerciseMatch) {
       if (!browserOffline && await checkServerAvailable(1000)) throw err;
@@ -1564,6 +1643,24 @@ async function api(path, options = {}) {
       const groupId = decodeURIComponent(reorderGroupExerciseMatch[1]);
       addToOfflineQueue(userId, { type: 'reorderGroupExercises', groupId, exerciseIds: body.exerciseIds || [] });
       cacheGroupMutations(userId);
+      return { ok: true, offline: true };
+    }
+    if (offlineQueue && method === 'PATCH' && path === '/api/groups-order') {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'reorderGroups', groupIds: body.groupIds || [] });
+      cacheGroupMutations(userId);
+      return { ok: true, offline: true };
+    }
+    if (offlineQueue && method === 'PATCH' && path === '/api/routines-order') {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'reorderRoutines', routineIds: body.routineIds || [] });
+      cacheAssignScheduleRule(userId);
       return { ok: true, offline: true };
     }
     // DELETE /api/groups/:id — xoá cả group
@@ -3132,6 +3229,7 @@ function ExerciseLibrary({ userId, settings }) {
   const hideCustomExercise = async (exercise) => {
     if (!(await dialog.confirm(t('lib_hide_confirm')))) return;
     await api(`/api/exercises/${exercise.id}/custom`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+    cacheDeleteCustomExercise(userId, exercise.id);
     setSelectedExercise(null);
     refreshLibrary();
   };
@@ -3478,15 +3576,35 @@ function SortableRoutineGroupRow({ group, onRemove }) {
   );
 }
 
+function SortableBuilderCard({ id, children, className = 'panel' }) {
+  const t = useLang();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isDragging ? 'dragging' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <div className="mb-2 flex justify-end">
+        <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function Builder({ userId, boot, onStart, onChanged }) {
   const t = useLang();
   const dialog = useAppDialog();
   const { online: serverOnline } = useServerStatus();
   // Đọc từ gymStore (single source). Local state đã được bỏ.
-  const groups = useGymStore(userId, (s) => s.groups || []);
-  const routines = useGymStore(userId, (s) => s.routines || []);
-  const rules = useGymStore(userId, (s) => s.scheduleRules || []);
-  const routineData = { routines, rules };
+  const storeGroups = useGymStore(userId, (s) => s.groups || []);
+  const groups = applyOfflineGroupMutations(userId, storeGroups);
+  const storeRoutines = useGymStore(userId, (s) => s.routines || []);
+  const storeRules = useGymStore(userId, (s) => s.scheduleRules || []);
+  const routineData = applyOfflineScheduleMutations(userId, { routines: storeRoutines, rules: storeRules });
+  const routines = routineData.routines || [];
+  const rules = routineData.rules || [];
   const [groupName, setGroupName] = useState('');
   const [routineName, setRoutineName] = useState('');
   const [selectedGroups, setSelectedGroups] = useState([]);
@@ -3536,6 +3654,22 @@ function Builder({ userId, boot, onStart, onChanged }) {
   const handleExerciseDragEnd = ({ active, over }, groupId) => {
     if (!over || active.id === over.id) return;
     reorderGroupExercises(groupId, active.id, over.id);
+  };
+  const reorderGroups = async (fromGroupId, toGroupId) => {
+    if (!fromGroupId || !toGroupId || String(fromGroupId) === String(toGroupId)) return;
+    const fromIndex = groups.findIndex((group) => String(group.id) === String(fromGroupId));
+    const toIndex = groups.findIndex((group) => String(group.id) === String(toGroupId));
+    if (fromIndex < 0 || toIndex < 0) return;
+    const reordered = arrayMove(groups, fromIndex, toIndex);
+    routeGetResponseToStore(`/api/groups?userId=${userId}`, reordered);
+    writeGroupsCache(userId, reordered);
+    await api('/api/groups-order', { method: 'PATCH', body: JSON.stringify({ userId, groupIds: reordered.map((group) => group.id) }) });
+    load();
+    onChanged();
+  };
+  const handleGroupCardDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    reorderGroups(active.id, over.id);
   };
   const removeExercise = async (groupId, exerciseId) => {
     // Lấy URL trước khi xóa
@@ -3630,6 +3764,23 @@ function Builder({ userId, boot, onStart, onChanged }) {
     if (!over || active.id === over.id) return;
     reorderRoutineGroups(routineId, Number(active.id), Number(over.id));
   };
+  const reorderRoutines = async (fromRoutineId, toRoutineId) => {
+    if (!fromRoutineId || !toRoutineId || String(fromRoutineId) === String(toRoutineId)) return;
+    const fromIndex = routines.findIndex((routine) => String(routine.id) === String(fromRoutineId));
+    const toIndex = routines.findIndex((routine) => String(routine.id) === String(toRoutineId));
+    if (fromIndex < 0 || toIndex < 0) return;
+    const reordered = arrayMove(routines, fromIndex, toIndex);
+    const payload = { routines: reordered, rules };
+    routeGetResponseToStore(`/api/routines?userId=${userId}`, payload);
+    writeRoutinesCache(userId, payload);
+    await api('/api/routines-order', { method: 'PATCH', body: JSON.stringify({ userId, routineIds: reordered.map((routine) => routine.id) }) });
+    load();
+    onChanged();
+  };
+  const handleRoutineCardDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    reorderRoutines(active.id, over.id);
+  };
   const setMode = async (mode) => {
     await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ userId, scheduleMode: mode }) });
     onChanged();
@@ -3678,8 +3829,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
 
       <div className="builder-section">
         <h2 className="section-title">{t('builder_groups_title')}</h2>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupCardDragEnd}>
+          <SortableContext items={groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
         {groups.map((group) => (
-          <div key={group.id} className="panel">
+          <SortableBuilderCard key={group.id} id={group.id}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               {editingGroupId === group.id ? (
                 <div className="flex flex-1 gap-2">
@@ -3712,8 +3865,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 </DndContext>
               </div>
             </details>
-          </div>
+          </SortableBuilderCard>
         ))}
+          </SortableContext>
+        </DndContext>
       </div>
 
       <div className="builder-section">
@@ -3739,10 +3894,12 @@ function Builder({ userId, boot, onStart, onChanged }) {
         <h2 className="section-title">{t('builder_routines_title')}</h2>
         <div className="mb-4 grid gap-3">
           {routineData.routines.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_routines')}</p>}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRoutineCardDragEnd}>
+            <SortableContext items={routineData.routines.map((routine) => routine.id)} strategy={verticalListSortingStrategy}>
           {routineData.routines.map((routine) => {
             const availableGroups = groups.filter((group) => !routine.groups.some((item) => item.id === group.id));
             return (
-              <article key={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
+              <SortableBuilderCard key={routine.id} id={routine.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start gap-3">
                   <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-12 w-12 shrink-0 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                   <div className="min-w-0 flex-1">
@@ -3779,9 +3936,11 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   <option value="">{t('builder_select_groups')}</option>
                   {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
-              </article>
+              </SortableBuilderCard>
             );
           })}
+            </SortableContext>
+          </DndContext>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <ScheduleAssignPanel

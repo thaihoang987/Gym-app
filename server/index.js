@@ -277,9 +277,9 @@ function readExportTables(userId) {
     user: one('SELECT id, username, name, avatar, role, created_at FROM users WHERE id = ?', [userId]),
     settings: one('SELECT * FROM user_settings WHERE user_id = ?', [userId]),
     customExercises: all('SELECT * FROM exercises WHERE custom_user_id = ? AND is_custom = 1 ORDER BY name', [userId]),
-    groups: all('SELECT * FROM custom_groups WHERE user_id = ? ORDER BY id', [userId]),
+    groups: all('SELECT * FROM custom_groups WHERE user_id = ? ORDER BY order_index, id', [userId]),
     groupExercises: all('SELECT ge.* FROM group_exercises ge JOIN custom_groups cg ON cg.id = ge.group_id WHERE cg.user_id = ? ORDER BY ge.group_id, ge.order_index', [userId]),
-    routines: all('SELECT * FROM routines WHERE user_id = ? ORDER BY id', [userId]),
+    routines: all('SELECT * FROM routines WHERE user_id = ? ORDER BY order_index, id', [userId]),
     routineGroups: all('SELECT rg.* FROM routine_groups rg JOIN routines r ON r.id = rg.routine_id WHERE r.user_id = ? ORDER BY rg.routine_id, rg.order_index', [userId]),
     scheduleRules: all('SELECT * FROM routine_schedule_rules WHERE user_id = ? ORDER BY mode, day_of_week, order_index', [userId]),
     sessions: all(`
@@ -477,13 +477,13 @@ function importExcelRows(userId, rows) {
         );
         bump(type);
       } else if (type === 'Group bài tập') {
-        db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.icon, data.color_hex, data.created_at);
+        db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, order_index, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.icon, data.color_hex, data.order_index || data.id || 1, data.created_at);
         bump(type);
       } else if (type === 'Bài trong group') {
         db.prepare('INSERT OR REPLACE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(data.id, data.group_id, data.exercise_id, data.icon, data.order_index);
         bump(type);
       } else if (type === 'Group buổi tập') {
-        db.prepare('INSERT OR REPLACE INTO routines (id, user_id, name, color_hex, created_at) VALUES (?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.color_hex, data.created_at);
+        db.prepare('INSERT OR REPLACE INTO routines (id, user_id, name, color_hex, order_index, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.color_hex, data.order_index || data.id || 1, data.created_at);
         bump(type);
       } else if (type === 'Group bài trong buổi') {
         db.prepare('INSERT OR REPLACE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(data.id, data.routine_id, data.group_id, data.order_index);
@@ -1030,7 +1030,7 @@ app.delete('/api/exercises/:id/custom', (req, res) => {
 
 app.get('/api/groups', (req, res) => {
   const userId = getUserId(req);
-  const groups = all('SELECT * FROM custom_groups WHERE user_id = ? ORDER BY created_at DESC', [userId]).map((group) => ({
+  const groups = all('SELECT * FROM custom_groups WHERE user_id = ? ORDER BY order_index, id', [userId]).map((group) => ({
     id: group.id,
     name: group.name,
     icon: group.icon,
@@ -1044,7 +1044,23 @@ app.post('/api/groups', (req, res) => {
   const userId = getUserId(req);
   requireBody(['name'], req.body);
   const result = db.prepare('INSERT INTO custom_groups (user_id, name, icon, color_hex) VALUES (?, ?, ?, ?)').run(userId, req.body.name.trim(), req.body.icon || '💪', req.body.colorHex || '#78e0a6');
+  const nextOrder = one('SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM custom_groups WHERE user_id = ? AND id <> ?', [userId, result.lastInsertRowid]).next_order;
+  db.prepare('UPDATE custom_groups SET order_index = ? WHERE id = ? AND user_id = ?').run(nextOrder, result.lastInsertRowid, userId);
   res.status(201).json({ id: result.lastInsertRowid });
+});
+
+app.patch('/api/groups-order', (req, res) => {
+  const userId = getUserId(req);
+  const groupIds = Array.isArray(req.body.groupIds) ? req.body.groupIds.map(Number).filter(Boolean) : [];
+  if (!groupIds.length) return res.status(400).json({ error: 'Missing groupIds' });
+  const owned = new Set(all('SELECT id FROM custom_groups WHERE user_id = ?', [userId]).map((row) => Number(row.id)));
+  if (groupIds.some((groupId) => !owned.has(groupId))) return res.status(404).json({ error: 'Group not found' });
+  const update = db.prepare('UPDATE custom_groups SET order_index = ? WHERE id = ? AND user_id = ?');
+  const tx = db.transaction(() => {
+    groupIds.forEach((groupId, index) => update.run(index + 1, groupId, userId));
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 app.patch('/api/groups/:id', (req, res) => {
@@ -1134,7 +1150,7 @@ app.delete('/api/groups/:groupId/exercises/:exerciseId', (req, res) => {
 
 app.get('/api/routines', (req, res) => {
   const userId = getUserId(req);
-  const routines = all('SELECT id FROM routines WHERE user_id = ? ORDER BY created_at DESC', [userId]).map((row) => getRoutine(row.id, userId));
+  const routines = all('SELECT id FROM routines WHERE user_id = ? ORDER BY order_index, id', [userId]).map((row) => getRoutine(row.id, userId));
   const rules = all(`
     SELECT rsr.*, r.name AS routine_name
     FROM routine_schedule_rules rsr
@@ -1149,9 +1165,25 @@ app.post('/api/routines', (req, res) => {
   const userId = getUserId(req);
   requireBody(['name'], req.body);
   const result = db.prepare('INSERT INTO routines (user_id, name, color_hex) VALUES (?, ?, ?)').run(userId, req.body.name.trim(), req.body.colorHex || '#c8ff2e');
+  const nextOrder = one('SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM routines WHERE user_id = ? AND id <> ?', [userId, result.lastInsertRowid]).next_order;
+  db.prepare('UPDATE routines SET order_index = ? WHERE id = ? AND user_id = ?').run(nextOrder, result.lastInsertRowid, userId);
   const addGroup = db.prepare('INSERT OR IGNORE INTO routine_groups (routine_id, group_id, order_index) VALUES (?, ?, ?)');
   (req.body.groupIds || []).forEach((groupId, index) => addGroup.run(result.lastInsertRowid, groupId, index + 1));
   res.status(201).json(getRoutine(result.lastInsertRowid, userId));
+});
+
+app.patch('/api/routines-order', (req, res) => {
+  const userId = getUserId(req);
+  const routineIds = Array.isArray(req.body.routineIds) ? req.body.routineIds.map(Number).filter(Boolean) : [];
+  if (!routineIds.length) return res.status(400).json({ error: 'Missing routineIds' });
+  const owned = new Set(all('SELECT id FROM routines WHERE user_id = ?', [userId]).map((row) => Number(row.id)));
+  if (routineIds.some((routineId) => !owned.has(routineId))) return res.status(404).json({ error: 'Routine not found' });
+  const update = db.prepare('UPDATE routines SET order_index = ? WHERE id = ? AND user_id = ?');
+  const tx = db.transaction(() => {
+    routineIds.forEach((routineId, index) => update.run(index + 1, routineId, userId));
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 app.delete('/api/routines/:id', (req, res) => {
