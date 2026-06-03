@@ -3854,7 +3854,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 ) : (
                   <>
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-bold">{group.name}</span>
+                      <span className="break-words font-bold leading-tight">{group.name}</span>
                       {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                       <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={13} /></button>
                     </div>
@@ -3862,11 +3862,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   </>
                 )}
               </div>
-              <div className="flex shrink-0 gap-1">
+            </div>
+            {editingGroupId !== group.id && (
+              <div className="mt-2 flex justify-end gap-1">
                 <button className="icon-btn" title={t('start_exercise')} onClick={() => startGroup(group)}><Play size={16} /></button>
                 <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteGroup(group.id)}><Trash2 size={16} /></button>
               </div>
-            </div>
+            )}
             <details className="mt-3">
               <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_exercise_list')}</summary>
               <div className="mt-3 space-y-2">
@@ -3930,18 +3932,20 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     ) : (
                       <>
                         <div className="flex items-center gap-1">
-                          <h3 className="truncate font-bold">{routine.name}</h3>
+                          <h3 className="break-words font-bold leading-tight">{routine.name}</h3>
                           <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={13} /></button>
                         </div>
                         <p className="mt-0.5 text-xs text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
                       </>
                     )}
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                </div>
+                {editingRoutineId !== routine.id && (
+                  <div className="mt-2 flex justify-end gap-1">
                     <button className="icon-btn" title={t('start_exercise')} onClick={() => startRoutine(routine)}><Play size={16} /></button>
                     <button className="icon-btn text-red-500" title={t('delete')} onClick={() => deleteRoutine(routine.id)}><Trash2 size={16} /></button>
                   </div>
-                </div>
+                )}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_group_list')}</summary>
                   <div className="mt-3 grid gap-2">
