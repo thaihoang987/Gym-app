@@ -596,15 +596,34 @@ function getWeeklyStatus(userId) {
   return rules.map((rule) => {
     const routine = getRoutine(rule.routine_id, userId);
     if (!routine) return null;
-    // Đếm số session COMPLETED của routine này trong tuần hiện tại
-    const countRow = one(`
+    // 1) Sessions tập trực tiếp routine này (routine_id match)
+    const directRow = one(`
       SELECT COUNT(*) AS n FROM workout_sessions
       WHERE user_id = ? AND routine_id = ? AND status = 'COMPLETED'
         AND completed_at >= ?
     `, [userId, rule.routine_id, weekStartIso]);
+    const directCount = Number(directRow?.n || 0);
+    // 2) Coverage qua group sessions: với mỗi group thuộc routine,
+    //    đếm số session COMPLETED có group_id đó trong tuần.
+    //    Số "bouts" routine được cover = min(các group count).
+    let groupCoverage = 0;
+    const groups = routine.groups || [];
+    if (groups.length > 0) {
+      const counts = groups.map((g) => {
+        const r = one(`
+          SELECT COUNT(*) AS n FROM workout_sessions
+          WHERE user_id = ? AND group_id = ? AND status = 'COMPLETED'
+            AND completed_at >= ?
+        `, [userId, g.id, weekStartIso]);
+        return Number(r?.n || 0);
+      });
+      groupCoverage = Math.min(...counts);
+    }
     return {
       ...routine,
-      completedCount: Number(countRow?.n || 0),
+      completedCount: directCount + groupCoverage,
+      directCount,
+      groupCoverage,
       weekStartIso
     };
   }).filter(Boolean);

@@ -1293,6 +1293,76 @@ function cacheGroupMutations(userId) {
   writeGroupsCache(userId, groups);
 }
 
+// Khi end workout offline: ghi vào dashboard cache để recentHistory + weekly count hiển thị ngay
+function optimisticCompleteSession(userId, sessionId, sessionData) {
+  const dashKey = `/api/dashboard?userId=${userId}`;
+  try {
+    const cached = readApiCache(dashKey);
+    if (!cached) return;
+    const routineId = sessionData?.routine?.id || sessionData?.session?.routine_id || null;
+    const groupId = sessionData?.group?.id || sessionData?.session?.group_id || null;
+    const routineName = sessionData?.routine?.name || sessionData?.group?.name || 'Free workout';
+    const startedAt = sessionData?.session?.started_at || new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const exercises = (sessionData?.exercises || []);
+    const totalSets = exercises.reduce((s, e) => s + Number(e.completedSets || 0), 0);
+    // 1) Thêm vào recentHistory đầu
+    const newRow = {
+      id: sessionId,
+      user_id: Number(userId),
+      routine_id: routineId,
+      group_id: groupId,
+      routine_name: sessionData?.routine?.name || null,
+      group_name: sessionData?.group?.name || null,
+      schedule_mode: sessionData?.session?.schedule_mode || 'FREE',
+      status: 'COMPLETED',
+      started_at: startedAt,
+      completed_at: nowIso,
+      duration_minutes: 1,
+      sets: totalSets,
+      offline: true
+    };
+    cached.recentHistory = [newRow, ...(cached.recentHistory || []).filter((r) => r.id !== sessionId)];
+    if (cached.recentHistory.length > 50) cached.recentHistory = cached.recentHistory.slice(0, 50);
+    // 2) Tăng weekly counter
+    if (cached.suggestion?.weekly && routineId) {
+      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => Number(r.id) === Number(routineId)
+        ? { ...r, completedCount: Number(r.completedCount || 0) + 1, directCount: Number(r.directCount || 0) + 1 }
+        : r);
+    } else if (cached.suggestion?.weekly && groupId) {
+      // Group session: với mỗi routine chứa group này, coverage có thể tăng. Đơn giản: increment groupCoverage candidate
+      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => {
+        if ((r.groups || []).some((g) => Number(g.id) === Number(groupId))) {
+          // Tăng coverage nếu nó là group cuối cần để cover. Đơn giản: tăng nếu cur < direct + new groupCoverage.
+          return { ...r, completedCount: Number(r.completedCount || 0) + 0.01 }; // marker để re-fetch sau
+        }
+        return r;
+      });
+    }
+    localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(cached));
+    routeGetResponseToStore(dashKey, cached);
+  } catch {}
+}
+
+// Xóa session khỏi cache + giảm weekly count tương ứng
+function optimisticDeleteSession(userId, sessionId) {
+  const dashKey = `/api/dashboard?userId=${userId}`;
+  try {
+    const cached = readApiCache(dashKey);
+    if (!cached) return;
+    const row = (cached.recentHistory || []).find((r) => Number(r.id) === Number(sessionId));
+    if (!row) return;
+    cached.recentHistory = (cached.recentHistory || []).filter((r) => Number(r.id) !== Number(sessionId));
+    if (cached.suggestion?.weekly && row.routine_id) {
+      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => Number(r.id) === Number(row.routine_id) && Number(r.completedCount || 0) > 0
+        ? { ...r, completedCount: Number(r.completedCount) - 1, directCount: Math.max(0, Number(r.directCount || 0) - 1) }
+        : r);
+    }
+    localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(cached));
+    routeGetResponseToStore(dashKey, cached);
+  } catch {}
+}
+
 function optimisticOfflineGroup(userId, group, syncStatus = 'pending') {
   const nextGroup = {
     id: group.id,
@@ -1573,8 +1643,10 @@ async function api(path, options = {}) {
     if (offlineQueue && method === 'DELETE' && sessionDeleteMatch) {
       if (!browserOffline && await checkServerAvailable(1000)) throw err;
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
-      addToOfflineQueue(userId, { type: 'deleteSession', sessionId: Number(sessionDeleteMatch[1]) });
-      clearWorkoutApiCaches(userId);
+      const sessionId = Number(sessionDeleteMatch[1]);
+      addToOfflineQueue(userId, { type: 'deleteSession', sessionId });
+      // Optimistic: xóa khỏi recentHistory + giảm weekly count
+      optimisticDeleteSession(userId, sessionId);
       return { ok: true, offline: true };
     }
     const deleteCustomExerciseMatch = path.match(/\/api\/exercises\/([^/]+)\/custom(?:\?|$)/);
@@ -4732,9 +4804,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       return Number(item.completedSets || item.sets || 0) > 0;
     });
     if (!hasCompletedSet && !(await dialog.confirm(t('workout_confirm_end')))) return;
-    // Offline: queue complete action
+    // Offline: queue complete action + optimistic update dashboard cache
     if (!isOnline) {
       addToOfflineQueue(userId, { type: 'complete', sessionId: workout.sessionId });
+      optimisticCompleteSession(userId, workout.sessionId, data);
       localStorage.removeItem(`familyGymWorkout:${userId}`);
       onClose();
       return;
