@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.6'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.7'; // tăng khi data schema thay đổi
 
 function bustCacheIfNeeded() {
   try {
@@ -2438,30 +2438,28 @@ function Header({ user, boot, onLogout }) {
 }
 
 function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
-  // Đọc từ gymStore (single source of truth)
-  const data = useGymStore(userId, (s) => s.dashboard);
+  // Local state trực tiếp — tránh gymStore timing issues
+  const [data, setData] = useState(() => {
+    const cached = readApiCache(`/api/dashboard?userId=${userId}`);
+    return cached || null;
+  });
   const storeGroups = useGymStore(userId, (s) => s.groups || []);
   const groups = applyOfflineGroupMutations(userId, storeGroups);
   const routines = useGymStore(userId, (s) => s.routines || []);
   const rules = useGymStore(userId, (s) => s.scheduleRules || []);
   const routineData = { routines, rules };
-  const activeSession = useGymStore(userId, (s) => s.activeSessions);
+  const [activeSession, setActiveSession] = useState(null);
   const [clock, setClock] = useState(new Date());
-
-  // Wrapper setters cho compatibility với code cũ trong handlers (setData để update local optimistic)
-  const setData = (updater) => {
-    const userIdNum = Number(userId);
-    updateStore(userIdNum, (store) => ({ ...store, dashboard: typeof updater === 'function' ? updater(store.dashboard) : updater }));
-  };
 
   const loadAll = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
-    // api() success sẽ tự ghi vào gymStore via routeGetResponseToStore
-    // Chờ dashboard để weekly count cập nhật ngay
-    await api(`/api/dashboard?userId=${userId}`).catch(() => {});
-    api(`/api/groups?userId=${userId}`).catch(() => {});
-    api(`/api/routines?userId=${userId}`).catch(() => {});
-    api(`/api/sessions/active?userId=${userId}`).catch(() => {});
+    const [dash] = await Promise.all([
+      api(`/api/dashboard?userId=${userId}`).catch(() => null),
+      api(`/api/groups?userId=${userId}`).catch(() => {}),
+      api(`/api/routines?userId=${userId}`).catch(() => {}),
+      api(`/api/sessions/active?userId=${userId}`).then(setActiveSession).catch(() => {})
+    ]);
+    if (dash) setData(dash);
   }, [userId]);
 
   useEffect(() => { loadAll(); }, [userId, refresh]);
