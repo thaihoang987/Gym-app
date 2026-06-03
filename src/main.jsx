@@ -513,7 +513,8 @@ function addToOfflineQueue(userId, entry) {
   }
   q.push({ ...entry, tempId: Date.now() + Math.random(), queuedAt: new Date().toISOString(), syncStatus: 'pending' });
   saveOfflineQueue(userId, q);
-  if (entry.type === 'complete' || entry.type === 'deleteSession') clearWorkoutApiCaches(userId);
+  // KHÔNG clear cache khi vừa enqueue offline mutation — sẽ làm mất history offline.
+  // Cache đã được optimistic update bởi caller (optimisticDeleteSession/optimisticCompleteSession).
   return entry.sessionId || entry.tempId;
 }
 async function flushOfflineQueue(userId) {
@@ -2464,8 +2465,12 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       ...current,
       recentHistory: (current.recentHistory || []).filter((row) => row.id !== sessionId)
     } : current);
-    const nextDashboard = await api(`/api/dashboard?userId=${userId}`);
-    setData(nextDashboard);
+    try {
+      const nextDashboard = await api(`/api/dashboard?userId=${userId}`);
+      setData(nextDashboard);
+    } catch {
+      // Offline → giữ optimistic state
+    }
     onChanged?.();
   };
   return (
