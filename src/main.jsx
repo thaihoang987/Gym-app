@@ -3259,8 +3259,13 @@ function ExerciseLibrary({ userId, settings }) {
           <ExerciseInstructions exercise={selectedExercise} settings={settings} />
           <select onChange={(e) => handleAddToGroupSelect(e, selectedExercise.id)} className="input mt-4 py-2 text-sm">
             <option value="">{t('lib_add_to_group_option')}</option>
-            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-            <option value="__new_group__">{t('lib_add_new_group_option')}</option>
+            {groups.length > 0 && (
+              <optgroup label={t('lib_add_to_group_option')}>
+                {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+              </optgroup>
+            )}
+            <option disabled>──────────</option>
+            <option value="__new_group__" style={{ fontWeight: 700, color: '#f05a28' }}>{t('lib_add_new_group_option')}</option>
           </select>
           {selectedExercise.isCustom && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -3345,8 +3350,13 @@ function ExerciseLibrary({ userId, settings }) {
                 <p className="mt-1 text-sm text-slate-500">{exercise.target} · {exercise.equipment}</p>
                 <select onClick={(event) => event.stopPropagation()} onChange={(e) => handleAddToGroupSelect(e, exercise.id)} className="input mt-3 py-2 text-sm">
                   <option value="">{t('lib_add_to_group_option')}</option>
-                  {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-                  <option value="__new_group__">{t('lib_add_new_group_option')}</option>
+                  {groups.length > 0 && (
+                    <optgroup label={t('lib_add_to_group_option')}>
+                      {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                    </optgroup>
+                  )}
+                  <option disabled>──────────</option>
+                  <option value="__new_group__" style={{ fontWeight: 700, color: '#f05a28' }}>{t('lib_add_new_group_option')}</option>
                 </select>
               </div>
             </div>
