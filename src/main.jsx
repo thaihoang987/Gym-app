@@ -459,7 +459,12 @@ async function flushOfflineQueue(userId) {
     }
   }
   saveOfflineQueue(userId, failed);
-  if (failed.length !== queue.length) clearWorkoutApiCaches(userId);
+  if (failed.length !== queue.length) {
+    clearWorkoutApiCaches(userId);
+    // Sau khi sync xong, fetch lại groups/routines để gymStore có ID thực thay tempId
+    api(`/api/groups?userId=${userId}`).catch(() => {});
+    api(`/api/routines?userId=${userId}`).catch(() => {});
+  }
   return queue.length - failed.length;
 }
 
@@ -1301,6 +1306,15 @@ async function api(path, options = {}) {
       const groupId = `offline_group_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '💪', colorHex: body.colorHex || '#78e0a6' });
       cacheGroupMutations(userId);
+      // Optimistic update gymStore: thêm group pending ngay vào store
+      upsertEntity(userId, 'groups', {
+        id: groupId,
+        name: body.name,
+        icon: body.icon || '💪',
+        color_hex: body.colorHex || '#78e0a6',
+        exercises: [],
+        syncStatus: 'pending'
+      });
       return { id: groupId, offline: true };
     }
     if (offlineQueue && method === 'PATCH' && path === '/api/settings') {
@@ -1327,8 +1341,16 @@ async function api(path, options = {}) {
       let body = {};
       try { body = JSON.parse(options.body || '{}'); } catch {}
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
-      addToOfflineQueue(userId, { type: 'addGroupExercise', groupId: Number(addGroupExerciseMatch[1]), exerciseId: body.exerciseId });
-      cacheAddGroupExercise(userId, Number(addGroupExerciseMatch[1]), body.exerciseId);
+      const groupIdNum = Number(addGroupExerciseMatch[1]);
+      addToOfflineQueue(userId, { type: 'addGroupExercise', groupId: groupIdNum, exerciseId: body.exerciseId });
+      cacheAddGroupExercise(userId, groupIdNum, body.exerciseId);
+      // Optimistic: thêm exercise vào group trong store
+      updateStore(userId, (store) => ({
+        ...store,
+        groups: (store.groups || []).map((g) => String(g.id) === String(groupIdNum)
+          ? { ...g, exercises: [...(g.exercises || []), { id: body.exerciseId, syncStatus: 'pending' }] }
+          : g)
+      }));
       return { ok: true, offline: true };
     }
     const addOfflineGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises$/);
@@ -1340,6 +1362,12 @@ async function api(path, options = {}) {
       const groupId = decodeURIComponent(addOfflineGroupExerciseMatch[1]);
       addToOfflineQueue(userId, { type: 'addGroupExercise', groupId, exerciseId: body.exerciseId });
       cacheAddGroupExercise(userId, groupId, body.exerciseId);
+      updateStore(userId, (store) => ({
+        ...store,
+        groups: (store.groups || []).map((g) => String(g.id) === String(groupId)
+          ? { ...g, exercises: [...(g.exercises || []), { id: body.exerciseId, syncStatus: 'pending' }] }
+          : g)
+      }));
       return { ok: true, offline: true };
     }
     const removeGroupExerciseMatch = path.match(/\/api\/groups\/(\d+)\/exercises\/([^/?]+)/);
@@ -1350,6 +1378,13 @@ async function api(path, options = {}) {
       const exerciseId = decodeURIComponent(removeGroupExerciseMatch[2]);
       addToOfflineQueue(userId, { type: 'removeGroupExercise', groupId, exerciseId });
       cacheRemoveGroupExercise(userId, groupId, exerciseId);
+      // Optimistic remove
+      updateStore(userId, (store) => ({
+        ...store,
+        groups: (store.groups || []).map((g) => String(g.id) === String(groupId)
+          ? { ...g, exercises: (g.exercises || []).filter((ex) => String(ex.id) !== String(exerciseId)) }
+          : g)
+      }));
       return { ok: true, offline: true };
     }
     const removeOfflineGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises\/([^/?]+)/);
@@ -1360,6 +1395,12 @@ async function api(path, options = {}) {
       const exerciseId = decodeURIComponent(removeOfflineGroupExerciseMatch[2]);
       addToOfflineQueue(userId, { type: 'removeGroupExercise', groupId, exerciseId });
       cacheRemoveGroupExercise(userId, groupId, exerciseId);
+      updateStore(userId, (store) => ({
+        ...store,
+        groups: (store.groups || []).map((g) => String(g.id) === String(groupId)
+          ? { ...g, exercises: (g.exercises || []).filter((ex) => String(ex.id) !== String(exerciseId)) }
+          : g)
+      }));
       return { ok: true, offline: true };
     }
     const reorderGroupExerciseMatch = path.match(/\/api\/groups\/([^/]+)\/exercises-order$/);
@@ -1378,23 +1419,50 @@ async function api(path, options = {}) {
       let body = {};
       try { body = JSON.parse(options.body || '{}'); } catch {}
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const ruleId = `offline_${Date.now()}_${Math.random()}`;
       addToOfflineQueue(userId, {
         type: 'assignScheduleRule',
-        ruleId: `offline_${Date.now()}_${Math.random()}`,
+        ruleId,
         routineId: body.routineId,
         mode: body.mode,
         dayOfWeek: body.dayOfWeek,
         orderIndex: body.orderIndex
       });
       cacheAssignScheduleRule(userId);
+      // Optimistic: thêm rule vào store (replace cùng slot nếu có)
+      updateStore(userId, (store) => {
+        const isMatchSlot = (r) => r.mode === body.mode && (body.mode === 'FIXED'
+          ? Number(r.day_of_week) === Number(body.dayOfWeek)
+          : Number(r.order_index) === Number(body.orderIndex));
+        const others = (store.scheduleRules || []).filter((r) => !isMatchSlot(r));
+        const routine = (store.routines || []).find((rt) => Number(rt.id) === Number(body.routineId));
+        return {
+          ...store,
+          scheduleRules: [...others, {
+            id: ruleId,
+            routine_id: Number(body.routineId),
+            routine_name: routine?.name || '',
+            mode: body.mode,
+            day_of_week: body.mode === 'FIXED' ? Number(body.dayOfWeek) : null,
+            order_index: body.mode === 'ROLLING' ? Number(body.orderIndex) : null,
+            syncStatus: 'pending'
+          }]
+        };
+      });
       return { ok: true, offline: true };
     }
     const deleteRuleMatch = path.match(/\/api\/schedule-rules\/([^/?]+)/);
     if (offlineQueue && method === 'DELETE' && deleteRuleMatch) {
       if (await checkServerAvailable(1000)) throw err;
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
-      addToOfflineQueue(userId, { type: 'deleteScheduleRule', ruleId: decodeURIComponent(deleteRuleMatch[1]) });
+      const ruleId = decodeURIComponent(deleteRuleMatch[1]);
+      addToOfflineQueue(userId, { type: 'deleteScheduleRule', ruleId });
       cacheAssignScheduleRule(userId);
+      // Optimistic: xóa khỏi store
+      updateStore(userId, (store) => ({
+        ...store,
+        scheduleRules: (store.scheduleRules || []).filter((r) => String(r.id) !== String(ruleId))
+      }));
       return { ok: true, offline: true };
     }
     // Khi mất mạng hoặc server tạm không tới được, trả về cache cho GET requests.
@@ -3427,6 +3495,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
               ) : (
                 <div className="flex items-center gap-2 font-bold">
                   {group.name} · {t('builder_exercises_count', group.exercises.length)}
+                  {group.syncStatus === 'pending' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                   <button className="icon-btn" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
                 </div>
               )}
