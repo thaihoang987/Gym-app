@@ -470,9 +470,19 @@ async function flushOfflineQueue(userId) {
   saveOfflineQueue(userId, failed);
   if (failed.length !== queue.length) {
     clearWorkoutApiCaches(userId);
-    // Sau khi sync xong, fetch lại groups/routines để gymStore có ID thực thay tempId
-    api(`/api/groups?userId=${userId}`).catch(() => {});
-    api(`/api/routines?userId=${userId}`).catch(() => {});
+    // Sync xong → fetch lại để gymStore replace tempId bằng realId + clear pending markers
+    await Promise.all([
+      api(`/api/groups?userId=${userId}`).catch(() => {}),
+      api(`/api/routines?userId=${userId}`).catch(() => {})
+    ]);
+  }
+  // Nếu queue rỗng: clear mọi pending markers còn sót trong store (tránh stale badge)
+  if (!failed.length) {
+    updateStore(Number(userId), (store) => ({
+      ...store,
+      groups: (store.groups || []).map((g) => g.syncStatus === 'pending' ? { ...g, syncStatus: 'synced' } : g),
+      scheduleRules: (store.scheduleRules || []).map((r) => r.syncStatus === 'pending' ? { ...r, syncStatus: 'synced' } : r)
+    }));
   }
   return queue.length - failed.length;
 }
@@ -2042,7 +2052,7 @@ function Header({ user, boot, onLogout }) {
         <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
           {avatarContent(user.avatar)}
         </button>
-        <span className="mt-0.5 text-[10px] font-semibold text-slate-400">v0.1.0</span>
+        <span className="mt-0.5 text-[10px] font-semibold text-slate-400">{`v${__APP_VERSION__}`}</span>
         {open && (
           <div className="avatar-menu">
             <button onClick={onLogout}><LogOut size={17} /> {t('logout')}</button>
@@ -2876,7 +2886,8 @@ function ExerciseLibrary({ userId, settings }) {
   const [meta, setMeta] = useState({ targets: [] });
   const [q, setQ] = useState('');
   const [target, setTarget] = useState('');
-  const [groups, setGroups] = useState([]);
+  // Đọc groups từ gymStore để phản ánh offline changes ngay lập tức
+  const groups = useGymStore(userId, (s) => s.groups || []);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [editingExercise, setEditingExercise] = useState(null);
   const [showCustomForm, setShowCustomForm] = useState(false);
@@ -2907,7 +2918,8 @@ function ExerciseLibrary({ userId, settings }) {
   useEffect(() => {
     syncPendingBeforeCatalogLoad(userId).finally(() => {
       api(`/api/exercises/meta?userId=${userId}`).then(setMeta);
-      api(`/api/groups?userId=${userId}`).then(setGroups);
+      // groups đọc từ gymStore, chỉ cần fetch để store update
+      api(`/api/groups?userId=${userId}`).catch(() => {});
     });
   }, [userId]);
   useEffect(() => {
@@ -2917,9 +2929,8 @@ function ExerciseLibrary({ userId, settings }) {
 
   const addToGroup = async (groupId, exerciseId) => {
     await api(`/api/groups/${groupId}/exercises`, { method: 'POST', body: JSON.stringify({ userId, exerciseId }) });
-    const updated = await api(`/api/groups?userId=${userId}`);
-    setGroups(updated);
-    // Tự cache ảnh + GIF của bài vừa thêm
+    // groups từ gymStore tự cập nhật, không cần setGroups
+    const updated = readStore(Number(userId)).groups || [];
     const exercise = updated.flatMap((g) => g.exercises).find((e) => e.id === exerciseId);
     if (exercise && 'caches' in window) {
       const cache = await caches.open(MEDIA_CACHE);
@@ -2936,8 +2947,8 @@ function ExerciseLibrary({ userId, settings }) {
       const name = await dialog.prompt(t('builder_group_name'));
       if (!name?.trim()) return;
       const created = await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: name.trim() }) });
-      const afterCreate = await api(`/api/groups?userId=${userId}`);
-      setGroups(afterCreate);
+      // gymStore đã có group mới (optimistic), fetch để sync
+      api(`/api/groups?userId=${userId}`).catch(() => {});
       await addToGroup(created.id, exerciseId);
       return;
     }
@@ -5381,7 +5392,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         <button className="primary" onClick={addUser}>{t('settings_add_user')}</button>
         <AdminUsers users={boot.users} adminId={userId} />
       </div>}
-      <p className="pb-4 text-center text-xs text-slate-400">Gym App v0.1.0</p>
+      <p className="pb-4 text-center text-xs text-slate-400">Gym App {`v${__APP_VERSION__}`}</p>
     </section>
   );
 }
