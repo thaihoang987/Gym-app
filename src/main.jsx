@@ -146,6 +146,16 @@ function replaceCollection(userId, key, items) {
   });
 }
 
+function cleanupStalePendingStore(userId) {
+  const uid = Number(userId);
+  if (!uid || getOfflineQueue(uid).length > 0) return;
+  updateStore(uid, (store) => ({
+    ...store,
+    groups: (store.groups || []).filter((g) => g.syncStatus !== 'pending'),
+    scheduleRules: (store.scheduleRules || []).filter((r) => r.syncStatus !== 'pending'),
+  }));
+}
+
 function upsertEntity(userId, key, entity) {
   updateStore(userId, (store) => {
     const items = store[key] || [];
@@ -384,10 +394,47 @@ function ServerStatusProvider({ children }) {
 const OFFLINE_QUEUE_KEY = (userId) => `gymOfflineQueue:${userId}`;
 
 function getOfflineQueue(userId) {
-  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY(userId)) || '[]'); } catch { return []; }
+  try {
+    const key = OFFLINE_QUEUE_KEY(userId);
+    const raw = localStorage.getItem(key) || '[]';
+    const queue = JSON.parse(raw);
+    const normalized = normalizeOfflineQueueEntries(Array.isArray(queue) ? queue : []);
+    if (JSON.stringify(normalized) !== JSON.stringify(queue)) localStorage.setItem(key, JSON.stringify(normalized));
+    return normalized;
+  } catch { return []; }
 }
 function saveOfflineQueue(userId, queue) {
-  localStorage.setItem(OFFLINE_QUEUE_KEY(userId), JSON.stringify(queue));
+  localStorage.setItem(OFFLINE_QUEUE_KEY(userId), JSON.stringify(normalizeOfflineQueueEntries(queue || [])));
+}
+function normalizeOfflineQueueEntries(queue) {
+  const deletedSessionIds = new Set(queue.filter((entry) => entry.type === 'deleteSession').map((entry) => String(entry.sessionId)));
+  const createdGroupIds = new Set(queue.filter((entry) => entry.type === 'createGroup').map((entry) => String(entry.groupId)));
+  const deletedGroupIds = new Set(queue.filter((entry) => entry.type === 'deleteGroup').map((entry) => String(entry.groupId)));
+  const localDeletedGroupIds = new Set([...deletedGroupIds].filter((groupId) => createdGroupIds.has(groupId) || groupId.startsWith('offline_')));
+  const seen = new Set();
+  return queue.filter((entry) => {
+    if (!entry?.type) return false;
+    if (entry.sessionId !== undefined && deletedSessionIds.has(String(entry.sessionId)) && entry.type !== 'deleteSession') return false;
+    if (localDeletedGroupIds.has(String(entry.groupId))) return false;
+    if (deletedGroupIds.has(String(entry.groupId)) && ['addGroupExercise', 'removeGroupExercise', 'reorderGroupExercises'].includes(entry.type)) return false;
+    if (entry.type === 'deleteGroup' && localDeletedGroupIds.has(String(entry.groupId))) return false;
+    const key = [
+      entry.type,
+      entry.sessionId ?? '',
+      entry.groupId ?? '',
+      entry.exerciseId ?? '',
+      entry.ruleId ?? '',
+      entry.setIndex ?? '',
+      entry.mode ?? '',
+      entry.dayOfWeek ?? '',
+      entry.orderIndex ?? ''
+    ].join('|');
+    if (['complete', 'deleteSession', 'deleteGroup', 'deleteScheduleRule'].includes(entry.type)) {
+      if (seen.has(key)) return false;
+      seen.add(key);
+    }
+    return true;
+  });
 }
 function addToOfflineQueue(userId, entry) {
   let q = getOfflineQueue(userId);
@@ -1319,8 +1366,8 @@ function routeGetResponseToStore(path, data) {
 async function api(path, options = {}) {
   const isGet = !options.method || options.method === 'GET';
   const method = (options.method || 'GET').toUpperCase();
-  const { offlineQueue = true, timeoutMs = 8000, ...fetchOptions } = options;
-  const browserOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const { offlineQueue = true, timeoutMs = 8000, forceOffline = false, ...fetchOptions } = options;
+  const browserOffline = forceOffline || (typeof navigator !== 'undefined' && navigator.onLine === false);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -1767,13 +1814,7 @@ function App() {
     migrateLegacyCacheToStore(savedUser.id);
     // Nếu queue rỗng ngay lúc mount → xóa hết stale pending trong store
     const uid = Number(savedUser.id);
-    if (getOfflineQueue(uid).length === 0) {
-      updateStore(uid, (store) => ({
-        ...store,
-        groups: (store.groups || []).filter((g) => g.syncStatus !== 'pending'),
-        scheduleRules: (store.scheduleRules || []).filter((r) => r.syncStatus !== 'pending'),
-      }));
-    }
+    cleanupStalePendingStore(uid);
   }, [savedUser?.id]);
 
   // Sync offline queue ngay khi vừa có mạng lại (chỉ trigger lúc offline→online)
@@ -1785,6 +1826,7 @@ function App() {
     if (!isServerOnline) return;
     const tSync = createT(user?.locale);
     flushOfflineQueue(user.id).then((synced) => {
+      cleanupStalePendingStore(user.id);
       if (synced > 0) {
         setSyncMsg(tSync('sync_done', synced));
         if (justCameOnline) setRefresh((v) => v + 1);
@@ -3399,6 +3441,7 @@ function SortableRoutineGroupRow({ group, onRemove }) {
 function Builder({ userId, boot, onStart, onChanged }) {
   const t = useLang();
   const dialog = useAppDialog();
+  const { online: serverOnline } = useServerStatus();
   // Đọc từ gymStore (single source). Local state đã được bỏ.
   const groups = useGymStore(userId, (s) => s.groups || []);
   const routines = useGymStore(userId, (s) => s.routines || []);
@@ -3425,9 +3468,9 @@ function Builder({ userId, boot, onStart, onChanged }) {
 
   const createGroup = async () => {
     if (!groupName.trim()) return;
-    await api('/api/groups', { method: 'POST', body: JSON.stringify({ userId, name: groupName }) });
+    const result = await api('/api/groups', { method: 'POST', forceOffline: !serverOnline, body: JSON.stringify({ userId, name: groupName }) });
     setGroupName('');
-    load();
+    if (!result?.offline) load();
   };
   const reorderGroupExercises = async (groupId, fromExerciseId, toExerciseId) => {
     if (!fromExerciseId || !toExerciseId || fromExerciseId === toExerciseId) return;
