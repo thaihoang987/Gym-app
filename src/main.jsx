@@ -2214,7 +2214,8 @@ function Header({ user, boot, onLogout }) {
 function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   // Đọc từ gymStore (single source of truth)
   const data = useGymStore(userId, (s) => s.dashboard);
-  const groups = useGymStore(userId, (s) => s.groups || []);
+  const storeGroups = useGymStore(userId, (s) => s.groups || []);
+  const groups = applyOfflineGroupMutations(userId, storeGroups);
   const routines = useGymStore(userId, (s) => s.routines || []);
   const rules = useGymStore(userId, (s) => s.scheduleRules || []);
   const routineData = { routines, rules };
