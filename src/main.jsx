@@ -216,15 +216,15 @@ const gymStore = {
 };
 
 // React hook: đọc store + auto-rerender khi store thay đổi
+// Dùng useSyncExternalStore để tránh tearing và missed notifications
 function useGymStore(userId, selector) {
-  const select = selector || ((s) => s);
-  const [snapshot, setSnapshot] = useState(() => select(readStore(userId)));
-  useEffect(() => {
-    if (!userId) return;
-    setSnapshot(select(readStore(userId)));
-    return subscribeStore(userId, () => setSnapshot(select(readStore(userId))));
-  }, [userId]);
-  return snapshot;
+  const uid = Number(userId);
+  const select = React.useCallback(selector || ((s) => s), []);
+  return React.useSyncExternalStore(
+    React.useCallback((cb) => subscribeStore(uid, cb), [uid]),
+    React.useCallback(() => select(readStore(uid)), [uid, select]),
+    React.useCallback(() => select(createEmptyStore()), [select])
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1710,9 +1710,19 @@ function App() {
   const { online: isServerOnline, forceCheck: recheckServer } = useServerStatus();
   const wasOnlineRef = React.useRef(isServerOnline);
 
-  // Migrate dữ liệu legacy cache → gymStore lần đầu mount
+  // Migrate + cleanup stale pending khi app mount
   useEffect(() => {
-    if (savedUser?.id) migrateLegacyCacheToStore(savedUser.id);
+    if (!savedUser?.id) return;
+    migrateLegacyCacheToStore(savedUser.id);
+    // Nếu queue rỗng ngay lúc mount → xóa hết stale pending trong store
+    const uid = Number(savedUser.id);
+    if (getOfflineQueue(uid).length === 0) {
+      updateStore(uid, (store) => ({
+        ...store,
+        groups: (store.groups || []).filter((g) => g.syncStatus !== 'pending'),
+        scheduleRules: (store.scheduleRules || []).filter((r) => r.syncStatus !== 'pending'),
+      }));
+    }
   }, [savedUser?.id]);
 
   // Sync offline queue ngay khi vừa có mạng lại (chỉ trigger lúc offline→online)
