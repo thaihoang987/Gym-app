@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.7'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.8'; // tăng khi data schema thay đổi
 
 function bustCacheIfNeeded() {
   try {
@@ -2570,7 +2570,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
   const dialog = useAppDialog();
   const weekly = suggestion?.weekly || [];
   const total = weekly.length;
-  const doneCount = weekly.filter((r) => r.completedCount > 0).length;
+  const doneCount = weekly.filter((r) => Number(r.completedCount || 0) > 0).length;
   const resetWeek = async () => {
     if (!(await dialog.confirm(t('weekly_reset_confirm')))) return;
     try {
@@ -2628,7 +2628,10 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
           </div>
           <div className="space-y-2">
             {weekly.map((routine) => {
-              const done = routine.completedCount > 0;
+              const count = Number(routine.completedCount || 0);
+              const done = count > 0;
+              const groupCount = Array.isArray(routine.groups) ? routine.groups.length : (typeof routine.groups === 'string' ? routine.groups.trim().split(/\s+/).filter(Boolean).length : 0);
+              const exerciseCount = Array.isArray(routine.exercises) ? routine.exercises.length : (typeof routine.exercises === 'string' ? routine.exercises.trim().split(/\s+/).filter(Boolean).length : 0);
               return (
                 <div key={routine.id} className={`flex items-center gap-2 rounded-lg border p-3 ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}>
                   <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${done ? 'bg-emerald-500 text-white' : 'border-2 border-orange-300 bg-white text-orange-300'}`}>
@@ -2637,10 +2640,10 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-bold ${done ? 'text-emerald-900' : 'text-orange-900'}`}>
                       {routine.name}
-                      {routine.completedCount > 0 && <span className="ml-1.5 text-xs font-black">×{routine.completedCount}</span>}
+                      {count > 0 && <span className="ml-1.5 text-xs font-black">×{count}</span>}
                     </p>
                     <p className={`text-xs ${done ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {routine.groups?.length || 0} group · {routine.exercises?.length || 0} {t('bài')}
+                      {groupCount} group · {exerciseCount} {t('bài')}
                     </p>
                   </div>
                   <button
