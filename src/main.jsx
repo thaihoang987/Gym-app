@@ -77,7 +77,8 @@ function createEmptyStore() {
 const storeListeners = new Map(); // userId → Set<callback>
 
 function notifyStoreListeners(userId) {
-  const listeners = storeListeners.get(Number(userId));
+  const uid = Number(userId);
+  const listeners = storeListeners.get(uid);
   if (!listeners) return;
   for (const cb of listeners) { try { cb(); } catch {} }
 }
@@ -91,7 +92,7 @@ function subscribeStore(userId, callback) {
 
 function readStore(userId) {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY(userId)) || 'null');
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY(Number(userId))) || 'null');
     if (!raw || raw.version !== STORE_VERSION) return createEmptyStore();
     return { ...createEmptyStore(), ...raw };
   } catch {
@@ -101,8 +102,8 @@ function readStore(userId) {
 
 function writeStore(userId, store) {
   try {
-    localStorage.setItem(STORE_KEY(userId), JSON.stringify(store));
-    notifyStoreListeners(userId);
+    localStorage.setItem(STORE_KEY(Number(userId)), JSON.stringify(store));
+    notifyStoreListeners(Number(userId));
   } catch {}
 }
 
@@ -405,7 +406,12 @@ async function flushOfflineQueue(userId) {
   const groupIdMap = new Map();
   for (const entry of queue) {
     try {
-      if (entry.type === 'createGroup') {
+      if (entry.type === 'deleteGroup') {
+        const realGroupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
+        if (!String(realGroupId).startsWith('offline_')) {
+          await api(`/api/groups/${realGroupId}`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
+        }
+      } else if (entry.type === 'createGroup') {
         const created = await api('/api/groups', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, colorHex: entry.colorHex }) });
         groupIdMap.set(String(entry.groupId), created.id);
       } else if (entry.type === 'addGroupExercise') {
@@ -1411,6 +1417,21 @@ async function api(path, options = {}) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       const groupId = decodeURIComponent(reorderGroupExerciseMatch[1]);
       addToOfflineQueue(userId, { type: 'reorderGroupExercises', groupId, exerciseIds: body.exerciseIds || [] });
+      cacheGroupMutations(userId);
+      return { ok: true, offline: true };
+    }
+    // DELETE /api/groups/:id — xoá cả group
+    const deleteGroupMatch = path.match(/\/api\/groups\/([^/?]+)(?:\?|$)/);
+    if (offlineQueue && method === 'DELETE' && deleteGroupMatch && !path.includes('/exercises')) {
+      if (await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = decodeURIComponent(deleteGroupMatch[1]);
+      addToOfflineQueue(userId, { type: 'deleteGroup', groupId });
+      // Optimistic: xoá khỏi store ngay
+      updateStore(Number(userId), (store) => ({
+        ...store,
+        groups: (store.groups || []).filter((g) => String(g.id) !== String(groupId))
+      }));
       cacheGroupMutations(userId);
       return { ok: true, offline: true };
     }
@@ -5356,6 +5377,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         <button className="primary" onClick={addUser}>{t('settings_add_user')}</button>
         <AdminUsers users={boot.users} adminId={userId} />
       </div>}
+      <p className="pb-4 text-center text-xs text-slate-400">Gym App v0.1.0</p>
     </section>
   );
 }
