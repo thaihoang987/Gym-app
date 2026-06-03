@@ -115,11 +115,14 @@ function updateStore(userId, updater) {
 }
 
 // Replace toàn bộ collection sau khi fetch server (server là nguồn chuẩn).
-// Giữ lại pending entities (chưa có id thực) ở cuối.
+// Giữ lại pending entities (chưa sync lên server) ở cuối.
+// pending = items trong store có syncStatus='pending' VÀ ID không tồn tại trong server response.
 function replaceCollection(userId, key, items) {
   updateStore(userId, (store) => {
     const synced = (items || []).map((it) => ({ ...it, syncStatus: 'synced' }));
-    const pending = (store[key] || []).filter((it) => it.syncStatus === 'pending' && String(it.id || '').startsWith('temp_'));
+    const serverIds = new Set((items || []).map((it) => String(it.id)));
+    // Giữ lại các pending entities chưa có trên server (tempId / offline_xxx)
+    const pending = (store[key] || []).filter((it) => it.syncStatus === 'pending' && !serverIds.has(String(it.id)));
     return { ...store, [key]: [...synced, ...pending] };
   });
 }
@@ -2035,10 +2038,11 @@ function Header({ user, boot, onLogout }) {
         </div>
         <p className="text-sm text-teal-950">{getModeLabels(t)[boot.settings.schedule_mode]} · {t('exercises_count', boot.exerciseCount)}</p>
       </div>
-      <div className="relative" ref={menuRef}>
+      <div className="relative flex flex-col items-center" ref={menuRef}>
         <button onClick={() => setOpen((current) => !current)} className="grid h-12 w-12 place-items-center overflow-hidden rounded-full bg-emerald-500 text-green-950 font-bold">
           {avatarContent(user.avatar)}
         </button>
+        <span className="mt-0.5 text-[10px] font-semibold text-slate-400">v0.1.0</span>
         {open && (
           <div className="avatar-menu">
             <button onClick={onLogout}><LogOut size={17} /> {t('logout')}</button>
