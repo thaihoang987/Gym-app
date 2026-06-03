@@ -3865,28 +3865,31 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 )}
               </div>
               {editingGroupId !== group.id && (
-                <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
+                <>
+                  <button className="icon-btn shrink-0" title={t('builder_rename_group')} onClick={() => startEditGroup(group)}><Pencil size={14} /></button>
+                  <button
+                    onClick={() => startGroup(group)}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f05a28] text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
+                    title={t('start_exercise')}
+                  >
+                    <Play size={18} fill="currentColor" />
+                  </button>
+                </>
               )}
             </div>
-            {editingGroupId !== group.id && (
-              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                <button
-                  onClick={() => startGroup(group)}
-                  className="flex items-center justify-center gap-2 rounded-lg bg-[#f05a28] px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
-                >
-                  <Play size={15} /> {t('start_exercise')}
-                </button>
-                <button
-                  onClick={() => deleteGroup(group.id)}
-                  className="grid h-9 w-9 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
-                  title={t('delete')}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            )}
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_exercise_list')}</summary>
+            <details className="mt-3 group">
+              <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-bold text-teal-950">
+                <span>{t('builder_exercise_list')}</span>
+                {editingGroupId !== group.id && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteGroup(group.id); }}
+                    className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
+                    title={t('delete')}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </summary>
               <div className="mt-3 space-y-2">
                 {group.exercises.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleExerciseDragEnd(event, group.id)}>
@@ -3953,28 +3956,31 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     )}
                   </div>
                   {editingRoutineId !== routine.id && (
-                    <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
+                    <>
+                      <button className="icon-btn shrink-0" title={t('builder_rename_routine')} onClick={() => startEditRoutine(routine)}><Pencil size={14} /></button>
+                      <button
+                        onClick={() => startRoutine(routine)}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f05a28] text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
+                        title={t('start_exercise')}
+                      >
+                        <Play size={18} fill="currentColor" />
+                      </button>
+                    </>
                   )}
                 </div>
-                {editingRoutineId !== routine.id && (
-                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                    <button
-                      onClick={() => startRoutine(routine)}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-[#f05a28] px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#d94f23] active:scale-95"
-                    >
-                      <Play size={15} /> {t('start_exercise')}
-                    </button>
-                    <button
-                      onClick={() => deleteRoutine(routine.id)}
-                      className="grid h-9 w-9 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
-                      title={t('delete')}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                )}
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-sm font-bold text-teal-950">{t('builder_group_list')}</summary>
+                  <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-bold text-teal-950">
+                    <span>{t('builder_group_list')}</span>
+                    {editingRoutineId !== routine.id && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteRoutine(routine.id); }}
+                        className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-500 transition-all hover:bg-red-100 active:scale-95"
+                        title={t('delete')}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </summary>
                   <div className="mt-3 grid gap-2">
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleRoutineGroupDragEnd(event, routine.id)}>
                     <SortableContext items={routine.groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
