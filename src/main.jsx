@@ -1250,14 +1250,14 @@ function cacheGroupMutations(userId) {
   writeGroupsCache(userId, groups);
 }
 
-function optimisticOfflineGroup(userId, group) {
+function optimisticOfflineGroup(userId, group, syncStatus = 'pending') {
   const nextGroup = {
     id: group.id,
     name: group.name,
     icon: group.icon || '💪',
     color_hex: group.color_hex || group.colorHex || '#78e0a6',
     exercises: group.exercises || [],
-    syncStatus: 'pending'
+    syncStatus
   };
   const groups = applyOfflineGroupMutations(userId, [
     ...cachedGroups(userId).filter((item) => String(item.id) !== String(nextGroup.id)),
@@ -3508,12 +3508,16 @@ function Builder({ userId, boot, onStart, onChanged }) {
   const createGroup = async () => {
     const name = groupName.trim();
     if (!name) return;
-    const result = await api('/api/groups', { method: 'POST', forceOffline: !serverOnline, body: JSON.stringify({ userId, name }) });
-    if (result?.offline && result.id) {
-      optimisticOfflineGroup(userId, { id: result.id, name, icon: '💪', color_hex: '#78e0a6', exercises: [] });
+    try {
+      const result = await api('/api/groups', { method: 'POST', forceOffline: !serverOnline, body: JSON.stringify({ userId, name }) });
+      if (result?.id) {
+        optimisticOfflineGroup(userId, { id: result.id, name, icon: '💪', color_hex: '#78e0a6', exercises: [] }, result.offline ? 'pending' : 'synced');
+      }
+      setGroupName('');
+      if (!result?.offline) load();
+    } catch (error) {
+      await dialog.alert(error.message || 'Không thêm được group');
     }
-    setGroupName('');
-    if (!result?.offline) load();
   };
   const reorderGroupExercises = async (groupId, fromExerciseId, toExerciseId) => {
     if (!fromExerciseId || !toExerciseId || fromExerciseId === toExerciseId) return;
