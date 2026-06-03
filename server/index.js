@@ -568,6 +568,45 @@ function getTodayDow() {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+// Tính ISO date của ngày đầu chu kỳ tuần hiện tại theo resetDay (0=Mon..6=Sun)
+function getWeekStartIso(resetDay = 0) {
+  const today = new Date();
+  const dow = getTodayDow(); // 0=Mon..6=Sun
+  const reset = Math.max(0, Math.min(6, Number(resetDay) || 0));
+  // diff = số ngày từ resetDay đến hôm nay (mod 7)
+  const diff = (dow - reset + 7) % 7;
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - diff);
+  return start.toISOString().slice(0, 10);
+}
+
+// Lấy danh sách routine + count completed trong tuần hiện tại
+function getWeeklyStatus(userId) {
+  const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
+  const resetDay = Number(settings?.weekly_reset_day || 0);
+  const weekStartIso = getWeekStartIso(resetDay);
+  // Lấy list routine_ids từ rolling rules (giữ ngữ nghĩa cũ)
+  const rules = all(`
+    SELECT routine_id FROM routine_schedule_rules
+    WHERE user_id = ? AND mode = 'ROLLING'
+    ORDER BY order_index
+  `, [userId]);
+  return rules.map((rule) => {
+    const routine = getRoutine(rule.routine_id, userId);
+    if (!routine) return null;
+    // Đếm số session COMPLETED của routine này trong tuần hiện tại
+    const countRow = one(`
+      SELECT COUNT(*) AS n FROM workout_sessions
+      WHERE user_id = ? AND routine_id = ? AND status = 'COMPLETED'
+        AND date(completed_at, 'localtime') >= ?
+    `, [userId, rule.routine_id, weekStartIso]);
+    return {
+      ...routine,
+      completedCount: Number(countRow?.n || 0),
+      weekStartIso
+    };
+  }).filter(Boolean);
+}
+
 function publicUser(user) {
   return user ? { id: user.id, name: user.name, username: user.username, avatar: user.avatar, role: user.role, authVersion: authVersion(user.password_hash) } : null;
 }
@@ -617,7 +656,7 @@ function cleanupStaleActiveSessions(userId) {
           SET status = 'COMPLETED', completed_at = ?
           WHERE id = ? AND user_id = ? AND status = 'ACTIVE'
         `).run(session.last_log_at, session.id, userId);
-        if (session.schedule_mode === 'ROLLING') advanceRollingSchedule(userId);
+        // Weekly Goal: không advance, chỉ đếm completed_at trong tuần
         summary.completed += 1;
       } else {
         db.prepare('DELETE FROM workout_sessions WHERE id = ? AND user_id = ? AND status = \'ACTIVE\'').run(session.id, userId);
@@ -654,10 +693,17 @@ function smartSuggestion(userId) {
     WHERE user_id = ? AND mode = 'ROLLING' AND order_index = ?
   `, [userId, settings.current_rolling_index]);
 
+  // Weekly Goal mode: trả về danh sách routines + completedCount
+  const weekly = getWeeklyStatus(userId);
+  const total = weekly.length;
+  const done = weekly.filter((r) => r.completedCount > 0).length;
   return {
     mode: 'ROLLING',
+    weekly,
+    weeklyResetDay: Number(settings.weekly_reset_day || 0),
+    title: total === 0 ? 'Chưa có buổi nào trong tuần' : `${done}/${total} buổi tập tuần này`,
+    // Backward compat
     rollingIndex: settings.current_rolling_index,
-    title: rule ? `Buổi ${settings.current_rolling_index} trong chu kỳ` : 'Chu kỳ chưa hoàn tất',
     routine: rule ? getRoutine(rule.routine_id, userId) : null
   };
 }
@@ -831,6 +877,7 @@ app.patch('/api/settings', (req, res) => {
   if (req.body.gender !== undefined) addUpdate('gender', req.body.gender || null);
   if (req.body.birthDate !== undefined) addUpdate('birth_date', req.body.birthDate || null);
   if (req.body.heightUnit !== undefined && ['cm', 'ft-in'].includes(req.body.heightUnit)) addUpdate('height_unit', req.body.heightUnit);
+  if (req.body.weeklyResetDay !== undefined) addUpdate('weekly_reset_day', Math.max(0, Math.min(6, Number(req.body.weeklyResetDay || 0))));
   if (req.body.distanceUnit !== undefined && ['km', 'mile'].includes(req.body.distanceUnit)) addUpdate('distance_unit', req.body.distanceUnit);
   if (req.body.energyUnit !== undefined && ['kcal', 'kJ'].includes(req.body.energyUnit)) addUpdate('energy_unit', req.body.energyUnit);
   if (req.body.clockFormat !== undefined && ['12h', '24h'].includes(req.body.clockFormat)) addUpdate('clock_format', req.body.clockFormat);
@@ -1742,9 +1789,7 @@ app.post('/api/sessions/:id/complete', (req, res) => {
 
   const tx = db.transaction(() => {
     db.prepare("UPDATE workout_sessions SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
-    if (session.schedule_mode === 'ROLLING') {
-      advanceRollingSchedule(userId);
-    }
+    // Weekly Goal mode: không advance, đếm theo completed_at trong tuần
   });
   tx();
   res.json({ ok: true, suggestion: smartSuggestion(userId) });

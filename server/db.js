@@ -350,7 +350,9 @@ export function migrate() {
     ['notify_missed_workout', 'INTEGER NOT NULL DEFAULT 0'],
     ['notify_missed_workout_time', "TEXT NOT NULL DEFAULT '21:00'"],
     ['privacy_pin_lock', 'INTEGER NOT NULL DEFAULT 0'],
-    ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0']
+    ['privacy_hide_progress_photos', 'INTEGER NOT NULL DEFAULT 0'],
+    // Weekly Goal mode: ngày reset chu kỳ (0=Mon, 6=Sun)
+    ['weekly_reset_day', 'INTEGER NOT NULL DEFAULT 0']
   ];
   for (const [column, definition] of userSettingColumns) {
     if (!hasColumn('user_settings', column)) {

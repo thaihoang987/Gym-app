@@ -669,6 +669,7 @@ function settingsPatchToCacheFields(body = {}) {
     birthDate: 'birth_date',
     heightUnit: 'height_unit',
     clockFormat: 'clock_format',
+    weeklyResetDay: 'weekly_reset_day',
     restSeconds: 'rest_seconds',
     defaultSets: 'default_sets',
     defaultReps: 'default_reps',
@@ -2434,8 +2435,68 @@ function BodyWeightInput({ userId, settings }) {
   );
 }
 
+function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine }) {
+  const t = useLang();
+  const weekly = suggestion?.weekly || [];
+  const total = weekly.length;
+  const doneCount = weekly.filter((r) => r.completedCount > 0).length;
+  return (
+    <div className="panel-green">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-emerald-200">{formatTime(clock, settings)}</p>
+          <h2 className="mt-1 text-2xl font-bold">{t('schedule_rolling_panel_title')}</h2>
+          <p className="mt-2 text-sm text-emerald-200">{suggestion?.title || ''}</p>
+        </div>
+        <CalendarDays size={34} />
+      </div>
+      {total === 0 ? (
+        <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">{t('today_go_schedule')}</p>
+      ) : (
+        <div className="mt-5 space-y-3">
+          <div className="rounded-lg bg-white/8 p-3">
+            <p className="text-sm text-emerald-200">{t('weekly_progress')}</p>
+            <p className="mt-1 text-xl font-bold">{doneCount}/{total} {t('weekly_done')}</p>
+          </div>
+          <div className="space-y-2">
+            {weekly.map((routine) => {
+              const done = routine.completedCount > 0;
+              return (
+                <div key={routine.id} className={`flex items-center gap-2 rounded-lg border p-3 ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}>
+                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${done ? 'bg-emerald-500 text-white' : 'border-2 border-orange-300 bg-white text-orange-300'}`}>
+                    {done ? <Check size={18} /> : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-bold ${done ? 'text-emerald-900' : 'text-orange-900'}`}>
+                      {routine.name}
+                      {routine.completedCount > 0 && <span className="ml-1.5 text-xs font-black">×{routine.completedCount}</span>}
+                    </p>
+                    <p className={`text-xs ${done ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {routine.groups?.length || 0} group · {routine.exercises?.length || 0} {t('bài')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onStartRoutine(routine)}
+                    className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white ${done ? 'bg-emerald-600' : 'bg-[#f05a28]'}`}
+                  >
+                    {done ? <span className="flex items-center gap-1"><Play size={12} fill="currentColor" /> {t('weekly_repeat')}</span> : <span className="flex items-center gap-1"><Play size={12} fill="currentColor" /> {t('start_exercise')}</span>}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings, activeSession }) {
   const t = useLang();
+  // Weekly Goal mode (formerly ROLLING) → hiện checklist mới
+  if (suggestion?.mode === 'ROLLING') {
+    return <WeeklyGoalCard suggestion={suggestion} clock={clock} settings={settings} onStartRoutine={onStartRoutine} />;
+  }
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
   const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
@@ -5408,6 +5469,7 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [heightFeet, setHeightFeet] = useState(initialFtIn.feet);
   const [heightInches, setHeightInches] = useState(initialFtIn.inches);
   const [clockFormat, setClockFormat] = useState(settings.clock_format || '24h');
+  const [weeklyResetDay, setWeeklyResetDay] = useState(Number(settings.weekly_reset_day ?? 0));
   const [restSeconds, setRestSeconds] = useState(settings.rest_seconds || 60);
   const [defaultSets, setDefaultSets] = useState(settings.default_sets || 3);
   const [defaultReps, setDefaultReps] = useState(settings.default_reps || 12);
@@ -5483,6 +5545,7 @@ function SettingsPage({ userId, boot, onChanged }) {
     weightStepsLb: parseWeightSteps(settings.weight_steps_lb, defaultLbOptions, 'lb'),
     soundRestDone: Boolean(settings.sound_rest_done), vibrateRestDone: Boolean(settings.vibrate_rest_done),
     countdown3s: Boolean(settings.countdown_3s), autoNextSet: Boolean(settings.auto_next_set),
+    weeklyResetDay: Number(settings.weekly_reset_day ?? 0),
   });
   const dirtyCount = useMemo(() => {
     const init = initialRef.current;
@@ -5498,10 +5561,12 @@ function SettingsPage({ userId, boot, onChanged }) {
       soundRestDone !== init.soundRestDone, vibrateRestDone !== init.vibrateRestDone,
       countdown3s !== init.countdown3s, autoNextSet !== init.autoNextSet,
       avatarPreview !== (boot.activeUser.avatar || ''),
+      weeklyResetDay !== init.weeklyResetDay,
     ].filter(Boolean).length;
   }, [name, password, timezone, locale, heightCm, defaultWeightUnit, gender, birthDate,
       clockFormat, restSeconds, defaultSets, defaultReps, progressiveOverload, soundRestDone,
-      vibrateRestDone, countdown3s, autoNextSet, avatarPreview, weightStepsKg, weightStepsLb]);
+      vibrateRestDone, countdown3s, autoNextSet, avatarPreview, weightStepsKg, weightStepsLb,
+      weeklyResetDay]);
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
     const name = await dialog.prompt(t('settings_name'));
@@ -5542,6 +5607,7 @@ function SettingsPage({ userId, boot, onChanged }) {
           birthDate,
           heightUnit,
           clockFormat,
+          weeklyResetDay,
           restSeconds,
           defaultSets,
           defaultReps,
@@ -5655,6 +5721,15 @@ function SettingsPage({ userId, boot, onChanged }) {
           onConfirm={dialog.confirm}
         />
         <SwitchSetting label={t('settings_progressive_label')} checked={progressiveOverload} onChange={setProgressiveOverload} />
+        <div>
+          <label className="label">{t('settings_weekly_reset_label')}</label>
+          <select className="input" value={weeklyResetDay} onChange={(e) => setWeeklyResetDay(Number(e.target.value))}>
+            {[0,1,2,3,4,5,6].map((d) => (
+              <option key={d} value={d}>{t('days')[d]}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">{t('settings_weekly_reset_hint')}</p>
+        </div>
       </SettingsGroup>
 
       <SettingsGroup title={t('settings_timer_section')}>
