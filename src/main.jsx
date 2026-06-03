@@ -436,6 +436,23 @@ function normalizeOfflineQueueEntries(queue) {
     return true;
   });
 }
+function isStaleOfflineQueueError(error) {
+  const status = Number(error?.status || 0);
+  if ([400, 404, 409, 422].includes(status)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return [
+    'not found',
+    'không tìm thấy',
+    'missing',
+    'invalid',
+    'already',
+    'deleted',
+    'http 400',
+    'http 404',
+    'http 409',
+    'http 422'
+  ].some((needle) => message.includes(needle));
+}
 function addToOfflineQueue(userId, entry) {
   let q = getOfflineQueue(userId);
   if (entry.type === 'settingsUpdate') {
@@ -540,7 +557,8 @@ async function flushOfflineQueue(userId) {
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) continue;
         await api(`/api/sessions/${sessionId}`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
       }
-    } catch {
+    } catch (error) {
+      if (isStaleOfflineQueueError(error)) continue;
       const mappedSessionId = sessionIdMap.get(Number(entry.sessionId));
       const mappedGroupId = groupIdMap.get(String(entry.groupId));
       failed.push({
@@ -1380,7 +1398,13 @@ async function api(path, options = {}) {
       ...fetchOptions
     });
     clearTimeout(timeoutId);
-    if (!response.ok) throw new Error((await response.json()).error || 'Lỗi API');
+    if (!response.ok) {
+      let errorBody = {};
+      try { errorBody = await response.json(); } catch {}
+      const apiError = new Error(errorBody.error || `HTTP ${response.status}`);
+      apiError.status = response.status;
+      throw apiError;
+    }
     const data = await response.json();
     const dataWithOffline = isGet ? applyOfflineQueueToCachedApi(path, data) : data;
     // Cache GET responses vào localStorage (legacy) + gymStore (new)
@@ -2133,7 +2157,7 @@ function Header({ user, boot, onLogout }) {
   }, [open]);
 
   const pendingCount = useMemo(() => {
-    try { return (JSON.parse(localStorage.getItem(`gymOfflineQueue:${user.id}`) || '[]')).length; } catch { return 0; }
+    try { return getOfflineQueue(user.id).length; } catch { return 0; }
   }, [user.id, serverOnline, now]);
 
   return (
