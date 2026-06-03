@@ -735,6 +735,30 @@ function findOfflineSessionPayload(userId, sessionId) {
   return payload;
 }
 
+  // Fallback 1: cached /api/sessions/:id từ lần online trước
+  const cachedSession = readApiCache(`/api/sessions/${sessionId}?userId=${userId}`);
+  if (cachedSession?.exercises?.length) {
+    return {
+      ...cachedSession,
+      exercises: addPendingCountsToExercises(cachedSession.exercises, logs, sessionId)
+    };
+  }
+
+  // Fallback 2: tìm trong /api/sessions/active
+  const activeCache = readApiCache(`/api/sessions/active?userId=${userId}`);
+  const activeSessions = activeCache?.sessions || (activeCache?.session ? [activeCache] : []);
+  const match = activeSessions.find((entry) => Number(entry.session?.id) === Number(sessionId));
+  if (match?.exercises?.length) {
+    return {
+      session: match.session,
+      routine: match.routine,
+      group: match.group,
+      exercises: addPendingCountsToExercises(match.exercises, logs, sessionId)
+    };
+  }
+  return null;
+}
+
 function applyOfflineGroupMutations(userId, groups) {
   const { createdGroups, deletedGroupIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises } = pendingOfflineState(userId);
   if (!createdGroups.length && !deletedGroupIds.size && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length) return groups;
@@ -811,30 +835,6 @@ function applyOfflineScheduleMutations(userId, payload = {}) {
   }
   rules.sort((a, b) => String(a.mode).localeCompare(String(b.mode)) || Number(a.day_of_week ?? a.order_index ?? 0) - Number(b.day_of_week ?? b.order_index ?? 0));
   return { ...payload, routines, rules };
-}
-
-  // Fallback 1: cached /api/sessions/:id từ lần online trước
-  const cachedSession = readApiCache(`/api/sessions/${sessionId}?userId=${userId}`);
-  if (cachedSession?.exercises?.length) {
-    return {
-      ...cachedSession,
-      exercises: addPendingCountsToExercises(cachedSession.exercises, logs, sessionId)
-    };
-  }
-
-  // Fallback 2: tìm trong /api/sessions/active
-  const activeCache = readApiCache(`/api/sessions/active?userId=${userId}`);
-  const activeSessions = activeCache?.sessions || (activeCache?.session ? [activeCache] : []);
-  const match = activeSessions.find((entry) => Number(entry.session?.id) === Number(sessionId));
-  if (match?.exercises?.length) {
-    return {
-      session: match.session,
-      routine: match.routine,
-      group: match.group,
-      exercises: addPendingCountsToExercises(match.exercises, logs, sessionId)
-    };
-  }
-  return null;
 }
 
 function addPendingCountsToExercises(exercises = [], pendingLogs = [], sessionId = null) {
