@@ -1226,7 +1226,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.28'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.29'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3165,7 +3165,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
         <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSelectedDay(null)}>
           <div
             className="w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white"
-            style={{ maxHeight: 'calc(85vh - env(safe-area-inset-bottom))', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            style={{ maxHeight: 'calc(100vh - 5.5rem - env(safe-area-inset-bottom))', paddingBottom: '1.5rem' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Handle */}
@@ -4949,6 +4949,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [paused, setPaused] = useState(false);
   const [sets, setSets] = useState([]);
   const [previousSets, setPreviousSets] = useState([]);
+  const [allTimePR, setAllTimePR] = useState(0);
   const [note, setNote] = useState('');
   const [targetSets, setTargetSets] = useState(3);
   const [weightMode, setWeightMode] = useState('KG');
@@ -5010,6 +5011,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!exercise) return;
     api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`).then((payload) => {
       setPreviousSets(payload.previous || []);
+      setAllTimePR(Number(payload.allTimePR || 0));
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualWeight(payload.manualWeightKg ?? '');
@@ -5463,10 +5465,33 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
             )}
           </div>
+          {(() => {
+            // Epley 1RM từ set done tốt nhất hiện tại
+            const bestDone = [...sets].filter((s) => s.done && Number(s.weightKg||0) > 0 && Number(s.reps||0) > 0)
+              .sort((a,b) => Number(b.weightKg)*Number(b.reps) - Number(a.weightKg)*Number(a.reps))[0];
+            const e1rm = bestDone ? Math.round(Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30)) : null;
+            const prBeat = e1rm && allTimePR > 0 && e1rm > allTimePR;
+            return null; // chỉ tính, render dưới
+          })()}
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
-              <p className="mt-1 text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_unit === 'lb' ? Number(kgToLb(previousSets[0].weight_kg).toFixed(1)) + ' lb' : previousSets[0].weight_kg + ' kg'} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
+              {(() => {
+                const bestDone = [...sets].filter((s) => s.done && Number(s.weightKg||0) > 0 && Number(s.reps||0) > 0)
+                  .sort((a,b) => Number(b.weightKg)*Number(b.reps) - Number(a.weightKg)*Number(a.reps))[0];
+                const e1rm = bestDone ? Math.round(Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30)) : null;
+                return (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_unit === 'lb' ? Number(kgToLb(previousSets[0].weight_kg).toFixed(1)) + ' lb' : previousSets[0].weight_kg + ' kg'} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
+                    {e1rm && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${allTimePR > 0 && e1rm > allTimePR ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {allTimePR > 0 && e1rm > allTimePR ? '🏆 ' : ''}~1RM {e1rm} kg
+                      </span>
+                    )}
+                    {allTimePR > 0 && <span className="text-xs text-slate-400">PR {allTimePR}kg</span>}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <div className="weight-mode-controls">
@@ -5491,9 +5516,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
+                // PR: set đã done và weight vượt all-time max
+                const isPR = set.done && allTimePR > 0 && Number(set.weightKg || 0) > allTimePR;
                 return (
-                  <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''}`}>
-                    <strong className="set-number">{set.setIndex}</strong>
+                  <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
+                    <strong className="set-number">
+                      {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
+                    </strong>
                     <span className="set-previous">{previous ? `${previous.weight_unit === 'lb' ? Number(kgToLb(previous.weight_kg).toFixed(1)) + 'lb' : previous.weight_kg + 'kg'} × ${previous.reps}` : '-'}</span>
                     {weightMode === 'MANUAL' ? (
                       <input
@@ -5930,20 +5959,55 @@ function Analytics({ userId, settings }) {
           <div>
             <ExerciseProgressPicker exercises={analytics.exercises} value={selectedExerciseId} onChange={setSelectedExerciseId} />
             {exerciseChartRows.length ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={exerciseChartRows}>
-                  <XAxis
-                    dataKey="ts"
-                    type="number"
-                    domain={chartDomain}
-                    stroke="#334155"
-                    tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
-                  />
-                  <YAxis stroke="#334155" label={{ value: exerciseChartUnit.toUpperCase(), angle: -90, position: 'insideLeft' }} />
-                  <Tooltip labelFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
-                  <Line type="monotone" dataKey="display_weight" name={exerciseChartUnit.toUpperCase()} stroke="#2563eb" strokeWidth={3} dot />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="space-y-4">
+                {/* Max weight chart */}
+                <div>
+                  <p className="mb-1 text-xs font-bold text-slate-500 uppercase tracking-wide">Max Weight ({exerciseChartUnit})</p>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={exerciseChartRows}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="ts" type="number" domain={chartDomain} stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} />
+                      <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                      <Tooltip labelFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} formatter={(v) => [`${v} ${exerciseChartUnit}`, 'Max']} />
+                      <Line type="monotone" dataKey="display_weight" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4, fill: '#2563eb' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Volume chart */}
+                <div>
+                  <p className="mb-1 text-xs font-bold text-slate-500 uppercase tracking-wide">Volume (kg×reps)</p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={exerciseChartRows}>
+                      <defs>
+                        <linearGradient id="volFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="ts" type="number" domain={chartDomain} stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} />
+                      <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => formatVolume(v) || v} />
+                      <Tooltip labelFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} formatter={(v) => [formatVolume(v), 'Volume']} />
+                      <Area type="monotone" dataKey="volume" stroke="#10b981" fill="url(#volFill)" strokeWidth={2} dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Sets & Reps */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-lg font-black">{exerciseChartRows.reduce((s,r) => s+Number(r.sets||0), 0)}</p>
+                    <p className="text-xs text-slate-500">total sets</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-lg font-black">{Math.max(...exerciseChartRows.map(r => Number(r.display_weight||0)))}</p>
+                    <p className="text-xs text-slate-500">best {exerciseChartUnit}</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-lg font-black">{exerciseChartRows.length}</p>
+                    <p className="text-xs text-slate-500">sessions</p>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="mt-4">
                 <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>
