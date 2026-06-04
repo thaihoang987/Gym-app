@@ -986,7 +986,7 @@ function applyOfflineQueueToCachedApi(path, data) {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('schedule_rolling_panel_title') });
+const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('mode_free') });
 const defaultKgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const defaultLbOptions = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140, 160, 180, 200, 220];
 const kgOptions = defaultKgOptions;
@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.14'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.15'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1293,6 +1293,75 @@ function historyRowInWeek(row, routine) {
   return day && day >= weekStart && (!weekEnd || day < weekEnd);
 }
 
+function weeklyWindowFromSettings(settings = {}) {
+  const resetDay = Math.max(0, Math.min(6, Number(settings.weekly_reset_day || 0)));
+  const today = new Date();
+  const jsDow = today.getDay() === 0 ? 6 : today.getDay() - 1;
+  const diff = (jsDow - resetDay + 7) % 7;
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - diff);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  return { weekStartIso: localIsoDate(start), weekEndIso: localIsoDate(end), resetDay };
+}
+
+function recalcWeeklyStatsFromHistory(dashboard, settings = {}) {
+  if (!dashboard) return dashboard;
+  const week = weeklyWindowFromSettings(settings);
+  const rows = (dashboard.recentHistory || []).filter((row) => {
+    const day = String(row.completed_at || row.started_at || '').slice(0, 10);
+    return day >= week.weekStartIso && day < week.weekEndIso;
+  });
+  const byActivityMap = new Map();
+  for (const row of rows) {
+    const name = row.routine_name || row.group_name || 'Free workout';
+    const current = byActivityMap.get(name) || {
+      name,
+      sessions: 0,
+      sets: 0,
+      exercises: 0,
+      minutes: 0,
+      reps: 0,
+      volume: 0,
+      imageUrl: row.imageUrl || row.gifUrl || ''
+    };
+    current.sessions += 1;
+    current.sets += Number(row.sets || 0);
+    current.exercises += Number(row.exercises || 0);
+    current.minutes += Number(row.duration_minutes || 0);
+    if (!current.imageUrl && (row.imageUrl || row.gifUrl)) current.imageUrl = row.imageUrl || row.gifUrl;
+    byActivityMap.set(name, current);
+  }
+  const byDay = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(week.weekStartIso);
+    date.setDate(date.getDate() + index);
+    const day = localIsoDate(date);
+    const dayRows = rows.filter((row) => String(row.completed_at || row.started_at || '').slice(0, 10) === day);
+    return {
+      day,
+      sessions: dayRows.length,
+      sets: dayRows.reduce((sum, row) => sum + Number(row.sets || 0), 0),
+      exercises: dayRows.reduce((sum, row) => sum + Number(row.exercises || 0), 0),
+      minutes: dayRows.reduce((sum, row) => sum + Number(row.duration_minutes || 0), 0),
+      images: dayRows.map((row) => row.imageUrl || row.gifUrl).filter(Boolean).slice(0, 4)
+    };
+  });
+  return {
+    ...dashboard,
+    weeklyStats: {
+      ...week,
+      totalSessions: rows.length,
+      totalSets: rows.reduce((sum, row) => sum + Number(row.sets || 0), 0),
+      totalExercises: rows.reduce((sum, row) => sum + Number(row.exercises || 0), 0),
+      totalMinutes: rows.reduce((sum, row) => sum + Number(row.duration_minutes || 0), 0),
+      totalReps: Number(dashboard.weeklyStats?.totalReps || 0),
+      totalVolume: Number(dashboard.weeklyStats?.totalVolume || 0),
+      activities: rows.slice(0, 12),
+      byActivity: [...byActivityMap.values()].sort((a, b) => b.sessions - a.sessions || b.sets - a.sets).slice(0, 8),
+      byDay
+    }
+  };
+}
+
 function recalcWeeklyFromHistory(dashboard) {
   const weekly = dashboard?.suggestion?.weekly;
   if (!Array.isArray(weekly)) return dashboard;
@@ -1342,45 +1411,23 @@ function offlineSuggestion(userId) {
   const routines = routineData.routines || [];
   const rules = routineData.rules || [];
   const mode = settings.schedule_mode || 'FREE';
-  if (mode === 'FREE') return { mode: 'FREE', title: 'Tập tự do', routine: null };
-  if (mode === 'FIXED') {
-    const dow = todayDowIndex();
-    const rule = rules.find((item) => item.mode === 'FIXED' && Number(item.day_of_week) === dow);
-    const routine = rule ? routines.find((item) => Number(item.id) === Number(rule.routine_id)) : null;
-    return { mode: 'FIXED', dayOfWeek: dow, title: rule ? `Lịch cố định hôm nay` : 'Hôm nay chưa gán lịch', routine: routine || null };
-  }
-  const index = Number(settings.current_rolling_index || 1);
-  const rule = rules.find((item) => item.mode === 'ROLLING' && Number(item.order_index) === index);
+  if (mode !== 'FIXED') return { mode: 'FREE', title: 'Tập tự do', routine: null };
+  const dow = todayDowIndex();
+  const rule = rules.find((item) => item.mode === 'FIXED' && Number(item.day_of_week) === dow);
   const routine = rule ? routines.find((item) => Number(item.id) === Number(rule.routine_id)) : null;
-  // Tính weekly list từ cache routines + rules (không có completedCount offline)
-  const rollingRules = rules.filter((item) => item.mode === 'ROLLING').sort((a, b) => Number(a.order_index) - Number(b.order_index));
-  const weekly = rollingRules.map((r) => {
-    const rt = routines.find((item) => Number(item.id) === Number(r.routine_id));
-    if (!rt) return null;
-    // completedCount: lấy từ dashboard cache nếu có
-    const dashCache = readApiCache(`/api/dashboard?userId=${userId}`);
-    const cachedWeekly = dashCache?.suggestion?.weekly || [];
-    const cachedItem = cachedWeekly.find((w) => Number(w.id) === Number(rt.id));
-    return { ...rt, completedCount: cachedItem?.completedCount || 0, directCount: cachedItem?.directCount || 0, groupCoverage: cachedItem?.groupCoverage || 0 };
-  }).filter(Boolean);
-  const total = weekly.length;
-  const done = weekly.filter((r) => r.completedCount > 0).length;
-  return {
-    mode: 'ROLLING',
-    weekly,
-    rollingIndex: index,
-    routine: routine || null,
-    title: total === 0 ? 'Chưa có buổi nào trong tuần' : `${done}/${total} buổi tập tuần này`
-  };
+  return { mode: 'FIXED', dayOfWeek: dow, title: rule ? `Lịch cố định hôm nay` : 'Hôm nay chưa gán lịch', routine: routine || null };
 }
 
 function offlineDashboardData(userId) {
   const cached = readDashboardCache(userId) || {};
+  const settings = readBootCache(userId)?.settings || {};
+  const withWeeklyStats = recalcWeeklyStatsFromHistory(cached, settings);
   return {
-    suggestion: cached.suggestion || readBootCache(userId)?.suggestion || offlineSuggestion(userId),
-    activityCalendar: cached.activityCalendar || [],
-    recentHistory: cached.recentHistory || [],
-    todaySummary: cached.todaySummary || []
+    suggestion: withWeeklyStats.suggestion || readBootCache(userId)?.suggestion || offlineSuggestion(userId),
+    weeklyStats: withWeeklyStats.weeklyStats || recalcWeeklyStatsFromHistory({ recentHistory: [] }, settings).weeklyStats,
+    activityCalendar: withWeeklyStats.activityCalendar || [],
+    recentHistory: withWeeklyStats.recentHistory || [],
+    todaySummary: withWeeklyStats.todaySummary || []
   };
 }
 
@@ -1435,7 +1482,7 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
     };
     cached.recentHistory = [newRow, ...(cached.recentHistory || []).filter((r) => r.id !== sessionId)];
     if (cached.recentHistory.length > 50) cached.recentHistory = cached.recentHistory.slice(0, 50);
-    writeDashboardCache(userId, recalcWeeklyFromHistory(cached));
+    writeDashboardCache(userId, recalcWeeklyStatsFromHistory(recalcWeeklyFromHistory(cached), readBootCache(userId)?.settings || {}));
   } catch {}
 }
 
@@ -1447,7 +1494,7 @@ function optimisticDeleteSession(userId, sessionId) {
     const row = (cached.recentHistory || []).find((r) => Number(r.id) === Number(sessionId));
     if (!row) return;
     cached.recentHistory = (cached.recentHistory || []).filter((r) => Number(r.id) !== Number(sessionId));
-    writeDashboardCache(userId, recalcWeeklyFromHistory(cached));
+    writeDashboardCache(userId, recalcWeeklyStatsFromHistory(recalcWeeklyFromHistory(cached), readBootCache(userId)?.settings || {}));
   } catch {}
 }
 
@@ -2573,8 +2620,9 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       <BodyWeightInput userId={userId} settings={settings} />
       <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} userId={userId} onChanged={loadAll} />
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
-      <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} />
+      {settings?.schedule_mode === 'FIXED' && <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} />}
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
+      <WeeklyStatsCard stats={data?.weeklyStats} settings={settings} />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
     </section>
   );
@@ -2724,10 +2772,6 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
 
 function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, settings, activeSession, userId, onChanged }) {
   const t = useLang();
-  // Weekly Goal mode (formerly ROLLING) → hiện checklist mới
-  if (suggestion?.mode === 'ROLLING') {
-    return <WeeklyGoalCard suggestion={suggestion} clock={clock} settings={settings} onStartRoutine={onStartRoutine} userId={userId} onChanged={onChanged} />;
-  }
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
   const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
@@ -2744,7 +2788,6 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
             !suggestion ? t('today_title') :
             suggestion.mode === 'FREE' ? t('mode_free') :
             suggestion.routine ? t('today_title') :
-            suggestion.mode === 'ROLLING' ? t('schedule_rolling') :
             t('no_session')
           }</h2>
           <p className="mt-2 text-sm text-emerald-200">
@@ -2976,15 +3019,10 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   const doneDays = new Set(historyByDay.keys());
   const routineById = new Map(routines.map((routine) => [routine.id, routine]));
   const fixedByDay = new Map(rules.filter((rule) => rule.mode === 'FIXED').map((rule) => [rule.day_of_week, routineById.get(rule.routine_id)]));
-  const rollingRules = rules.filter((rule) => rule.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
-  const isRolling = suggestion?.mode === 'ROLLING';
 
-  // Luôn hiện 7 ngày, today ở giữa (cả fixed lẫn rolling)
+  // Luôn hiện 7 ngày, today ở giữa
   const dayCount = 7;
   const centerOffset = -3; // today at index 3
-
-  // For rolling: count future sessions from rolling index
-  let rollingFutureOffset = 0;
 
   const scheduleItems = Array.from({ length: dayCount }, (_, itemIndex) => {
     const date = new Date(startOfToday);
@@ -2996,24 +3034,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
     const mainDone = dayHistory[0];
     const fixedRoutine = fixedByDay.get(weekdayIndex);
 
-    let rollingRoutine = null;
-    if (isRolling && rollingRules.length) {
-      const isPastOrToday = date <= startOfToday;
-      if (isPastOrToday && done) {
-        // Ngày đã tập: lấy từ history
-        const historyRoutineId = mainDone?.routine_id;
-        rollingRoutine = historyRoutineId ? routineById.get(historyRoutineId) : null;
-      } else if (!isPastOrToday || (isPastOrToday && date.toDateString() === today.toDateString())) {
-        // Hôm nay hoặc tương lai: tính theo rolling index, KHÔNG wrap — hết buổi thì để trống
-        const baseIndex = Math.max(0, (suggestion?.rollingIndex || 1) - 1);
-        const ruleIndex = baseIndex + rollingFutureOffset;
-        const rule = ruleIndex < rollingRules.length ? rollingRules[ruleIndex] : null;
-        rollingRoutine = rule ? routineById.get(rule.routine_id) : null;
-        rollingFutureOffset++;
-      }
-    }
-
-    const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : isRolling ? rollingRoutine : null;
+    const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : null;
     return {
       key,
       label: t('days')[weekdayIndex],
@@ -3042,7 +3063,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
   return (
     <div className="panel">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="section-title mb-0">{isRolling ? t('rolling_title') : t('week_title')}</h2>
+        <h2 className="section-title mb-0">{t('week_title')}</h2>
         <div className="flex items-center gap-2">
             <button
               className="tiny-btn"
@@ -3223,6 +3244,92 @@ function ActivityCalendar({ calendar, history, settings }) {
         </div>
       </div>
       {tip && <div className="calendar-tip" style={{ left: tip.x + 10, top: tip.y + 10 }}>{tip.text}</div>}
+    </div>
+  );
+}
+
+function WeeklyStatsCard({ stats, settings }) {
+  const t = useLang();
+  const safeStats = stats || {};
+  const start = safeStats.weekStartIso ? parseServerDate(safeStats.weekStartIso) : null;
+  const end = safeStats.weekEndIso ? parseServerDate(safeStats.weekEndIso) : null;
+  const endLabel = end ? new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1) : null;
+  const rangeLabel = start && endLabel ? `${formatDate(start, settings)} - ${formatDate(endLabel, settings)}` : '';
+  const byDay = Array.isArray(safeStats.byDay) ? safeStats.byDay : [];
+  const byActivity = Array.isArray(safeStats.byActivity) ? safeStats.byActivity : [];
+  const activities = Array.isArray(safeStats.activities) ? safeStats.activities : [];
+  const maxDaySessions = Math.max(1, ...byDay.map((day) => Number(day.sessions || 0)));
+  const statTiles = [
+    [t('weekly_stat_sessions'), safeStats.totalSessions || 0],
+    [t('weekly_stat_exercises'), safeStats.totalExercises || 0],
+    [t('weekly_stat_sets'), safeStats.totalSets || 0],
+    [t('weekly_stat_minutes'), safeStats.totalMinutes || 0]
+  ];
+
+  return (
+    <div className="weekly-stats-panel">
+      <div className="weekly-stats-header">
+        <div>
+          <p className="weekly-stats-eyebrow">{t('weekly_stats_range')}</p>
+          <h2>{t('weekly_stats_title')}</h2>
+          {rangeLabel && <p>{rangeLabel}</p>}
+        </div>
+        <div className="weekly-stats-volume">
+          <span>{Math.round(Number(safeStats.totalVolume || 0)).toLocaleString()}</span>
+          <small>{t('weekly_stat_volume')}</small>
+        </div>
+      </div>
+
+      <div className="weekly-stats-grid">
+        {statTiles.map(([label, value]) => (
+          <div key={label} className="weekly-stat-tile">
+            <strong>{value}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="weekly-day-strip">
+        {byDay.map((day, index) => {
+          const date = parseServerDate(day.day);
+          const height = Math.max(10, Math.round((Number(day.sessions || 0) / maxDaySessions) * 54));
+          return (
+            <div key={day.day || index} className="weekly-day-cell">
+              <div className="weekly-day-images">
+                {(day.images || []).slice(0, 3).map((src, imageIndex) => <img key={`${src}-${imageIndex}`} src={src} />)}
+                {!(day.images || []).length && <Dumbbell size={16} />}
+              </div>
+              <div className="weekly-day-bar" style={{ height }} />
+              <strong>{t('days')[index]}</strong>
+              <span>{date ? date.getDate() : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="weekly-activity-list">
+        {byActivity.length === 0 ? (
+          <p className="weekly-empty">{t('weekly_stats_empty')}</p>
+        ) : byActivity.map((item) => (
+          <div key={item.name} className="weekly-activity-row">
+            {item.imageUrl ? <img src={item.imageUrl} /> : <span><Dumbbell size={18} /></span>}
+            <div>
+              <strong>{item.name}</strong>
+              <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {activities.length > 0 && (
+        <div className="weekly-thumb-row">
+          {activities.slice(0, 8).map((item) => (
+            item.imageUrl
+              ? <img key={item.id} src={item.imageUrl} title={item.routine_name || item.group_name || t('history_free_session')} />
+              : <span key={item.id}><Dumbbell size={16} /></span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4092,14 +4199,14 @@ function Builder({ userId, boot, onStart, onChanged }) {
     if (!over || active.id === over.id) return;
     reorderRoutines(active.id, over.id);
   };
-  const setMode = async (mode) => {
-    await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ userId, scheduleMode: mode }) });
+  const setFixedScheduleEnabled = async (enabled) => {
+    await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ userId, scheduleMode: enabled ? 'FIXED' : 'FREE' }) });
     onChanged();
   };
   const assignRule = async (routineId, mode, value) => {
     await api('/api/schedule-rules', {
       method: 'POST',
-      body: JSON.stringify({ userId, routineId, mode, dayOfWeek: mode === 'FIXED' ? Number(value) : undefined, orderIndex: mode === 'ROLLING' ? Number(value) : undefined })
+      body: JSON.stringify({ userId, routineId, mode: 'FIXED', dayOfWeek: Number(value) })
     });
     load();
     onChanged();
@@ -4115,19 +4222,14 @@ function Builder({ userId, boot, onStart, onChanged }) {
       <div className="builder-section">
         <h2 className="section-title">{t('schedule_title')}</h2>
         <p className="mb-2 text-sm text-teal-900">{t('schedule_hint')}</p>
-        <div className="grid gap-2">
-          {['FIXED', 'ROLLING'].map((mode) => (
-            <label key={mode} className={`mode-btn flex items-center gap-3 ${boot.settings.schedule_mode === mode ? 'active' : ''}`}>
-              <input
-                type="radio"
-                name="scheduleMode"
-                checked={boot.settings.schedule_mode === mode}
-                onChange={() => setMode(mode)}
-              />
-              <span>{getModeLabels(t)[mode]}</span>
-            </label>
-          ))}
-        </div>
+        <label className={`mode-btn flex items-center gap-3 ${boot.settings.schedule_mode === 'FIXED' ? 'active' : ''}`}>
+          <input
+            type="checkbox"
+            checked={boot.settings.schedule_mode === 'FIXED'}
+            onChange={(event) => setFixedScheduleEnabled(event.target.checked)}
+          />
+          <span>{t('schedule_fixed_panel_title')}</span>
+        </label>
       </div>
 
       <div className="builder-section">
@@ -4323,23 +4425,13 @@ function Builder({ userId, boot, onStart, onChanged }) {
             </SortableContext>
           </DndContext>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
           <ScheduleAssignPanel
             title={t('schedule_fixed_panel_title')}
             description={t('schedule_fixed_panel_desc')}
             mode="FIXED"
             routines={routineData.routines}
             rules={routineData.rules.filter((rule) => rule.mode === 'FIXED')}
-            onAssign={assignRule}
-            onDelete={deleteRule}
-            onStart={startRoutine}
-          />
-          <ScheduleAssignPanel
-            title={t('schedule_rolling_panel_title')}
-            description={t('schedule_rolling_panel_desc')}
-            mode="ROLLING"
-            routines={routineData.routines}
-            rules={routineData.rules.filter((rule) => rule.mode === 'ROLLING')}
             onAssign={assignRule}
             onDelete={deleteRule}
             onStart={startRoutine}
@@ -4369,10 +4461,8 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
               </div>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
-              <option value="">{mode === 'FIXED' ? t('schedule_assign_fixed') : t('schedule_assign_rolling')}</option>
-              {mode === 'FIXED'
-                ? t('days').map((d, i) => <option key={d} value={i}>{d}</option>)
-                : [1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{t('schedule_session_n', n)}</option>)}
+              <option value="">{t('schedule_assign_fixed')}</option>
+              {t('days').map((d, i) => <option key={d} value={i}>{d}</option>)}
             </select>
           </article>
         ))}
@@ -4391,7 +4481,7 @@ function ScheduleRules({ rules, onDelete }) {
       {rules.map((rule) => (
         <div key={rule.id} className="flex items-center justify-between gap-3 border-t border-slate-200 py-2 first:border-t-0">
           <p className="text-sm text-slate-700">
-            {rule.mode === 'FIXED' ? t('days')[rule.day_of_week] : t('schedule_session_n', rule.order_index)} · {rule.routine_name}
+            {t('days')[rule.day_of_week]} · {rule.routine_name}
           </p>
           <button className="tiny-btn" onClick={() => onDelete(rule.id)}><Trash2 size={16} /></button>
         </div>

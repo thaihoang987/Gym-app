@@ -587,11 +587,11 @@ function addDaysIso(value, days) {
 }
 
 // Lấy danh sách routine + count completed trong tuần hiện tại
-function getWeeklyStatus(userId) {
+function getRollingWeeklyStatus(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const resetDay = Number(settings?.weekly_reset_day || 0);
   const naturalStart = getWeekStartIso(resetDay);
-  const manualReset = settings?.weekly_last_reset_at || null;
+  const manualReset = null;
   // Lấy mốc gần nhất (manual reset luôn ưu tiên nếu đứng sau natural week start)
   const weekStartIso = manualReset && String(manualReset) > naturalStart ? String(manualReset) : naturalStart;
   const weekEndIso = addDaysIso(weekStartIso, 7);
@@ -638,6 +638,107 @@ function getWeeklyStatus(userId) {
       weekEndIso
     };
   }).filter(Boolean);
+}
+
+function getWeeklyWindow(userId) {
+  const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
+  const resetDay = Number(settings?.weekly_reset_day || 0);
+  const weekStartIso = getWeekStartIso(resetDay);
+  const weekEndIso = addDaysIso(weekStartIso, 7);
+  return { weekStartIso, weekEndIso, resetDay };
+}
+
+function getWeeklyStats(userId) {
+  const week = getWeeklyWindow(userId);
+  const rows = all(`
+    SELECT
+      ws.id,
+      ws.routine_id,
+      ws.group_id,
+      ws.schedule_mode,
+      ws.started_at,
+      ws.completed_at,
+      CAST((julianday(ws.completed_at) - julianday(ws.started_at)) * 86400 AS INTEGER) AS duration_seconds,
+      COALESCE(r.name, cg.name, 'Free workout') AS activity_name,
+      r.name AS routine_name,
+      cg.name AS group_name,
+      COUNT(wl.id) AS sets,
+      COUNT(DISTINCT wl.exercise_id) AS exercises,
+      COALESCE(SUM(wl.reps), 0) AS reps,
+      COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume,
+      (
+        SELECT e.image_path
+        FROM workout_logs wl2
+        JOIN exercises e ON e.id = wl2.exercise_id
+        WHERE wl2.session_id = ws.id
+        ORDER BY wl2.set_index ASC, wl2.id ASC
+        LIMIT 1
+      ) AS image_path
+    FROM workout_sessions ws
+    LEFT JOIN routines r ON r.id = ws.routine_id
+    LEFT JOIN custom_groups cg ON cg.id = ws.group_id
+    LEFT JOIN workout_logs wl ON wl.session_id = ws.id
+    WHERE ws.user_id = ? AND ws.status = 'COMPLETED'
+      AND ws.completed_at >= ?
+      AND ws.completed_at < ?
+    GROUP BY ws.id
+    ORDER BY ws.completed_at DESC
+  `, [userId, week.weekStartIso, week.weekEndIso]).map((row) => ({
+    ...row,
+    imageUrl: assetUrl(row.image_path),
+    duration_minutes: formatMinutes(row.duration_seconds)
+  }));
+
+  const byActivityMap = new Map();
+  for (const row of rows) {
+    const name = row.activity_name || row.routine_name || row.group_name || 'Free workout';
+    const current = byActivityMap.get(name) || {
+      name,
+      sessions: 0,
+      sets: 0,
+      exercises: 0,
+      minutes: 0,
+      reps: 0,
+      volume: 0,
+      imageUrl: row.imageUrl || ''
+    };
+    current.sessions += 1;
+    current.sets += Number(row.sets || 0);
+    current.exercises += Number(row.exercises || 0);
+    current.minutes += Number(row.duration_minutes || 0);
+    current.reps += Number(row.reps || 0);
+    current.volume += Number(row.volume || 0);
+    if (!current.imageUrl && row.imageUrl) current.imageUrl = row.imageUrl;
+    byActivityMap.set(name, current);
+  }
+
+  const byDay = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(week.weekStartIso);
+    date.setDate(date.getDate() + index);
+    const day = date.toISOString().slice(0, 10);
+    const dayRows = rows.filter((row) => String(row.completed_at || '').slice(0, 10) === day);
+    return {
+      day,
+      sessions: dayRows.length,
+      sets: dayRows.reduce((sum, row) => sum + Number(row.sets || 0), 0),
+      exercises: dayRows.reduce((sum, row) => sum + Number(row.exercises || 0), 0),
+      minutes: dayRows.reduce((sum, row) => sum + Number(row.duration_minutes || 0), 0),
+      images: dayRows.map((row) => row.imageUrl).filter(Boolean).slice(0, 4)
+    };
+  });
+
+  return {
+    ...week,
+    totalSessions: rows.length,
+    totalSets: rows.reduce((sum, row) => sum + Number(row.sets || 0), 0),
+    totalExercises: rows.reduce((sum, row) => sum + Number(row.exercises || 0), 0),
+    totalMinutes: rows.reduce((sum, row) => sum + Number(row.duration_minutes || 0), 0),
+    totalReps: rows.reduce((sum, row) => sum + Number(row.reps || 0), 0),
+    totalVolume: Math.round(rows.reduce((sum, row) => sum + Number(row.volume || 0), 0)),
+    activities: rows.slice(0, 12),
+    byActivity: [...byActivityMap.values()].sort((a, b) => b.sessions - a.sessions || b.sets - a.sets).slice(0, 8),
+    byDay
+  };
 }
 
 function publicUser(user) {
@@ -703,7 +804,7 @@ function cleanupStaleActiveSessions(userId) {
 
 function smartSuggestion(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
-  if (!settings || settings.schedule_mode === 'FREE') {
+  if (!settings || settings.schedule_mode !== 'FIXED') {
     return { mode: 'FREE', title: 'Tập tự do', routine: null };
   }
 
@@ -727,7 +828,7 @@ function smartSuggestion(userId) {
   `, [userId, settings.current_rolling_index]);
 
   // Weekly Goal mode: trả về danh sách routines + completedCount
-  const weekly = getWeeklyStatus(userId);
+  const weekly = getRollingWeeklyStatus(userId);
   const total = weekly.length;
   const done = weekly.filter((r) => r.completedCount > 0).length;
   return {
@@ -872,7 +973,7 @@ app.patch('/api/settings', (req, res) => {
   };
 
   if (req.body.scheduleMode !== undefined) {
-    if (!['FREE', 'FIXED', 'ROLLING'].includes(req.body.scheduleMode)) {
+    if (!['FREE', 'FIXED'].includes(req.body.scheduleMode)) {
       return res.status(400).json({ error: 'Invalid scheduleMode' });
     }
     addUpdate('schedule_mode', req.body.scheduleMode);
@@ -1341,7 +1442,7 @@ app.post('/api/schedule-rules', (req, res) => {
   const userId = getUserId(req);
   requireBody(['routineId', 'mode'], req.body);
   const mode = req.body.mode;
-  if (!['FIXED', 'ROLLING'].includes(mode)) return res.status(400).json({ error: 'Invalid mode' });
+  if (!['FIXED'].includes(mode)) return res.status(400).json({ error: 'Invalid mode' });
   if (mode === 'FIXED') requireBody(['dayOfWeek'], req.body);
   if (mode === 'ROLLING') requireBody(['orderIndex'], req.body);
 
@@ -1444,7 +1545,7 @@ app.get('/api/dashboard', (req, res) => {
     GROUP BY l.exercise_id
   `, [userId]);
 
-  res.json({ suggestion: smartSuggestion(userId), activityCalendar: calendar, recentHistory, todaySummary });
+  res.json({ suggestion: smartSuggestion(userId), weeklyStats: getWeeklyStats(userId), activityCalendar: calendar, recentHistory, todaySummary });
 });
 
 app.get('/api/history', (req, res) => {
@@ -1460,7 +1561,7 @@ app.post('/api/sessions', (req, res) => {
   const userId = getUserId(req);
   cleanupStaleActiveSessions(userId);
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
-  const scheduleMode = ['FREE', 'FIXED', 'ROLLING'].includes(req.body.scheduleMode) ? req.body.scheduleMode : settings.schedule_mode;
+  const scheduleMode = ['FREE', 'FIXED'].includes(req.body.scheduleMode) ? req.body.scheduleMode : (settings.schedule_mode === 'FIXED' ? 'FIXED' : 'FREE');
   const routineId = req.body.routineId ? Number(req.body.routineId) : null;
   const groupId = req.body.groupId ? Number(req.body.groupId) : null;
   const existing = routineId
