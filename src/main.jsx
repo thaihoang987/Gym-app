@@ -2637,7 +2637,13 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
       <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} userId={userId} settings={settings} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
-      <WeeklyStatsCard stats={data?.weeklyStats} settings={settings} />
+      <ScheduleRecordCard
+        history={data?.recentHistory || []}
+        routines={routineData.routines}
+        rules={routineData.rules}
+        suggestion={suggestion}
+        settings={settings}
+      />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
     </section>
   );
@@ -3553,6 +3559,162 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ScheduleRecordCard({ history, routines, rules, suggestion, settings }) {
+  const t = useLang();
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = tuần hiện tại, -1 = tuần trước...
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Tính Mon đầu tuần hiện tại + offset
+  const getMonday = (offset = 0) => {
+    const d = new Date(startOfToday);
+    const dow = d.getDay() === 0 ? 6 : d.getDay() - 1; // Mon=0
+    d.setDate(d.getDate() - dow + offset * 7);
+    return d;
+  };
+
+  const monday = getMonday(weekOffset);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+
+  const rangeLabel = `${monday.getDate()}/${monday.getMonth() + 1} – ${sunday.getDate()}/${sunday.getMonth() + 1}`;
+
+  // History grouped by day
+  const historyByDay = new Map();
+  for (const row of history) {
+    const key = String(row.completed_at || row.started_at || '').slice(0, 10);
+    if (!historyByDay.has(key)) historyByDay.set(key, []);
+    historyByDay.get(key).push(row);
+  }
+
+  // Routines/rules for scheduled days
+  const routineById = new Map(routines.map((r) => [r.id, r]));
+  const fixedByDay = new Map(rules.filter((r) => r.mode === 'FIXED').map((r) => [r.day_of_week, routineById.get(r.routine_id)]));
+  const rollingRules = rules.filter((r) => r.mode === 'ROLLING').sort((a, b) => a.order_index - b.order_index);
+  const isRolling = suggestion?.mode === 'ROLLING';
+
+  let rollingFutureOffset = 0;
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    const weekdayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
+    const key = localIsoDate(date);
+    const dayHistory = historyByDay.get(key) || [];
+    const done = dayHistory.length > 0;
+    const isPast = date < startOfToday;
+    const isToday = date.toDateString() === today.toDateString();
+    const isFuture = !isPast && !isToday;
+
+    // Scheduled routine for this day
+    let scheduledRoutine = null;
+    if (isToday || isFuture) {
+      if (!isRolling && suggestion?.mode === 'FIXED') {
+        scheduledRoutine = fixedByDay.get(weekdayIndex) || null;
+      } else if (isRolling && rollingRules.length) {
+        const baseIndex = Math.max(0, (suggestion?.rollingIndex || 1) - 1);
+        const ruleIndex = baseIndex + rollingFutureOffset;
+        const rule = ruleIndex < rollingRules.length ? rollingRules[ruleIndex] : null;
+        scheduledRoutine = rule ? routineById.get(rule.routine_id) : null;
+        rollingFutureOffset++;
+      }
+    } else if (done) {
+      // Past done: show from history
+      const historyRoutineId = dayHistory[0]?.routine_id;
+      scheduledRoutine = historyRoutineId ? routineById.get(historyRoutineId) : null;
+    }
+
+    const mainRow = dayHistory[0];
+    const extraCount = dayHistory.length - 1;
+    const imageUrl = mainRow?.imageUrl || scheduledRoutine?.exercises?.[0]?.imageUrl || null;
+    const routineName = done
+      ? (mainRow?.routine_name || mainRow?.group_name || t('session_free'))
+      : scheduledRoutine?.name || null;
+
+    const totalSets = dayHistory.reduce((s, r) => s + Number(r.sets || 0), 0);
+    const totalMin = dayHistory.reduce((s, r) => s + Number(r.duration_minutes || 0), 0);
+
+    return { date, weekdayIndex, key, dayHistory, done, isPast, isToday, isFuture, scheduledRoutine, routineName, imageUrl, extraCount, totalSets, totalMin };
+  });
+
+  return (
+    <div className="panel">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="section-title mb-0">Schedule Record</h2>
+        <div className="flex items-center gap-1.5">
+          <button className="tiny-btn" onClick={() => setWeekOffset((v) => v - 1)}>‹‹</button>
+          <span className="text-xs font-semibold text-slate-500 min-w-[6rem] text-center">{rangeLabel}</span>
+          <button className="tiny-btn" disabled={weekOffset >= 0} style={{ opacity: weekOffset >= 0 ? 0.35 : 1 }} onClick={() => setWeekOffset((v) => v + 1)}>››</button>
+        </div>
+      </div>
+
+      {/* 7-day grid */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {days.map(({ date, key, done, isToday, isFuture, scheduledRoutine, routineName, imageUrl, extraCount, totalSets, totalMin }) => {
+          const weekday = t('days')[date.getDay() === 0 ? 6 : date.getDay() - 1];
+          const hasSchedule = Boolean(scheduledRoutine);
+
+          let cardStyle = {};
+          let borderCls = 'border border-slate-200 bg-white';
+          let textCls = 'text-slate-800';
+
+          if (isToday) {
+            cardStyle = { background: '#166534', borderColor: '#166534' };
+            borderCls = 'border';
+            textCls = 'text-white';
+          } else if (done) {
+            borderCls = 'border border-emerald-300 bg-emerald-50';
+          }
+
+          return (
+            <div key={key} className={`rounded-xl ${borderCls} p-1.5 flex flex-col items-center text-center`} style={cardStyle}>
+              {/* Day + date */}
+              <p className={`text-[10px] font-bold uppercase ${isToday ? 'text-emerald-200' : 'text-slate-400'}`}>{weekday}</p>
+              <p className={`text-lg font-black leading-tight ${textCls}`}>{date.getDate()}</p>
+
+              {/* Image */}
+              <div className="my-1 h-10 w-10 flex items-center justify-center rounded-lg overflow-hidden" style={{ background: isToday ? 'rgba(255,255,255,0.15)' : '#f8fafc' }}>
+                {imageUrl
+                  ? <img src={imageUrl} className="h-full w-full object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                  : <Dumbbell size={18} className={isToday ? 'text-emerald-300' : 'text-slate-300'} />}
+              </div>
+
+              {/* Routine name */}
+              {routineName && (
+                <p className={`text-[9px] font-bold leading-tight line-clamp-2 ${isToday ? 'text-white' : done ? 'text-emerald-800' : 'text-slate-600'}`} style={{ wordBreak: 'break-word' }}>
+                  {routineName}
+                </p>
+              )}
+
+              {/* Stats or status */}
+              {done ? (
+                <div className="mt-1 space-y-0.5 w-full">
+                  <p className={`text-[9px] ${isToday ? 'text-emerald-200' : 'text-slate-400'}`}>
+                    {totalSets} {t('set')} · {totalMin} {t('min')}
+                    {extraCount > 0 && ` · +${extraCount}`}
+                  </p>
+                  <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-black bg-emerald-600 text-white">
+                    <Check size={8} /> Done
+                  </span>
+                </div>
+              ) : isFuture && !hasSchedule ? (
+                <p className={`mt-1 text-[8px] leading-tight ${isToday ? 'text-emerald-300' : 'text-slate-400'}`}>
+                  Not<br/>scheduled
+                </p>
+              ) : isFuture && hasSchedule ? (
+                <span className="mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8px] font-bold bg-slate-100 text-slate-500">Planned</span>
+              ) : !done && !isFuture ? (
+                <p className="mt-1 text-[8px] text-slate-400">–</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
