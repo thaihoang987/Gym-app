@@ -591,7 +591,7 @@ function getRollingWeeklyStatus(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
   const resetDay = Number(settings?.weekly_reset_day || 0);
   const naturalStart = getWeekStartIso(resetDay);
-  const manualReset = null;
+  const manualReset = settings?.weekly_last_reset_at || null;
   // Lấy mốc gần nhất (manual reset luôn ưu tiên nếu đứng sau natural week start)
   const weekStartIso = manualReset && String(manualReset) > naturalStart ? String(manualReset) : naturalStart;
   const weekEndIso = addDaysIso(weekStartIso, 7);
@@ -629,13 +629,52 @@ function getRollingWeeklyStatus(userId) {
       });
       groupCoverage = Math.min(...counts);
     }
+    // 3) Stats buổi tập trong tuần này (sets, volume)
+    const thisWeekStats = one(`
+      SELECT
+        COUNT(DISTINCT ws.id) AS sessions,
+        COALESCE(SUM(wl.reps), 0) AS total_reps,
+        COALESCE(COUNT(wl.id), 0) AS total_sets,
+        COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
+        COALESCE(MAX(wl.weight_kg), 0) AS max_weight
+      FROM workout_sessions ws
+      LEFT JOIN workout_logs wl ON wl.session_id = ws.id AND wl.user_id = ws.user_id
+      WHERE ws.user_id = ? AND ws.routine_id = ? AND ws.status = 'COMPLETED'
+        AND ws.completed_at >= ? AND ws.completed_at < ?
+    `, [userId, rule.routine_id, weekStartIso, weekEndIso]);
+
+    // 4) Stats tuần trước để tính tăng/giảm
+    const prevWeekStart = addDaysIso(weekStartIso, -7);
+    const prevWeekStats = one(`
+      SELECT
+        COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
+        COALESCE(COUNT(wl.id), 0) AS total_sets
+      FROM workout_sessions ws
+      LEFT JOIN workout_logs wl ON wl.session_id = ws.id AND wl.user_id = ws.user_id
+      WHERE ws.user_id = ? AND ws.routine_id = ? AND ws.status = 'COMPLETED'
+        AND ws.completed_at >= ? AND ws.completed_at < ?
+    `, [userId, rule.routine_id, prevWeekStart, weekStartIso]);
+
+    const thisVolume = Number(thisWeekStats?.volume_kg || 0);
+    const prevVolume = Number(prevWeekStats?.volume_kg || 0);
+    const volumeDiff = prevVolume > 0 ? Math.round(((thisVolume - prevVolume) / prevVolume) * 100) : null;
+
     return {
       ...routine,
       completedCount: directCount + groupCoverage,
       directCount,
       groupCoverage,
       weekStartIso,
-      weekEndIso
+      weekEndIso,
+      weekStats: {
+        sessions: Number(thisWeekStats?.sessions || 0),
+        totalSets: Number(thisWeekStats?.total_sets || 0),
+        totalReps: Number(thisWeekStats?.total_reps || 0),
+        volumeKg: Math.round(thisVolume),
+        maxWeight: Number(thisWeekStats?.max_weight || 0),
+        volumeDiffPct: volumeDiff,
+        prevVolumeKg: Math.round(prevVolume)
+      }
     };
   }).filter(Boolean);
 }

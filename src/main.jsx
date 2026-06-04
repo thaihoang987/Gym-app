@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.17'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.18'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2758,52 +2758,46 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
           {weekly.map((routine, i) => {
             const count = Number(routine.completedCount || 0);
             const done = count > 0;
-            const exerciseCount = Array.isArray(routine.exercises)
-              ? routine.exercises.length
-              : (routine.exercise_count || 0);
+            const exerciseCount = Array.isArray(routine.exercises) ? routine.exercises.length : (routine.exercise_count || 0);
+            const ws = routine.weekStats || {};
+            const diffPct = ws.volumeDiffPct;
+            const hasDiff = diffPct !== null && diffPct !== undefined && Number(ws.prevVolumeKg || 0) > 0;
             return (
-              <div key={routine.id}
-                className={`flex items-center gap-3 px-5 py-3 transition-colors ${
-                  i === weekly.length - 1 ? 'pb-5' : ''
-                } ${done ? 'bg-white/5' : 'bg-transparent'}`}
-              >
-                {/* Tick circle */}
-                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all ${
-                  done
-                    ? 'bg-emerald-400 shadow-lg shadow-emerald-900/50'
-                    : 'border-2 border-white/20 bg-transparent'
-                }`}>
-                  {done
-                    ? <Check size={17} className="text-emerald-900" strokeWidth={3} />
-                    : <span className="text-xs font-black text-white/30">{i + 1}</span>
-                  }
+              <div key={routine.id} className={`px-5 py-3 ${i === weekly.length - 1 ? 'pb-5' : ''} ${done ? 'bg-white/5' : ''}`}>
+                <div className="flex items-center gap-3">
+                  {/* Tick circle */}
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all ${done ? 'bg-emerald-400 shadow-lg shadow-emerald-900/50' : 'border-2 border-white/20'}`}>
+                    {done ? <Check size={17} className="text-emerald-900" strokeWidth={3} /> : <span className="text-xs font-black text-white/30">{i + 1}</span>}
+                  </div>
+                  {/* Name + info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-bold text-white leading-tight">{routine.name}</span>
+                      {count > 1 && <span className="rounded-full bg-emerald-500/30 px-1.5 py-0.5 text-[10px] font-black text-emerald-300">×{count}</span>}
+                      {hasDiff && (
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${diffPct >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                          {diffPct >= 0 ? '↑' : '↓'}{Math.abs(diffPct)}%
+                        </span>
+                      )}
+                    </div>
+                    {done && Number(ws.totalSets || 0) > 0 ? (
+                      <p className="mt-0.5 text-xs text-emerald-300/70">
+                        {ws.totalSets} sets{Number(ws.volumeKg || 0) > 0 ? ` · ${ws.volumeKg} kg` : ''}{Number(ws.maxWeight || 0) > 0 ? ` · max ${ws.maxWeight} kg` : ''}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-white/40">
+                        {exerciseCount > 0 ? `${exerciseCount} ${t('bài')}` : ''}{hasDiff && Number(ws.prevVolumeKg || 0) > 0 ? ` · tuần trước ${ws.prevVolumeKg} kg` : ''}
+                      </p>
+                    )}
+                  </div>
+                  {/* Action */}
+                  <button onClick={() => onStartRoutine(routine)}
+                    className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition-all active:scale-95 ${done ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30' : 'bg-[#f05a28] text-white shadow-md shadow-orange-900/40 hover:bg-[#d94f23]'}`}>
+                    {done
+                      ? <span className="flex items-center gap-1"><Play size={10} fill="currentColor" /> {t('weekly_repeat')}</span>
+                      : <span className="flex items-center gap-1"><Play size={11} fill="currentColor" /> {t('start_exercise')}</span>}
+                  </button>
                 </div>
-
-                {/* Info */}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-white leading-tight">
-                    {routine.name}
-                    {count > 1 && <span className="ml-1.5 rounded-full bg-emerald-500/30 px-1.5 py-0.5 text-[10px] font-black text-emerald-300">×{count}</span>}
-                  </p>
-                  <p className="mt-0.5 text-xs text-emerald-300/70">
-                    {exerciseCount > 0 ? `${exerciseCount} ${t('bài')}` : ''}
-                  </p>
-                </div>
-
-                {/* Action button */}
-                <button
-                  onClick={() => onStartRoutine(routine)}
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition-all active:scale-95 ${
-                    done
-                      ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                      : 'bg-[#f05a28] text-white shadow-md shadow-orange-900/40 hover:bg-[#d94f23]'
-                  }`}
-                >
-                  {done
-                    ? <span className="flex items-center gap-1"><Play size={10} fill="currentColor" /> {t('weekly_repeat')}</span>
-                    : <span className="flex items-center gap-1"><Play size={11} fill="currentColor" /> {t('start_exercise')}</span>
-                  }
-                </button>
               </div>
             );
           })}
