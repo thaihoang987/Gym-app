@@ -1217,7 +1217,8 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.10'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.11'; // tăng khi data schema thay đổi
+const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
   try {
@@ -1266,6 +1267,24 @@ function readBootCache(userId) {
   try { return JSON.parse(localStorage.getItem(BOOT_CACHE_KEY(userId)) || 'null'); } catch { return null; }
 }
 
+function readDashboardSnapshot(userId) {
+  try { return JSON.parse(localStorage.getItem(DASHBOARD_SNAPSHOT_KEY(userId)) || 'null'); } catch { return null; }
+}
+
+function readDashboardCache(userId) {
+  return readApiCache(`/api/dashboard?userId=${userId}`) || readDashboardSnapshot(userId);
+}
+
+function writeDashboardCache(userId, dashboard) {
+  if (!dashboard) return;
+  const dashKey = `/api/dashboard?userId=${userId}`;
+  try {
+    localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(dashboard));
+    localStorage.setItem(DASHBOARD_SNAPSHOT_KEY(userId), JSON.stringify(dashboard));
+  } catch {}
+  routeGetResponseToStore(dashKey, dashboard);
+}
+
 function todayDowIndex() {
   const jsDay = new Date().getDay();
   return jsDay === 0 ? 6 : jsDay - 1;
@@ -1311,7 +1330,7 @@ function offlineSuggestion(userId) {
 }
 
 function offlineDashboardData(userId) {
-  const cached = readApiCache(`/api/dashboard?userId=${userId}`) || {};
+  const cached = readDashboardCache(userId) || {};
   return {
     suggestion: cached.suggestion || readBootCache(userId)?.suggestion || offlineSuggestion(userId),
     activityCalendar: cached.activityCalendar || [],
@@ -1332,9 +1351,8 @@ function cacheGroupMutations(userId) {
 
 // Khi end workout offline: ghi vào dashboard cache để recentHistory + weekly count hiển thị ngay
 function optimisticCompleteSession(userId, sessionId, sessionData) {
-  const dashKey = `/api/dashboard?userId=${userId}`;
   try {
-    const cached = readApiCache(dashKey) || {
+    const cached = readDashboardCache(userId) || {
       suggestion: offlineSuggestion(userId),
       activityCalendar: [],
       recentHistory: [],
@@ -1387,16 +1405,14 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
         return r;
       });
     }
-    localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(cached));
-    routeGetResponseToStore(dashKey, cached);
+    writeDashboardCache(userId, cached);
   } catch {}
 }
 
 // Xóa session khỏi cache + giảm weekly count tương ứng
 function optimisticDeleteSession(userId, sessionId) {
-  const dashKey = `/api/dashboard?userId=${userId}`;
   try {
-    const cached = readApiCache(dashKey);
+    const cached = readDashboardCache(userId);
     if (!cached) return;
     const row = (cached.recentHistory || []).find((r) => Number(r.id) === Number(sessionId));
     if (!row) return;
@@ -1406,8 +1422,7 @@ function optimisticDeleteSession(userId, sessionId) {
         ? { ...r, completedCount: Number(r.completedCount) - 1, directCount: Math.max(0, Number(r.directCount || 0) - 1) }
         : r);
     }
-    localStorage.setItem(API_CACHE_PREFIX + dashKey, JSON.stringify(cached));
-    routeGetResponseToStore(dashKey, cached);
+    writeDashboardCache(userId, cached);
   } catch {}
 }
 
@@ -1582,7 +1597,10 @@ function routeGetResponseToStore(path, data) {
         if (data.settings) setScalarField(userId, 'settings', data.settings);
       }
     } else if (path.startsWith('/api/dashboard')) {
-      if (data) setScalarField(userId, 'dashboard', data);
+      if (data) {
+        try { localStorage.setItem(DASHBOARD_SNAPSHOT_KEY(userId), JSON.stringify(data)); } catch {}
+        setScalarField(userId, 'dashboard', data);
+      }
     } else if (path.startsWith('/api/sessions/active')) {
       if (data) setScalarField(userId, 'activeSessions', data);
     } else if (path.startsWith('/api/body-weight/recent')) {
