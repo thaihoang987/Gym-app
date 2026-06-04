@@ -664,7 +664,7 @@ function getRollingWeeklyStatus(userId) {
       SELECT
         e.id AS exercise_id,
         e.name AS exercise_name,
-        e.image_path,
+        COALESCE(e.gif_path, e.image_path) AS image_path,
         COUNT(wl.id) AS total_sets,
         COALESCE(SUM(wl.reps), 0) AS total_reps,
         COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
@@ -734,7 +734,7 @@ function getWeeklyStats(userId) {
       COALESCE(SUM(wl.reps), 0) AS reps,
       COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume,
       (
-        SELECT e.image_path
+        SELECT COALESCE(e.gif_path, e.image_path)
         FROM workout_logs wl2
         JOIN exercises e ON e.id = wl2.exercise_id
         WHERE wl2.session_id = ws.id
@@ -786,7 +786,7 @@ function getWeeklyStats(userId) {
     if (!item.sessionIds?.length) continue;
     const placeholders = item.sessionIds.map(() => '?').join(',');
     const exRows = all(`
-      SELECT e.id, e.name, e.image_path,
+      SELECT e.id, e.name, COALESCE(e.gif_path, e.image_path) AS image_path,
         COUNT(wl.id) AS total_sets,
         COALESCE(SUM(wl.reps), 0) AS total_reps,
         COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
@@ -1575,7 +1575,7 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
       COUNT(wl.id) AS sets,
       COUNT(DISTINCT wl.exercise_id) AS exercises,
       (
-        SELECT e.image_path
+        SELECT COALESCE(e.gif_path, e.image_path)
         FROM workout_logs wl2
         JOIN exercises e ON e.id = wl2.exercise_id
         WHERE wl2.session_id = ws.id
