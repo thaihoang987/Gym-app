@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.9'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.10'; // tăng khi data schema thay đổi
 
 function bustCacheIfNeeded() {
   try {
@@ -1334,15 +1334,25 @@ function cacheGroupMutations(userId) {
 function optimisticCompleteSession(userId, sessionId, sessionData) {
   const dashKey = `/api/dashboard?userId=${userId}`;
   try {
-    const cached = readApiCache(dashKey);
-    if (!cached) return;
+    const cached = readApiCache(dashKey) || {
+      suggestion: offlineSuggestion(userId),
+      activityCalendar: [],
+      recentHistory: [],
+      todaySummary: []
+    };
+    if (!cached.suggestion?.weekly?.length) {
+      cached.suggestion = {
+        ...(cached.suggestion || {}),
+        ...offlineSuggestion(userId)
+      };
+    }
     const routineId = sessionData?.routine?.id || sessionData?.session?.routine_id || null;
     const groupId = sessionData?.group?.id || sessionData?.session?.group_id || null;
-    const routineName = sessionData?.routine?.name || sessionData?.group?.name || 'Free workout';
     const startedAt = sessionData?.session?.started_at || new Date().toISOString();
     const nowIso = new Date().toISOString();
     const exercises = (sessionData?.exercises || []);
     const totalSets = exercises.reduce((s, e) => s + Number(e.completedSets || 0), 0);
+    const completedExerciseCount = exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
     // 1) Thêm vào recentHistory đầu
     const newRow = {
       id: sessionId,
@@ -1357,6 +1367,7 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
       completed_at: nowIso,
       duration_minutes: 1,
       sets: totalSets,
+      exercises: completedExerciseCount,
       offline: true
     };
     cached.recentHistory = [newRow, ...(cached.recentHistory || []).filter((r) => r.id !== sessionId)];
