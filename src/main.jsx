@@ -3599,39 +3599,31 @@ function WeeklyStatsCard({ stats, settings }) {
         ))}
       </div>
 
-      <div className="weekly-day-strip">
+      {/* Schedule Record — week-plan-grid + week-day-card y het CurrentWeekPlan */}
+      <div className="week-plan-grid my-3">
         {byDay.map((day, index) => {
           const date = parseServerDate(day.day);
           const sessions = Number(day.sessions || 0);
-          const exercises = Number(day.exercises || 0);
           const sets = Number(day.sets || 0);
           const minutes = Number(day.minutes || 0);
           const images = Array.isArray(day.images) ? day.images : [];
           const isToday = day.day === todayIso;
-          const hasActivity = sessions > 0;
-          const weekday = date ? formatDate(date, settings, { weekday: 'short' }) : t('days')[index];
-          const fullDate = date ? formatDate(date, settings, { day: '2-digit', month: '2-digit' }) : '';
+          const done = sessions > 0;
+          const isPast = date && date < new Date(new Date().toDateString());
+          const label = date ? formatDate(date, settings, { weekday: 'short' }) : t('days')[index];
+          const imageUrl = images[0] || null;
+          const extraCount = sessions - 1;
+          let badge = null;
+          if (done) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#16a34a',color:'#fff'}}><Check size={8}/> {t('today_done')}</span>;
+          else if (isPast) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#f05a28',color:'#fff'}}>✗ {t('not_trained')}</span>;
           return (
-            <div key={day.day || index} className={`weekly-day-cell ${hasActivity ? 'has-activity' : ''} ${isToday ? 'is-today' : ''}`}>
-              <div className="weekly-day-head">
-                <span>{weekday}</span>
-                {isToday && <b>Hôm nay</b>}
-              </div>
-              <strong>{fullDate}</strong>
-              <div className="weekly-day-images">
-                {images.slice(0, 3).map((src, imageIndex) => <img key={`${src}-${imageIndex}`} src={src} />)}
-                {!images.length && <Dumbbell size={22} />}
-              </div>
-              <div className="weekly-day-meta">
-                {hasActivity ? (
-                  <>
-                    <b>{sessions} {t('weekly_stat_sessions')}</b>
-                    <span>{exercises} {t('bài')} · {sets} {t('set')}</span>
-                    <span>{minutes} {t('min')}</span>
-                  </>
-                ) : (
-                  <span>Chưa tập</span>
-                )}
+            <div key={day.day || index} className={`week-day-card ${isToday ? 'today' : ''} ${isPast && !done ? 'past' : ''} ${done ? 'done' : ''}`}>
+              <div className="week-day-date"><p>{label}</p><strong>{date ? date.getDate() : ''}</strong></div>
+              {imageUrl ? <img src={imageUrl} className="week-day-image" onError={(e)=>{e.target.style.display='none';}} /> : <div className="week-day-image empty"><Dumbbell size={22} /></div>}
+              <div className="week-day-content">
+                <h3>{done ? (day.name || t('session_free')) : (isToday ? t('today_title') : '–')}</h3>
+                <p>{done ? `${sets} ${t('set')} · ${minutes} ${t('min')}${extraCount>0?` · +${extraCount}`:''}` : ''}</p>
+                <div className="mt-1 md:flex md:justify-center">{badge}</div>
               </div>
             </div>
           );
