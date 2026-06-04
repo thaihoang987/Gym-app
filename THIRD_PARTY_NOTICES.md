@@ -17,6 +17,7 @@ Gym App uses open-source libraries and an external exercise dataset. This file s
 | lucide-react | ISC | https://github.com/lucide-icons/lucide |
 | dnd kit (`@dnd-kit/*`) | MIT | https://github.com/clauderic/dnd-kit |
 | @ncdai/react-wheel-picker | MIT | https://github.com/ncdai/react-wheel-picker |
+| react-native-body-highlighter SVG path data | MIT | https://github.com/HichamELBSI/react-native-body-highlighter |
 | ExcelJS | MIT | https://github.com/exceljs/exceljs |
 | Tailwind CSS | MIT | https://github.com/tailwindlabs/tailwindcss |
 | PostCSS | MIT | https://github.com/postcss/postcss |

@@ -45,7 +45,7 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, T
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
-import { MUSCLE_MAP_PATHS } from './muscleMapPaths.js';
+import { BODY_HIGHLIGHTER_PATHS } from './bodyHighlighterPaths.js';
 import { MUSCLE_DISPLAY_NAMES, addMuscleScore } from './muscleMapping.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1227,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.41'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.42'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3467,27 +3467,60 @@ function ActivityCalendar({ calendar, history, settings }) {
 
 function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
   const model = gender === 'female' ? 'female' : 'male';
-  const activeMuscles = [...workedMuscles.entries()]
+  const bodySlug = (id) => ({
+    'upper-chest': 'chest',
+    'lower-chest': 'chest',
+    serratus: 'obliques',
+    'upper-abs': 'abs',
+    'lower-abs': 'abs',
+    'front-deltoid': 'deltoids',
+    'rear-deltoid': 'deltoids',
+    'upper-trapezius': 'trapezius',
+    'lower-trapezius': 'trapezius',
+    rhomboids: 'upper-back',
+    lats: 'upper-back',
+    latissimus: 'upper-back',
+    'rotator-cuff': 'upper-back',
+    'hip-flexors': 'abs',
+    'inner-quad': 'quadriceps',
+    'outer-quad': 'quadriceps',
+    forearms: 'forearm',
+    hamstrings: 'hamstring',
+    glutes: 'gluteal'
+  }[id] || id);
+  const bodyMuscles = new Map();
+  workedMuscles.forEach((value, key) => {
+    const slug = bodySlug(key);
+    bodyMuscles.set(slug, Math.max(bodyMuscles.get(slug) || 0, Number(value || 0)));
+  });
+  const activeMuscles = [...bodyMuscles.entries()]
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
   const fill = (id) => {
-    const v = workedMuscles.get(id) || 0;
+    const v = bodyMuscles.get(id) || 0;
     if (id === 'hair') return '#2f3341';
-    if (v === 0) return '#d7dbe2';
-    if (v < 0.22) return '#ffe3a3';
-    if (v < 0.45) return '#ffb15f';
-    if (v < 0.68) return '#ff6b45';
-    if (v < 0.86) return '#ef3f4c';
-    return '#c81e46';
+    if (v === 0) return '#3f3f3f';
+    if (v < 0.22) return '#9ddcff';
+    if (v < 0.45) return '#54b6f2';
+    if (v < 0.68) return '#0984e3';
+    if (v < 0.86) return '#ff9f43';
+    return '#ee5253';
+  };
+  const renderPaths = (part, side) => {
+    const paths = part.path || {};
+    const common = paths.common || [];
+    const left = side === 'right' ? [] : (paths.left || []);
+    const right = side === 'left' ? [] : (paths.right || []);
+    return [...common, ...left, ...right];
   };
   const renderSide = (key, label) => (
     <div className="muscle-map-side">
       <p>{label}</p>
-      <svg viewBox={MUSCLE_MAP_PATHS[key].viewBox} role="img" aria-label={label}>
-        {MUSCLE_MAP_PATHS[key].parts.map((part) => (
-          <g key={`${key}-${part.slug}`} className={workedMuscles.get(part.slug) ? 'muscle-active' : ''}>
-            {[...part.common, ...part.left, ...part.right].map((pathData, index) => (
+      <svg viewBox={BODY_HIGHLIGHTER_PATHS[key].viewBox} role="img" aria-label={label}>
+        {BODY_HIGHLIGHTER_PATHS[key].parts.map((part) => (
+          <g key={`${key}-${part.slug}`} className={bodyMuscles.get(part.slug) ? 'muscle-active' : ''}>
+            {renderPaths(part).map((pathData, index) => (
               <path
                 key={`${part.slug}-${index}`}
                 d={pathData}
@@ -3656,11 +3689,11 @@ function WeeklyStatsCard({ stats, settings }) {
             <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
             <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
               <span>Low</span>
-              <span className="h-2.5 w-5 rounded-full bg-[#d7dbe2]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#ffe3a3]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#ffb15f]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#ff6b45]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#c81e46]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#3f3f3f]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#9ddcff]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#54b6f2]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#0984e3]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ee5253]" />
               <span>High</span>
             </div>
           </div>

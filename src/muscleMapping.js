@@ -1,6 +1,6 @@
 // Muscle alias normalization for the weekly heatmap.
 // Sources used for naming conventions:
-// - MuscleMap render keys: https://github.com/melihcolpan/MuscleMap
+// - react-native-body-highlighter render keys: https://github.com/HichamELBSI/react-native-body-highlighter
 // - ExRx muscle/exercise directories: https://exrx.net/Lists/Muscle and https://exrx.net/Lists/Directory
 // - TeachMeAnatomy upper/lower limb muscle grouping: https://teachmeanatomy.info/
 // - Kenhub anatomy muscle group references: https://www.kenhub.com/en/library/anatomy
