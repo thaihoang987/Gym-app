@@ -1225,7 +1225,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.33'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.34'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3163,7 +3163,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
       {selectedDay && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ paddingBottom: 'calc(1rem + 4.5rem + env(safe-area-inset-bottom))' }} onClick={() => setSelectedDay(null)}>
           <div
-            className="w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"
             style={{ maxHeight: 'calc(85vh - 4.5rem)' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3177,8 +3177,8 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
                 <button className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600" onClick={() => setSelectedDay(null)}><X size={16} /></button>
               </div>
             </div>
-            {/* Sessions */}
-            <div className="px-5 space-y-4">
+            {/* Sessions — scroll bên trong */}
+            <div className="overflow-y-auto px-5 space-y-4 pb-5">
               {selectedDay.dayHistory.map((row) => {
                 const detail = sessionDetails[row.id];
                 const sessionName = row.routine_name || row.group_name || t('session_free');
