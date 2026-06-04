@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.11'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.12'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1283,6 +1283,39 @@ function writeDashboardCache(userId, dashboard) {
     localStorage.setItem(DASHBOARD_SNAPSHOT_KEY(userId), JSON.stringify(dashboard));
   } catch {}
   routeGetResponseToStore(dashKey, dashboard);
+}
+
+function historyRowInWeek(row, routine) {
+  const weekStart = String(routine?.weekStartIso || '').slice(0, 10);
+  if (!weekStart) return true;
+  const day = String(row?.completed_at || row?.started_at || '').slice(0, 10);
+  return day && day >= weekStart;
+}
+
+function recalcWeeklyFromHistory(dashboard) {
+  const weekly = dashboard?.suggestion?.weekly;
+  if (!Array.isArray(weekly)) return dashboard;
+  const history = Array.isArray(dashboard.recentHistory) ? dashboard.recentHistory : [];
+  return {
+    ...dashboard,
+    suggestion: {
+      ...(dashboard.suggestion || {}),
+      weekly: weekly.map((routine) => {
+        const rows = history.filter((row) => historyRowInWeek(row, routine));
+        const directCount = rows.filter((row) => Number(row.routine_id) === Number(routine.id)).length;
+        const groups = Array.isArray(routine.groups) ? routine.groups : [];
+        const groupCoverage = groups.length
+          ? Math.min(...groups.map((group) => rows.filter((row) => Number(row.group_id) === Number(group.id)).length))
+          : 0;
+        return {
+          ...routine,
+          directCount,
+          groupCoverage,
+          completedCount: directCount + groupCoverage
+        };
+      })
+    }
+  };
 }
 
 function todayDowIndex() {
@@ -1390,22 +1423,7 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
     };
     cached.recentHistory = [newRow, ...(cached.recentHistory || []).filter((r) => r.id !== sessionId)];
     if (cached.recentHistory.length > 50) cached.recentHistory = cached.recentHistory.slice(0, 50);
-    // 2) Tăng weekly counter
-    if (cached.suggestion?.weekly && routineId) {
-      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => Number(r.id) === Number(routineId)
-        ? { ...r, completedCount: Number(r.completedCount || 0) + 1, directCount: Number(r.directCount || 0) + 1 }
-        : r);
-    } else if (cached.suggestion?.weekly && groupId) {
-      // Group session: với mỗi routine chứa group này, coverage có thể tăng. Đơn giản: increment groupCoverage candidate
-      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => {
-        if ((r.groups || []).some((g) => Number(g.id) === Number(groupId))) {
-          // Tăng coverage nếu nó là group cuối cần để cover. Đơn giản: tăng nếu cur < direct + new groupCoverage.
-          return { ...r, completedCount: Number(r.completedCount || 0) + 0.01 }; // marker để re-fetch sau
-        }
-        return r;
-      });
-    }
-    writeDashboardCache(userId, cached);
+    writeDashboardCache(userId, recalcWeeklyFromHistory(cached));
   } catch {}
 }
 
@@ -1417,12 +1435,7 @@ function optimisticDeleteSession(userId, sessionId) {
     const row = (cached.recentHistory || []).find((r) => Number(r.id) === Number(sessionId));
     if (!row) return;
     cached.recentHistory = (cached.recentHistory || []).filter((r) => Number(r.id) !== Number(sessionId));
-    if (cached.suggestion?.weekly && row.routine_id) {
-      cached.suggestion.weekly = cached.suggestion.weekly.map((r) => Number(r.id) === Number(row.routine_id) && Number(r.completedCount || 0) > 0
-        ? { ...r, completedCount: Number(r.completedCount) - 1, directCount: Math.max(0, Number(r.directCount || 0) - 1) }
-        : r);
-    }
-    writeDashboardCache(userId, cached);
+    writeDashboardCache(userId, recalcWeeklyFromHistory(cached));
   } catch {}
 }
 
