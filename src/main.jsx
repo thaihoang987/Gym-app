@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.21'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.22'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2808,9 +2808,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                     <div className="mt-2 space-y-1.5">
                       {ws.exercises.map((ex) => (
                         <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
-                          {ex.imageUrl
-                            ? <img src={ex.imageUrl} className="h-8 w-8 shrink-0 rounded object-contain bg-white/10" />
-                            : <div className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white/10 text-base">🏋️</div>}
+                          <GifThumb exercise={ex} className="h-8 w-8" bg="bg-white/10" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-white/90 leading-tight truncate">{ex.name}</p>
                             <p className="text-[10px] text-emerald-300/60">
@@ -2882,9 +2880,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
                         className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
                         onClick={() => onStartRoutine(routine, exerciseIndexById.get(exercise.id) || 0, 'exercise')}
                       >
-                        {exerciseAutoMediaUrl(exercise)
-                          ? <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" />
-                          : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                        <GifThumb exercise={exercise} />
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-900' : 'text-orange-900'}`}>{exercise.name}</p>
                           <p className={`mt-0.5 text-xs font-semibold ${done ? 'text-emerald-700' : 'text-orange-700'}`}>
@@ -2943,7 +2939,7 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
                   <p className="text-sm text-teal-950">{t('exercises', item.exercises.length)}</p>
                 </div>
                 <div className="flex -space-x-2">
-                  {thumbs.map((exercise) => <img key={exercise.id} src={exerciseAutoMediaUrl(exercise)} className="h-9 w-9 rounded-full border-2 border-white bg-slate-50 object-contain" />)}
+                  {thumbs.map((exercise) => <GifThumb key={exercise.id} exercise={exercise} className="h-9 w-9" rounded="rounded-full" bg="border-2 border-white bg-slate-50" />)}
                 </div>
               </div>
             </button>
@@ -3030,7 +3026,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
                             onClick={() => onStart({ sessionId: active.session.id, initialIndex: exercise.workoutIndex, initialView: 'exercise' })}
                           >
-                            {exerciseAutoMediaUrl(exercise) ? <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 shrink-0 rounded bg-white object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-white text-2xl">{exercise.customIcon || '🏋️'}</span>}
+                            <GifThumb exercise={exercise} />
                             <div className="min-w-0 flex-1">
                               <p className="break-words font-bold leading-snug">{exercise.name}</p>
                               <p className={`mt-0.5 text-sm font-semibold ${exercise.completedSets ? 'text-emerald-800' : 'text-orange-800'}`}>
@@ -3390,9 +3386,7 @@ function WeeklyStatsCard({ stats, settings }) {
               <div className="ml-12 mt-1 mb-2 space-y-1">
                 {item.exercises_detail.map((ex) => (
                   <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                    {ex.imageUrl
-                      ? <img src={ex.imageUrl} className="h-8 w-8 shrink-0 rounded object-contain bg-white" />
-                      : <div className="grid h-8 w-8 shrink-0 place-items-center rounded bg-slate-100 text-base">🏋️</div>}
+                    <GifThumb exercise={ex} className="h-8 w-8" bg="bg-white" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 leading-tight truncate">{ex.name}</p>
                       <p className="text-[10px] text-slate-500">
@@ -3524,6 +3518,32 @@ function exerciseAutoMediaUrl(exercise) {
   return exercise?.gifUrl || exercise?.imageUrl || '';
 }
 
+// GifThumb — thumbnail tự động play GIF khi hover/tap, dùng cho mọi nơi trừ Library
+function GifThumb({ exercise, className = 'h-12 w-12', rounded = 'rounded', bg = 'bg-white' }) {
+  const [playing, setPlaying] = useState(false);
+  const gifUrl = exercise?.gifUrl;
+  const imgUrl = exercise?.imageUrl || exercise?.imageUrl;
+  const staticSrc = exerciseMediaUrl(exercise);   // image ưu tiên
+  const animSrc = gifUrl || staticSrc;
+  const hasGif = Boolean(gifUrl) && exercise?.displayMedia !== 'image';
+  const icon = exercise?.customIcon || '🏋️';
+
+  if (!staticSrc && !animSrc) {
+    return <span className={`grid ${className} shrink-0 place-items-center ${rounded} ${bg} text-2xl`}>{icon}</span>;
+  }
+  return (
+    <img
+      src={playing && hasGif ? animSrc : staticSrc}
+      alt={exercise?.name || ''}
+      className={`${className} shrink-0 ${rounded} ${bg} object-contain`}
+      onMouseEnter={() => hasGif && setPlaying(true)}
+      onMouseLeave={() => setPlaying(false)}
+      onClick={() => hasGif && setPlaying((v) => !v)}
+      style={{ cursor: hasGif ? 'pointer' : 'default' }}
+    />
+  );
+}
+
 function workoutExerciseGroups(sessionData, t) {
   const flat = sessionData?.exercises || [];
   const used = new Set();
@@ -3581,7 +3601,7 @@ function SessionDetail({ detail, settings }) {
           return (
             <div key={exercise.id} className="rounded-md bg-slate-50 p-2">
               <div className="flex gap-2">
-                <img src={exerciseAutoMediaUrl(exercise)} className="h-12 w-12 rounded bg-white object-contain" />
+                <GifThumb exercise={exercise} />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{exercise.name}</p>
                   <p className="text-xs text-slate-600">{exercise.sets.length} set · max {exercise.maxWeight} kg · volume {Math.round(exercise.volume)}</p>
@@ -4050,7 +4070,7 @@ function SortableExerciseRow({ exercise, onRemove }) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
-      <img src={exerciseAutoMediaUrl(exercise)} className="h-14 w-14 rounded bg-white object-contain" />
+      <GifThumb exercise={exercise} className="h-14 w-14" />
       <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
       <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> {t('delete')}</button>
     </div>
@@ -4419,7 +4439,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
               <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', group.exercises.length)})</small></span>
               <div className="flex -space-x-2">
                 {group.exercises.slice(0, 4).map((exercise) => (
-                  <img key={exercise.id} src={exerciseAutoMediaUrl(exercise)} title={exercise.name} className="h-8 w-8 rounded-full border-2 border-white bg-white object-contain" />
+                  <GifThumb key={exercise.id} exercise={exercise} className="h-8 w-8" rounded="rounded-full" bg="border-2 border-white bg-white" />
                 ))}
               </div>
             </label>
