@@ -1,12 +1,45 @@
 // Muscle alias normalization for the weekly heatmap.
-// Sources used for naming conventions:
-// - react-native-body-highlighter render keys: https://github.com/HichamELBSI/react-native-body-highlighter
-// - ExRx muscle/exercise directories: https://exrx.net/Lists/Muscle and https://exrx.net/Lists/Directory
-// - TeachMeAnatomy upper/lower limb muscle grouping: https://teachmeanatomy.info/
-// - Kenhub anatomy muscle group references: https://www.kenhub.com/en/library/anatomy
-// - SEER upper extremity muscle group overview: https://training.seer.cancer.gov/anatomy/muscular/groups/upper.html
 
 export const MUSCLE_DISPLAY_NAMES = {
+  abs: 'Abs',
+  biceps: 'Biceps',
+  calves: 'Calves',
+  chest: 'Chest',
+  deltoids: 'Shoulders',
+  feet: 'Feet',
+  forearm: 'Forearms',
+  gluteal: 'Glutes',
+  hamstring: 'Hamstrings',
+  hands: 'Hands',
+  head: 'Head',
+  knees: 'Knees',
+  'lower-back': 'Lower Back',
+  obliques: 'Obliques',
+  quadriceps: 'Quadriceps',
+  tibialis: 'Tibialis',
+  trapezius: 'Trapezius',
+  triceps: 'Triceps',
+  'upper-back': 'Upper Back',
+  serratus: 'Serratus',
+  adductors: 'Adductors',
+  ankles: 'Ankles',
+  neck: 'Neck',
+  'hip-flexors': 'Hip Flexors',
+  'upper-chest': 'Upper Chest',
+  'lower-chest': 'Lower Chest',
+  'inner-quad': 'Inner Quad',
+  'outer-quad': 'Outer Quad',
+  'upper-abs': 'Upper Abs',
+  'lower-abs': 'Lower Abs',
+  'front-deltoid': 'Front Deltoid',
+  'rear-deltoid': 'Rear Deltoid',
+  'upper-trapezius': 'Upper Trapezius',
+  'lower-trapezius': 'Lower Trapezius',
+  'rotator-cuff': 'Rotator Cuff',
+  rhomboids: 'Rhomboids'
+};
+
+export const MUSCLE_DISPLAY_NAMES_VI = {
   abs: 'Bụng',
   biceps: 'Tay trước',
   calves: 'Bắp chân',

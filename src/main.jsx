@@ -46,7 +46,12 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 import { BODY_HIGHLIGHTER_PATHS } from './bodyHighlighterPaths.js';
-import { MUSCLE_DISPLAY_NAMES, addMuscleScore } from './muscleMapping.js';
+import { MUSCLE_DISPLAY_NAMES, MUSCLE_DISPLAY_NAMES_VI, addMuscleScore } from './muscleMapping.js';
+
+function getMuscleNames(settings) {
+  const locale = settings?.locale || '';
+  return locale.startsWith('vi') ? MUSCLE_DISPLAY_NAMES_VI : MUSCLE_DISPLAY_NAMES;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // gymStore — Single source of truth cho mọi data của user
@@ -3473,7 +3478,9 @@ function ActivityCalendar({ calendar, history, settings }) {
   );
 }
 
-function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
+function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male', settings }) {
+  const t = useLang();
+  const muscleNames = getMuscleNames(settings);
   const model = gender === 'female' ? 'female' : 'male';
   const bodySlug = (id) => ({
     'upper-chest': 'chest',
@@ -3537,7 +3544,7 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
                 strokeWidth="1.6"
                 vectorEffect="non-scaling-stroke"
               >
-                <title>{MUSCLE_DISPLAY_NAMES[part.slug] || part.slug}</title>
+                <title>{muscleNames[part.slug] || part.slug}</title>
               </path>
             ))}
           </g>
@@ -3549,14 +3556,14 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
   return (
     <div className="muscle-map-wrap">
       <div className="muscle-map-stage">
-        {renderSide(`${model}Front`, 'Mặt trước')}
-        {renderSide(`${model}Back`, 'Mặt sau')}
+        {renderSide(`${model}Front`, t('heatmap_front'))}
+        {renderSide(`${model}Back`, t('heatmap_back'))}
       </div>
       {!!activeMuscles.length && (
         <div className="muscle-map-tags">
           {activeMuscles.map(([muscle, value]) => (
             <span key={muscle}>
-              {MUSCLE_DISPLAY_NAMES[muscle] || muscle} <b>{Math.round(value * 100)}%</b>
+              {muscleNames[muscle] || muscle} <b>{Math.round(value * 100)}%</b>
             </span>
           ))}
         </div>
@@ -3940,7 +3947,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
         return (
           <div className="mt-4 border-t border-slate-100 pt-4">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">{t('weekly_muscle_activity')}</p>
-            <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
+            <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} settings={settings} />
             <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
               <span>{t('heatmap_low')}</span>
               <span className="h-2.5 w-5 rounded-full bg-[#cfd4dc]" />
