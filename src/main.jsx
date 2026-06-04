@@ -3162,20 +3162,20 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
             <button
               className="tiny-btn"
               onClick={() => setOffset((v) => v - 3)}
-              title="Lui 3 ngày"
+              title={t('nav_prev_week')}
             >‹‹</button>
             {offset !== 0 && (
               <button
                 className="ghost-btn px-2 py-1 text-xs"
                 onClick={() => setOffset(0)}
-                title="Về hôm nay"
+                title={t('nav_back_today')}
               >↩</button>
             )}
             <span className="text-xs text-slate-500 font-semibold">{rangeLabel}</span>
             <button
               className="tiny-btn"
               onClick={() => setOffset((v) => v + 3)}
-              title="Tới 3 ngày"
+              title={t('nav_next_week')}
             >››</button>
           </div>
       </div>
@@ -3192,7 +3192,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{selectedDay.label} {selectedDay.date?.getDate()}/{selectedDay.date && selectedDay.date.getMonth() + 1}</p>
-                  <h3 className="text-xl font-black text-slate-900">Schedule Record</h3>
+                  <h3 className="text-xl font-black text-slate-900">{t('schedule_record')}</h3>
                 </div>
                 <button className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600" onClick={() => setSelectedDay(null)}><X size={16} /></button>
               </div>
@@ -3666,25 +3666,25 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="section-title mb-0">Schedule Record</h2>
+        <h2 className="section-title mb-0">{t('schedule_record')}</h2>
         <div className="flex items-center gap-2">
           {weekOffset !== 0 && (
             <button
               className="ghost-btn px-2 py-1 text-xs"
               onClick={() => setWeekOffset(0)}
-              title="Về hôm nay"
+              title={t('nav_back_today')}
             >↩</button>
           )}
           <button
             className="tiny-btn"
             onClick={() => setWeekOffset((v) => v - 3)}
-            title="Lui 3 ngày"
+            title={t('nav_prev_week')}
           >‹‹</button>
           <span className="text-xs text-slate-500 font-semibold">{rangeLabel}</span>
           <button
             className="tiny-btn"
             onClick={() => setWeekOffset((v) => v + 3)}
-            title="Tới 3 ngày"
+            title={t('nav_next_week')}
           >››</button>
         </div>
       </div>
@@ -3701,7 +3701,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{selectedDay.label} {selectedDay.date?.getDate()}/{selectedDay.date && selectedDay.date.getMonth() + 1}</p>
-                  <h3 className="text-xl font-black text-slate-900">Schedule Record</h3>
+                  <h3 className="text-xl font-black text-slate-900">{t('schedule_record')}</h3>
                 </div>
                 <button className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600" onClick={() => setSelectedDay(null)}><X size={16} /></button>
               </div>
@@ -6442,7 +6442,7 @@ function Analytics({ userId, settings }) {
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-lg font-black">{exerciseChartRows.length}</p>
-                    <p className="text-xs text-slate-500">sessions</p>
+                    <p className="text-xs text-slate-500">{t('weekly_stat_sessions')}</p>
                   </div>
                 </div>
               </div>
@@ -7204,3 +7204,4 @@ createRoot(document.getElementById('root')).render(
     </DialogProvider>
   </ServerStatusProvider>
 );
+

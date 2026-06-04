@@ -1,7 +1,7 @@
 ﻿const translations = {
   'en-US': {
     // nav
-    nav_home: 'Home', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
+    nav_home: 'Home', schedule_record: 'Schedule Record', nav_back_today: 'Today', nav_prev_week: 'Previous', nav_next_week: 'Next', nav_start: 'Workout', nav_library: 'Exercises', nav_builder: 'Schedule', nav_analytics: 'Analytics', nav_settings: 'Settings',
     // login
     login_subtitle: 'Member login', login_username: 'Username', login_password: 'Password', login_remember: 'Remember on this device', login_btn: 'Log in', login_hint: 'Default first time: admin / admin123', login_offline_error: 'Offline login requires a previous successful login on this device.',
     login_offline_hint: 'Offline mode: use the last password that logged in on this device.',
@@ -329,7 +329,7 @@
   },
 
   'vi-VN': {
-    nav_home: 'Home', nav_start: 'Tiếp tục tập', nav_library: 'Bài tập', nav_builder: 'Lịch tập', nav_analytics: 'Thống kê', nav_settings: 'Cài đặt',
+    nav_home: 'Home', schedule_record: 'Schedule Record', nav_back_today: 'Today', nav_prev_week: 'Previous', nav_next_week: 'Next', nav_start: 'Tiếp tục tập', nav_library: 'Bài tập', nav_builder: 'Lịch tập', nav_analytics: 'Thống kê', nav_settings: 'Cài đặt',
     login_subtitle: 'Đăng nhập thành viên', login_username: 'Tên đăng nhập', login_password: 'Mật khẩu', login_remember: 'Nhớ tài khoản trên thiết bị này', login_btn: 'Đăng nhập', login_hint: 'Mặc định lần đầu: admin / admin123', login_offline_error: 'Đăng nhập offline cần từng đăng nhập thành công trên thiết bị này.',
     login_offline_hint: 'Đang offline: dùng mật khẩu đã đăng nhập thành công gần nhất trên thiết bị này.',
     login_offline_no_cache: 'Thiết bị này chưa có đăng nhập offline hợp lệ cho user/mật khẩu này.',
@@ -611,7 +611,7 @@
   },
 
   'zh-CN': {
-    nav_home: '首页', nav_start: '继续训练', nav_library: '动作库', nav_builder: '训练计划', nav_analytics: '统计', nav_settings: '设置',
+    nav_home: '首页', schedule_record: '训练记录', nav_start: '继续训练', nav_library: '动作库', nav_builder: '训练计划', nav_analytics: '统计', nav_settings: '设置',
     login_subtitle: '会员登录', login_username: '用户名', login_password: '密码', login_remember: '在此设备上记住我', login_btn: '登录', login_hint: '默认账户: admin / admin123',
     logout: '退出登录', exercises_count: (n) => `${n} 个动作`,
     loading: '加载中...', mode_free: '自由', mode_fixed: '固定', mode_rolling: '循环',
@@ -864,7 +864,7 @@
   },
 
   'es-ES': {
-    nav_home: 'Inicio', nav_start: 'Entrenar', nav_library: 'Ejercicios', nav_builder: 'Plan', nav_analytics: 'Estadísticas', nav_settings: 'Ajustes',
+    nav_home: 'Inicio', schedule_record: 'Historial', nav_start: 'Entrenar', nav_library: 'Ejercicios', nav_builder: 'Plan', nav_analytics: 'Estadísticas', nav_settings: 'Ajustes',
     login_subtitle: 'Iniciar sesión', login_username: 'Usuario', login_password: 'Contraseña', login_remember: 'Recordar en este dispositivo', login_btn: 'Entrar', login_hint: 'Por defecto: admin / admin123',
     logout: 'Cerrar sesión', exercises_count: (n) => `${n} ejercicios`,
     loading: 'Cargando...', mode_free: 'Libre', mode_fixed: 'Fijo', mode_rolling: 'Rotativo',
@@ -1117,7 +1117,7 @@
   },
 
   'pt-BR': {
-    nav_home: 'Início', nav_start: 'Treinar', nav_library: 'Exercícios', nav_builder: 'Plano', nav_analytics: 'Estatísticas', nav_settings: 'Configurações',
+    nav_home: 'Início', schedule_record: 'Histórico', nav_start: 'Treinar', nav_library: 'Exercícios', nav_builder: 'Plano', nav_analytics: 'Estatísticas', nav_settings: 'Configurações',
     login_subtitle: 'Login do membro', login_username: 'Usuário', login_password: 'Senha', login_remember: 'Lembrar neste dispositivo', login_btn: 'Entrar', login_hint: 'Padrão: admin / admin123',
     logout: 'Sair', exercises_count: (n) => `${n} exercícios`,
     loading: 'Carregando...', mode_free: 'Livre', mode_fixed: 'Fixo', mode_rolling: 'Rotativo',
@@ -1370,7 +1370,7 @@
   },
 
   'ja-JP': {
-    nav_home: 'ホーム', nav_start: 'トレーニング', nav_library: '種目', nav_builder: 'プラン', nav_analytics: '統計', nav_settings: '設定',
+    nav_home: 'ホーム', schedule_record: 'スケジュール記録', nav_start: 'トレーニング', nav_library: '種目', nav_builder: 'プラン', nav_analytics: '統計', nav_settings: '設定',
     login_subtitle: 'ログイン', login_username: 'ユーザー名', login_password: 'パスワード', login_remember: 'このデバイスで記憶', login_btn: 'ログイン', login_hint: 'デフォルト: admin / admin123',
     logout: 'ログアウト', exercises_count: (n) => `${n} 種目`,
     loading: '読み込み中...', mode_free: '自由', mode_fixed: '固定', mode_rolling: 'ローリング',
@@ -1623,7 +1623,7 @@
   },
 
   'ko-KR': {
-    nav_home: '홈', nav_start: '운동', nav_library: '운동 목록', nav_builder: '플랜', nav_analytics: '통계', nav_settings: '설정',
+    nav_home: '홈', schedule_record: '일정 기록', nav_start: '운동', nav_library: '운동 목록', nav_builder: '플랜', nav_analytics: '통계', nav_settings: '설정',
     login_subtitle: '로그인', login_username: '사용자명', login_password: '비밀번호', login_remember: '이 기기에서 기억하기', login_btn: '로그인', login_hint: '기본값: admin / admin123',
     logout: '로그아웃', exercises_count: (n) => `${n}개 운동`,
     loading: '로딩 중...', mode_free: '자유', mode_fixed: '고정', mode_rolling: '순환',
@@ -1876,7 +1876,7 @@
   },
 
   'de-DE': {
-    nav_home: 'Start', nav_start: 'Training', nav_library: 'Übungen', nav_builder: 'Plan', nav_analytics: 'Statistik', nav_settings: 'Einstellungen',
+    nav_home: 'Start', schedule_record: 'Trainingsprotokoll', nav_start: 'Training', nav_library: 'Übungen', nav_builder: 'Plan', nav_analytics: 'Statistik', nav_settings: 'Einstellungen',
     login_subtitle: 'Anmelden', login_username: 'Benutzername', login_password: 'Passwort', login_remember: 'Auf diesem Gerät merken', login_btn: 'Anmelden', login_hint: 'Standard: admin / admin123',
     logout: 'Abmelden', exercises_count: (n) => `${n} Übungen`,
     loading: 'Laden...', mode_free: 'Frei', mode_fixed: 'Fest', mode_rolling: 'Rollierend',
@@ -2129,7 +2129,7 @@
   },
 
   'fr-FR': {
-    nav_home: 'Accueil', nav_start: 'Entraîner', nav_library: 'Exercices', nav_builder: 'Plan', nav_analytics: 'Statistiques', nav_settings: 'Paramètres',
+    nav_home: 'Accueil', schedule_record: 'Historique', nav_start: 'Entraîner', nav_library: 'Exercices', nav_builder: 'Plan', nav_analytics: 'Statistiques', nav_settings: 'Paramètres',
     login_subtitle: 'Connexion membre', login_username: 'Identifiant', login_password: 'Mot de passe', login_remember: 'Se souvenir sur cet appareil', login_btn: 'Se connecter', login_hint: 'Par défaut: admin / admin123',
     logout: 'Déconnexion', exercises_count: (n) => `${n} exercices`,
     loading: 'Chargement...', mode_free: 'Libre', mode_fixed: 'Fixe', mode_rolling: 'Roulant',
@@ -2382,7 +2382,7 @@
   },
 
   'ru-RU': {
-    nav_home: 'Главная', nav_start: 'Тренировка', nav_library: 'Упражнения', nav_builder: 'План', nav_analytics: 'Статистика', nav_settings: 'Настройки',
+    nav_home: 'Главная', schedule_record: 'История расписания', nav_start: 'Тренировка', nav_library: 'Упражнения', nav_builder: 'План', nav_analytics: 'Статистика', nav_settings: 'Настройки',
     login_subtitle: 'Вход', login_username: 'Имя пользователя', login_password: 'Пароль', login_remember: 'Запомнить на устройстве', login_btn: 'Войти', login_hint: 'По умолчанию: admin / admin123',
     logout: 'Выйти', exercises_count: (n) => `${n} упражнений`,
     loading: 'Загрузка...', mode_free: 'Свободный', mode_fixed: 'Фиксированный', mode_rolling: 'Циклический',
@@ -2649,6 +2649,7 @@ export function createT(locale) {
     return val;
   };
 }
+
 
 
 
