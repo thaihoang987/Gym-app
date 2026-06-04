@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.13'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.14'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1289,7 +1289,8 @@ function historyRowInWeek(row, routine) {
   const weekStart = String(routine?.weekStartIso || '').slice(0, 10);
   if (!weekStart) return true;
   const day = String(row?.completed_at || row?.started_at || '').slice(0, 10);
-  return day && day >= weekStart;
+  const weekEnd = String(routine?.weekEndIso || '').slice(0, 10);
+  return day && day >= weekStart && (!weekEnd || day < weekEnd);
 }
 
 function recalcWeeklyFromHistory(dashboard) {

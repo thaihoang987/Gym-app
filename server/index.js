@@ -579,6 +579,13 @@ function getWeekStartIso(resetDay = 0) {
   return start.toISOString().slice(0, 10);
 }
 
+function addDaysIso(value, days) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
 // Lấy danh sách routine + count completed trong tuần hiện tại
 function getWeeklyStatus(userId) {
   const settings = one('SELECT * FROM user_settings WHERE user_id = ?', [userId]);
@@ -587,6 +594,7 @@ function getWeeklyStatus(userId) {
   const manualReset = settings?.weekly_last_reset_at || null;
   // Lấy mốc gần nhất (manual reset luôn ưu tiên nếu đứng sau natural week start)
   const weekStartIso = manualReset && String(manualReset) > naturalStart ? String(manualReset) : naturalStart;
+  const weekEndIso = addDaysIso(weekStartIso, 7);
   // Lấy list routine_ids từ rolling rules (giữ ngữ nghĩa cũ)
   const rules = all(`
     SELECT routine_id FROM routine_schedule_rules
@@ -601,7 +609,8 @@ function getWeeklyStatus(userId) {
       SELECT COUNT(*) AS n FROM workout_sessions
       WHERE user_id = ? AND routine_id = ? AND status = 'COMPLETED'
         AND completed_at >= ?
-    `, [userId, rule.routine_id, weekStartIso]);
+        AND completed_at < ?
+    `, [userId, rule.routine_id, weekStartIso, weekEndIso]);
     const directCount = Number(directRow?.n || 0);
     // 2) Coverage qua group sessions: với mỗi group thuộc routine,
     //    đếm số session COMPLETED có group_id đó trong tuần.
@@ -614,7 +623,8 @@ function getWeeklyStatus(userId) {
           SELECT COUNT(*) AS n FROM workout_sessions
           WHERE user_id = ? AND group_id = ? AND status = 'COMPLETED'
             AND completed_at >= ?
-        `, [userId, g.id, weekStartIso]);
+            AND completed_at < ?
+        `, [userId, g.id, weekStartIso, weekEndIso]);
         return Number(r?.n || 0);
       });
       groupCoverage = Math.min(...counts);
@@ -624,7 +634,8 @@ function getWeeklyStatus(userId) {
       completedCount: directCount + groupCoverage,
       directCount,
       groupCoverage,
-      weekStartIso
+      weekStartIso,
+      weekEndIso
     };
   }).filter(Boolean);
 }
