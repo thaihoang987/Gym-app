@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.25'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.26'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1463,6 +1463,9 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
     const exercises = (sessionData?.exercises || []);
     const totalSets = exercises.reduce((s, e) => s + Number(e.completedSets || 0), 0);
     const completedExerciseCount = exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
+    // Lấy GIF đại diện từ bài đầu tiên đã tập
+    const firstDoneExercise = exercises.find((e) => Number(e.completedSets || 0) > 0) || exercises[0];
+    const repGifUrl = firstDoneExercise?.gifUrl || firstDoneExercise?.imageUrl || null;
     // 1) Thêm vào recentHistory đầu
     const newRow = {
       id: sessionId,
@@ -1478,6 +1481,8 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
       duration_minutes: 1,
       sets: totalSets,
       exercises: completedExerciseCount,
+      gifUrl: repGifUrl,
+      imageUrl: repGifUrl,
       offline: true
     };
     cached.recentHistory = [newRow, ...(cached.recentHistory || []).filter((r) => r.id !== sessionId)];
