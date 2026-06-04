@@ -3668,11 +3668,6 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="section-title mb-0">Schedule Record</h2>
         <div className="flex items-center gap-2">
-          <button
-            className="tiny-btn"
-            onClick={() => setWeekOffset((v) => v - 3)}
-            title="Lui 3 ngày"
-          >‹‹</button>
           {weekOffset !== 0 && (
             <button
               className="ghost-btn px-2 py-1 text-xs"
@@ -3680,6 +3675,11 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
               title="Về hôm nay"
             >↩</button>
           )}
+          <button
+            className="tiny-btn"
+            onClick={() => setWeekOffset((v) => v - 3)}
+            title="Lui 3 ngày"
+          >‹‹</button>
           <span className="text-xs text-slate-500 font-semibold">{rangeLabel}</span>
           <button
             className="tiny-btn"
