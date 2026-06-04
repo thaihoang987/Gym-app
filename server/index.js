@@ -659,6 +659,33 @@ function getRollingWeeklyStatus(userId) {
     const prevVolume = Number(prevWeekStats?.volume_kg || 0);
     const volumeDiff = prevVolume > 0 ? Math.round(((thisVolume - prevVolume) / prevVolume) * 100) : null;
 
+    // 5) Per-exercise breakdown trong tuần này
+    const exerciseBreakdown = all(`
+      SELECT
+        e.id AS exercise_id,
+        e.name AS exercise_name,
+        e.image_path,
+        COUNT(wl.id) AS total_sets,
+        COALESCE(SUM(wl.reps), 0) AS total_reps,
+        COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
+        COALESCE(MAX(wl.weight_kg), 0) AS max_weight
+      FROM workout_logs wl
+      JOIN exercises e ON e.id = wl.exercise_id
+      JOIN workout_sessions ws ON ws.id = wl.session_id
+      WHERE wl.user_id = ? AND ws.routine_id = ? AND ws.status = 'COMPLETED'
+        AND ws.completed_at >= ? AND ws.completed_at < ?
+      GROUP BY e.id
+      ORDER BY volume_kg DESC
+    `, [userId, rule.routine_id, weekStartIso, weekEndIso]).map((row) => ({
+      id: row.exercise_id,
+      name: row.exercise_name,
+      imageUrl: row.image_path ? `/media/${row.image_path}` : null,
+      totalSets: Number(row.total_sets || 0),
+      totalReps: Number(row.total_reps || 0),
+      volumeKg: Math.round(Number(row.volume_kg || 0)),
+      maxWeight: Number(row.max_weight || 0)
+    }));
+
     return {
       ...routine,
       completedCount: directCount + groupCoverage,
@@ -673,7 +700,8 @@ function getRollingWeeklyStatus(userId) {
         volumeKg: Math.round(thisVolume),
         maxWeight: Number(thisWeekStats?.max_weight || 0),
         volumeDiffPct: volumeDiff,
-        prevVolumeKg: Math.round(prevVolume)
+        prevVolumeKg: Math.round(prevVolume),
+        exercises: exerciseBreakdown
       }
     };
   }).filter(Boolean);

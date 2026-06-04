@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.19'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.20'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2798,6 +2798,31 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                       : <span className="flex items-center gap-1"><Play size={11} fill="currentColor" /> {t('start_exercise')}</span>}
                   </button>
                 </div>
+                {/* Per-exercise breakdown */}
+                {done && ws.exercises?.length > 0 && (
+                  <details className="mt-2 ml-12">
+                    <summary className="flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-emerald-400/70 hover:text-emerald-300">
+                      <ChevronRight size={12} className="details-chevron transition-transform" />
+                      {ws.exercises.length} bài tập
+                    </summary>
+                    <div className="mt-2 space-y-1.5">
+                      {ws.exercises.map((ex) => (
+                        <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
+                          {ex.imageUrl
+                            ? <img src={ex.imageUrl} className="h-8 w-8 shrink-0 rounded object-contain bg-white/10" />
+                            : <div className="grid h-8 w-8 shrink-0 place-items-center rounded bg-white/10 text-base">🏋️</div>}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-white/90 leading-tight truncate">{ex.name}</p>
+                            <p className="text-[10px] text-emerald-300/60">
+                              {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
+                            </p>
+                          </div>
+                          {ex.volumeKg > 0 && <span className="shrink-0 text-[11px] font-black text-emerald-300">{ex.volumeKg} kg</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
             );
           })}
