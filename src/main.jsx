@@ -1225,7 +1225,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.34'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.35'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3080,6 +3080,16 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
   const [selectedDay, setSelectedDay] = useState(null); // { key, label, dayHistory }
   const [sessionDetails, setSessionDetails] = useState({}); // sessionId -> detail
 
+  // Lock body scroll khi popup mở
+  useEffect(() => {
+    if (selectedDay) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [selectedDay]);
+
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -3453,6 +3463,96 @@ function ActivityCalendar({ calendar, history, settings }) {
   );
 }
 
+// Map exercise targets → muscle region IDs
+const TARGET_TO_MUSCLE = {
+  'pectorals': ['chest'], 'chest': ['chest'],
+  'lats': ['lats'], 'upper back': ['upper-back'], 'traps': ['traps'],
+  'delts': ['shoulders'], 'shoulders': ['shoulders'],
+  'biceps': ['biceps'], 'forearms': ['forearms'],
+  'triceps': ['triceps'],
+  'abs': ['abs'], 'serratus anterior': ['abs'],
+  'quads': ['quads'], 'adductors': ['quads'],
+  'hamstrings': ['hamstrings'], 'glutes': ['glutes'],
+  'calves': ['calves'], 'abductors': ['glutes'],
+  'spine': ['upper-back'], 'levator scapulae': ['traps'],
+};
+
+function MuscleHeatmap({ workedMuscles = new Map() }) {
+  // workedMuscles: Map<muscleId, intensity 0-1>
+  const fill = (id) => {
+    const v = workedMuscles.get(id) || 0;
+    if (v === 0) return '#e2e8f0';
+    const opacity = 0.3 + v * 0.7;
+    return `rgba(239,68,68,${opacity})`;
+  };
+  const stroke = '#94a3b8';
+  const sw = 0.8;
+  return (
+    <div className="flex justify-center gap-6">
+      {/* Front */}
+      <div className="text-center">
+        <p className="mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">Front</p>
+        <svg viewBox="0 0 80 160" width="90" height="180">
+          {/* Head */}
+          <ellipse cx="40" cy="12" rx="10" ry="11" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
+          {/* Neck */}
+          <rect x="35" y="21" width="10" height="7" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
+          {/* Chest */}
+          <path d="M22 28 Q40 24 58 28 L56 52 Q40 56 24 52 Z" fill={fill('chest')} stroke={stroke} strokeWidth={sw}/>
+          {/* Shoulders */}
+          <ellipse cx="17" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
+          <ellipse cx="63" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
+          {/* Biceps */}
+          <path d="M9 44 Q7 58 10 68 L17 65 Q16 54 17 44 Z" fill={fill('biceps')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M71 44 Q73 58 70 68 L63 65 Q64 54 63 44 Z" fill={fill('biceps')} stroke={stroke} strokeWidth={sw}/>
+          {/* Forearms */}
+          <path d="M10 68 Q8 82 11 92 L17 90 Q16 79 17 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M70 68 Q72 82 69 92 L63 90 Q64 79 63 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
+          {/* Abs */}
+          <path d="M24 52 Q40 56 56 52 L54 90 Q40 94 26 90 Z" fill={fill('abs')} stroke={stroke} strokeWidth={sw}/>
+          {/* Quads */}
+          <path d="M26 90 Q34 90 38 91 L37 130 Q32 132 26 128 Z" fill={fill('quads')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M54 90 Q46 90 42 91 L43 130 Q48 132 54 128 Z" fill={fill('quads')} stroke={stroke} strokeWidth={sw}/>
+          {/* Calves */}
+          <path d="M26 128 Q32 132 37 130 L36 155 Q31 158 27 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M54 128 Q48 132 43 130 L44 155 Q49 158 53 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
+        </svg>
+      </div>
+      {/* Back */}
+      <div className="text-center">
+        <p className="mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">Back</p>
+        <svg viewBox="0 0 80 160" width="90" height="180">
+          <ellipse cx="40" cy="12" rx="10" ry="11" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
+          <rect x="35" y="21" width="10" height="7" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
+          {/* Traps */}
+          <path d="M28 22 Q40 20 52 22 L56 34 Q40 30 24 34 Z" fill={fill('traps')} stroke={stroke} strokeWidth={sw}/>
+          {/* Shoulders back */}
+          <ellipse cx="17" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
+          <ellipse cx="63" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
+          {/* Upper back */}
+          <path d="M24 34 Q40 30 56 34 L54 56 Q40 58 26 56 Z" fill={fill('upper-back')} stroke={stroke} strokeWidth={sw}/>
+          {/* Triceps */}
+          <path d="M9 44 Q7 58 10 68 L17 65 Q16 54 17 44 Z" fill={fill('triceps')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M71 44 Q73 58 70 68 L63 65 Q64 54 63 44 Z" fill={fill('triceps')} stroke={stroke} strokeWidth={sw}/>
+          {/* Forearms */}
+          <path d="M10 68 Q8 82 11 92 L17 90 Q16 79 17 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M70 68 Q72 82 69 92 L63 90 Q64 79 63 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
+          {/* Lats */}
+          <path d="M26 56 Q40 58 54 56 L52 85 Q40 88 28 85 Z" fill={fill('lats')} stroke={stroke} strokeWidth={sw}/>
+          {/* Glutes */}
+          <path d="M28 85 Q34 88 40 88 Q46 88 52 85 L50 108 Q40 112 30 108 Z" fill={fill('glutes')} stroke={stroke} strokeWidth={sw}/>
+          {/* Hamstrings */}
+          <path d="M30 108 Q34 112 38 111 L37 130 Q32 132 28 128 Z" fill={fill('hamstrings')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M50 108 Q46 112 42 111 L43 130 Q48 132 52 128 Z" fill={fill('hamstrings')} stroke={stroke} strokeWidth={sw}/>
+          {/* Calves */}
+          <path d="M28 128 Q32 132 37 130 L36 155 Q31 158 27 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
+          <path d="M52 128 Q48 132 43 130 L44 155 Q49 158 51 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function WeeklyStatsCard({ stats, settings }) {
   const t = useLang();
   const [openActivity, setOpenActivity] = useState(null);
@@ -3558,6 +3658,45 @@ function WeeklyStatsCard({ stats, settings }) {
           ))}
         </div>
       )}
+
+      {/* Muscle heatmap */}
+      {byActivity.length > 0 && (() => {
+        // Tính intensity từ byActivity sets per muscle
+        const muscleVol = new Map();
+        for (const item of byActivity) {
+          const targets = String(item.target || item.name || '').toLowerCase().split(/[,/]+/).map(s => s.trim());
+          for (const tgt of targets) {
+            const muscles = TARGET_TO_MUSCLE[tgt] || [];
+            for (const m of muscles) {
+              muscleVol.set(m, (muscleVol.get(m) || 0) + Number(item.sets || 0));
+            }
+          }
+        }
+        // Also from exercises_detail in byActivity
+        for (const item of byActivity) {
+          if (!item.exercises_detail) continue;
+          for (const ex of item.exercises_detail) {
+            const muscles = TARGET_TO_MUSCLE[String(ex.target || '').toLowerCase()] || [];
+            for (const m of muscles) {
+              muscleVol.set(m, (muscleVol.get(m) || 0) + Number(ex.totalSets || 0));
+            }
+          }
+        }
+        if (muscleVol.size === 0) return null;
+        const maxVol = Math.max(...muscleVol.values(), 1);
+        const normalized = new Map([...muscleVol.entries()].map(([k, v]) => [k, v / maxVol]));
+        return (
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Muscle Activity This Week</p>
+            <MuscleHeatmap workedMuscles={normalized} />
+            <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-slate-400">
+              <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" /> Low
+              <span className="h-2.5 w-2.5 rounded-sm bg-red-300" /> Medium
+              <span className="h-2.5 w-2.5 rounded-sm bg-red-600" /> High
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -3567,13 +3706,25 @@ function HistoryList({ userId, history, onDeleted, settings }) {
   const dialog = useAppDialog();
   const [openSessionId, setOpenSessionId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [filterName, setFilterName] = useState('');
   const [loadedHistory, setLoadedHistory] = useState(history.slice(0, 20));
   const [hasMore, setHasMore] = useState(history.length >= 20);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  // Unique routine/group names for filter
+  const filterOptions = useMemo(() => {
+    const names = new Set(history.map((r) => r.routine_name || r.group_name || '').filter(Boolean));
+    return [...names].sort();
+  }, [history]);
+
   useEffect(() => {
     setLoadedHistory(history.slice(0, 20));
     setHasMore(history.length >= 20);
   }, [history]);
+
+  const filteredHistory = filterName
+    ? loadedHistory.filter((r) => (r.routine_name || r.group_name || '') === filterName)
+    : loadedHistory;
   const removeSession = async (sessionId) => {
     if (!(await dialog.confirm(t('history_confirm_delete')))) return;
     await api(`/api/sessions/${sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -3609,9 +3760,21 @@ function HistoryList({ userId, history, onDeleted, settings }) {
   };
   return (
     <div>
-      <h2 className="section-title">{t('history_title')}</h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="section-title mb-0">{t('history_title')}</h2>
+        {filterOptions.length > 0 && (
+          <select
+            className="input py-1 text-xs max-w-[180px]"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+          >
+            <option value="">All</option>
+            {filterOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        )}
+      </div>
       <div className="space-y-2">
-        {loadedHistory.map((row) => {
+        {filteredHistory.map((row) => {
           const activityName = row.routine_name || row.group_name || t('history_free_session');
           const color = stableColorForName(activityName);
           return (
@@ -5956,18 +6119,39 @@ function Analytics({ userId, settings }) {
         {chartMode === 'exercise' ? (
           <div>
             <ExerciseProgressPicker exercises={analytics.exercises} value={selectedExerciseId} onChange={setSelectedExerciseId} />
-            {exerciseChartRows.length ? (
+            {exerciseChartRows.length ? (() => {
+              // Tính PR theo thời gian (running max)
+              let runningMax = 0;
+              const rowsWithPR = exerciseChartRows.map((row) => {
+                const isPR = row.display_weight > runningMax;
+                if (isPR) runningMax = row.display_weight;
+                return { ...row, isPR };
+              });
+              const PRDot = (props) => {
+                const { cx, cy, payload } = props;
+                if (!payload?.isPR) return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#2563eb" stroke="none" />;
+                return (
+                  <g key={`pr-${cx}-${cy}`}>
+                    <circle cx={cx} cy={cy} r={7} fill="#f59e0b" stroke="white" strokeWidth={2} />
+                    <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight="bold" fill="white">P</text>
+                  </g>
+                );
+              };
+              return (
               <div className="space-y-4">
                 {/* Max weight chart */}
                 <div>
-                  <p className="mb-1 text-xs font-bold text-slate-500 uppercase tracking-wide">Max Weight ({exerciseChartUnit})</p>
+                  <div className="mb-1 flex items-center gap-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Max Weight ({exerciseChartUnit})</p>
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600"><span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white text-[8px]">P</span> PR</span>
+                  </div>
                   <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={exerciseChartRows}>
+                    <LineChart data={rowsWithPR}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="ts" type="number" domain={chartDomain} stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} />
                       <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                      <Tooltip labelFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} formatter={(v) => [`${v} ${exerciseChartUnit}`, 'Max']} />
-                      <Line type="monotone" dataKey="display_weight" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4, fill: '#2563eb' }} activeDot={{ r: 6 }} />
+                      <Tooltip labelFormatter={(v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' })} formatter={(v, n, p) => [`${v} ${exerciseChartUnit}${p.payload?.isPR ? ' 🏆 PR' : ''}`, 'Max']} />
+                      <Line type="monotone" dataKey="display_weight" stroke="#2563eb" strokeWidth={2.5} dot={<PRDot />} activeDot={{ r: 7 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -6006,7 +6190,8 @@ function Analytics({ userId, settings }) {
                   </div>
                 </div>
               </div>
-            ) : (
+              );
+            })() : (
               <div className="mt-4">
                 <p className="text-slate-600">{selectedExercise ? t('analytics_no_exercise_data') : t('analytics_no_exercises')}</p>
                 {selectedExercise && rangeKey !== 'all' && (
