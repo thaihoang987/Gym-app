@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.16'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.17'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2689,81 +2689,124 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
       onChanged?.();
     }
   };
+  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const allDone = total > 0 && doneCount === total;
+
   return (
-    <div className="panel-green">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-emerald-200">{formatTime(clock, settings)}</p>
-          <h2 className="mt-1 text-2xl font-bold">{t('schedule_rolling_panel_title')}</h2>
-          <p className="mt-2 text-sm text-emerald-200">{suggestion?.title || ''}</p>
+    <div className="overflow-hidden rounded-2xl" style={{
+      background: allDone
+        ? 'linear-gradient(135deg,#064e3b,#065f46,#047857)'
+        : 'linear-gradient(135deg,#064e3b 0%,#065f46 60%,#1e3a5f 100%)',
+      boxShadow: '0 8px 32px rgba(6,78,59,0.4)'
+    }}>
+      {/* Header */}
+      <div className="px-5 pt-5 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-emerald-400">{formatTime(clock, settings)}</p>
+            <h2 className="mt-1 text-2xl font-black text-white">{t('schedule_rolling_panel_title')}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {doneCount > 0 && (
+              <button onClick={resetWeek}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white/80 backdrop-blur transition hover:bg-white/20"
+              >⟲ {t('weekly_reset')}</button>
+            )}
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 backdrop-blur">
+              <CalendarDays size={22} className="text-emerald-300" />
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {doneCount > 0 && (
-            <button
-              onClick={resetWeek}
-              className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/25"
-              title={t('weekly_reset')}
-            >
-              ⟲ {t('weekly_reset')}
-            </button>
-          )}
-          <CalendarDays size={34} />
+
+        {/* Stats row */}
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-white/10 p-3 text-center backdrop-blur">
+            <p className="text-2xl font-black text-white">{doneCount}</p>
+            <p className="mt-0.5 text-[11px] text-emerald-300">{t('weekly_done')}</p>
+          </div>
+          <div className="rounded-xl bg-white/10 p-3 text-center backdrop-blur">
+            <p className="text-2xl font-black text-white">{total - doneCount}</p>
+            <p className="mt-0.5 text-[11px] text-emerald-300">Còn lại</p>
+          </div>
+          <div className="rounded-xl p-3 text-center backdrop-blur" style={{background: allDone ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.10)'}}>
+            <p className={`text-2xl font-black ${allDone ? 'text-emerald-300' : 'text-white'}`}>{pct}%</p>
+            <p className="mt-0.5 text-[11px] text-emerald-300">{t('weekly_progress')}</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{
+              width: `${pct}%`,
+              background: allDone
+                ? 'linear-gradient(90deg,#6ee7b7,#34d399)'
+                : 'linear-gradient(90deg,#6ee7b7,#10b981)',
+              boxShadow: allDone ? '0 0 8px #34d399' : 'none'
+            }}
+          />
         </div>
       </div>
+
+      {/* Routine list */}
       {total === 0 ? (
-        <p className="mt-5 rounded-lg bg-white/8 p-3 text-sm text-emerald-100">{t('today_go_schedule')}</p>
+        <div className="px-5 pb-5">
+          <p className="rounded-xl bg-white/8 p-3 text-sm text-emerald-200">{t('today_go_schedule')}</p>
+        </div>
       ) : (
-        <div className="mt-5 space-y-3">
-          <div className="rounded-lg bg-white/8 p-3">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-sm text-emerald-200">{t('weekly_progress')}</p>
-                <p className="mt-1 text-xl font-bold">{doneCount}/{total} {t('weekly_done')}</p>
-              </div>
-              <p className="text-2xl font-black text-white">{Math.round((doneCount / total) * 100)}%</p>
-            </div>
-            {/* Progress bar màu đậm dần theo % */}
-            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/15">
-              <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${Math.round((doneCount / total) * 100)}%`,
-                  background: `linear-gradient(90deg, rgba(110,231,183,${0.4 + (doneCount / total) * 0.6}), rgba(16,185,129,${0.6 + (doneCount / total) * 0.4}))`,
-                  boxShadow: doneCount === total ? '0 0 12px rgba(16,185,129,0.6)' : 'none'
-                }}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            {weekly.map((routine) => {
-              const count = Number(routine.completedCount || 0);
-              const done = count > 0;
-              const groupCount = Array.isArray(routine.groups) ? routine.groups.length : (typeof routine.groups === 'string' ? routine.groups.trim().split(/\s+/).filter(Boolean).length : 0);
-              const exerciseCount = Array.isArray(routine.exercises) ? routine.exercises.length : (typeof routine.exercises === 'string' ? routine.exercises.trim().split(/\s+/).filter(Boolean).length : 0);
-              return (
-                <div key={routine.id} className={`flex items-center gap-2 rounded-lg border p-3 ${done ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}>
-                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${done ? 'bg-emerald-500 text-white' : 'border-2 border-orange-300 bg-white text-orange-300'}`}>
-                    {done ? <Check size={18} /> : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-bold ${done ? 'text-emerald-900' : 'text-orange-900'}`}>
-                      {routine.name}
-                      {count > 0 && <span className="ml-1.5 text-xs font-black">×{count}</span>}
-                    </p>
-                    <p className={`text-xs ${done ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {groupCount} group · {exerciseCount} {t('bài')}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => onStartRoutine(routine)}
-                    className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white ${done ? 'bg-emerald-600' : 'bg-[#f05a28]'}`}
-                  >
-                    {done ? <span className="flex items-center gap-1"><Play size={12} fill="currentColor" /> {t('weekly_repeat')}</span> : <span className="flex items-center gap-1"><Play size={12} fill="currentColor" /> {t('start_exercise')}</span>}
-                  </button>
+        <div className="space-y-px">
+          {weekly.map((routine, i) => {
+            const count = Number(routine.completedCount || 0);
+            const done = count > 0;
+            const exerciseCount = Array.isArray(routine.exercises)
+              ? routine.exercises.length
+              : (routine.exercise_count || 0);
+            return (
+              <div key={routine.id}
+                className={`flex items-center gap-3 px-5 py-3 transition-colors ${
+                  i === weekly.length - 1 ? 'pb-5' : ''
+                } ${done ? 'bg-white/5' : 'bg-transparent'}`}
+              >
+                {/* Tick circle */}
+                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all ${
+                  done
+                    ? 'bg-emerald-400 shadow-lg shadow-emerald-900/50'
+                    : 'border-2 border-white/20 bg-transparent'
+                }`}>
+                  {done
+                    ? <Check size={17} className="text-emerald-900" strokeWidth={3} />
+                    : <span className="text-xs font-black text-white/30">{i + 1}</span>
+                  }
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Info */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white leading-tight">
+                    {routine.name}
+                    {count > 1 && <span className="ml-1.5 rounded-full bg-emerald-500/30 px-1.5 py-0.5 text-[10px] font-black text-emerald-300">×{count}</span>}
+                  </p>
+                  <p className="mt-0.5 text-xs text-emerald-300/70">
+                    {exerciseCount > 0 ? `${exerciseCount} ${t('bài')}` : ''}
+                  </p>
+                </div>
+
+                {/* Action button */}
+                <button
+                  onClick={() => onStartRoutine(routine)}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-black transition-all active:scale-95 ${
+                    done
+                      ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                      : 'bg-[#f05a28] text-white shadow-md shadow-orange-900/40 hover:bg-[#d94f23]'
+                  }`}
+                >
+                  {done
+                    ? <span className="flex items-center gap-1"><Play size={10} fill="currentColor" /> {t('weekly_repeat')}</span>
+                    : <span className="flex items-center gap-1"><Play size={11} fill="currentColor" /> {t('start_exercise')}</span>
+                  }
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
