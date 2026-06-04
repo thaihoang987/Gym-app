@@ -1227,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.39'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.40'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2797,7 +2797,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                     </div>
                     {done && Number(ws.totalSets || 0) > 0 ? (
                       <p className="mt-0.5 text-xs text-emerald-300/70">
-                        {ws.totalSets} sets{Number(ws.volumeKg || 0) > 0 ? ` · ${formatVolume(ws.volumeKg)} vol` : ''}{Number(ws.maxWeight || 0) > 0 ? ` · max ${ws.maxWeight}kg` : ''}
+                        {ws.totalSets} sets{Number(ws.volumeKg || 0) > 0 ? ` · ${formatVolume(ws.volumeKg)}` : ''}{Number(ws.maxWeight || 0) > 0 ? ` · max ${ws.maxWeight}kg` : ''}
                       </p>
                     ) : (
                       <p className="mt-0.5 text-xs text-white/40">
@@ -3594,7 +3594,7 @@ function WeeklyStatsCard({ stats, settings }) {
               {item.imageUrl ? <img src={item.imageUrl} /> : <span><Dumbbell size={18} /></span>}
               <div className="flex-1 min-w-0">
                 <strong>{item.name}</strong>
-                <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}{item.volume > 0 ? ` · ${formatVolume(item.volume)} vol` : ''}</p>
+                <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}{item.volume > 0 ? ` · ${formatVolume(item.volume)}` : ''}</p>
               </div>
               <ChevronRight size={16} className={`shrink-0 text-slate-400 transition-transform ${openActivity === item.name ? 'rotate-90' : ''}`} />
             </div>
