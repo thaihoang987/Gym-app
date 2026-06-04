@@ -475,11 +475,11 @@ button:disabled {
 }
 
 .muscle-map-wrap {
-  @apply rounded-lg border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-3;
+  @apply rounded-lg border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4;
 }
 
 .muscle-map-stage {
-  @apply flex items-start justify-center gap-3 sm:gap-6;
+  @apply flex items-start justify-center gap-4 sm:gap-8;
 }
 
 .muscle-map-side {
@@ -491,7 +491,7 @@ button:disabled {
 }
 
 .muscle-map-side svg {
-  @apply mx-auto block h-[230px] w-full max-w-[150px] overflow-visible;
+  @apply mx-auto block h-[330px] w-full max-w-[215px] overflow-visible sm:h-[390px] sm:max-w-[255px] lg:h-[430px] lg:max-w-[285px];
 }
 
 .muscle-map-side path {

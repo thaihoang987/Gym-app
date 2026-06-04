@@ -3569,7 +3569,8 @@ function addMuscleScore(scoreMap, source, points) {
   }
 }
 
-function MuscleHeatmap({ workedMuscles = new Map() }) {
+function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
+  const model = gender === 'female' ? 'female' : 'male';
   const activeMuscles = [...workedMuscles.entries()]
     .filter(([, value]) => value > 0)
     .sort((a, b) => b[1] - a[1])
@@ -3608,8 +3609,8 @@ function MuscleHeatmap({ workedMuscles = new Map() }) {
   return (
     <div className="muscle-map-wrap">
       <div className="muscle-map-stage">
-        {renderSide('maleFront', 'Mặt trước')}
-        {renderSide('maleBack', 'Mặt sau')}
+        {renderSide(`${model}Front`, 'Mặt trước')}
+        {renderSide(`${model}Back`, 'Mặt sau')}
       </div>
       {!!activeMuscles.length && (
         <div className="muscle-map-tags">
@@ -3753,7 +3754,7 @@ function WeeklyStatsCard({ stats, settings }) {
         return (
           <div className="mt-4 border-t border-slate-100 pt-4">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Muscle Activity This Week</p>
-            <MuscleHeatmap workedMuscles={normalized} />
+            <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
             <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-slate-400">
               <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" /> Low
               <span className="h-2.5 w-2.5 rounded-sm bg-red-300" /> Medium
