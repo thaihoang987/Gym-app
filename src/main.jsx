@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.23'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.24'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2618,7 +2618,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   return (
     <section className="space-y-5">
       <BodyWeightInput userId={userId} settings={settings} />
-      <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} userId={userId} onChanged={loadAll} />
+      {suggestion?.mode !== 'FREE' && <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} userId={userId} onChanged={loadAll} />}
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
       <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} userId={userId} settings={settings} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
