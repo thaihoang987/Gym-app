@@ -1227,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.46'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.47'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3568,7 +3568,7 @@ function WeeklyStatsCard({ stats, settings }) {
   const byDay = Array.isArray(safeStats.byDay) ? safeStats.byDay : [];
   const byActivity = Array.isArray(safeStats.byActivity) ? safeStats.byActivity : [];
   const activities = Array.isArray(safeStats.activities) ? safeStats.activities : [];
-  const maxDaySessions = Math.max(1, ...byDay.map((day) => Number(day.sessions || 0)));
+  const todayIso = localIsoDate(new Date());
   const statTiles = [
     [t('weekly_stat_sessions'), safeStats.totalSessions || 0],
     [t('weekly_stat_exercises'), safeStats.totalExercises || 0],
@@ -3602,16 +3602,37 @@ function WeeklyStatsCard({ stats, settings }) {
       <div className="weekly-day-strip">
         {byDay.map((day, index) => {
           const date = parseServerDate(day.day);
-          const height = Math.max(10, Math.round((Number(day.sessions || 0) / maxDaySessions) * 54));
+          const sessions = Number(day.sessions || 0);
+          const exercises = Number(day.exercises || 0);
+          const sets = Number(day.sets || 0);
+          const minutes = Number(day.minutes || 0);
+          const images = Array.isArray(day.images) ? day.images : [];
+          const isToday = day.day === todayIso;
+          const hasActivity = sessions > 0;
+          const weekday = date ? formatDate(date, settings, { weekday: 'short' }) : t('days')[index];
+          const fullDate = date ? formatDate(date, settings, { day: '2-digit', month: '2-digit' }) : '';
           return (
-            <div key={day.day || index} className="weekly-day-cell">
-              <div className="weekly-day-images">
-                {(day.images || []).slice(0, 3).map((src, imageIndex) => <img key={`${src}-${imageIndex}`} src={src} />)}
-                {!(day.images || []).length && <Dumbbell size={16} />}
+            <div key={day.day || index} className={`weekly-day-cell ${hasActivity ? 'has-activity' : ''} ${isToday ? 'is-today' : ''}`}>
+              <div className="weekly-day-head">
+                <span>{weekday}</span>
+                {isToday && <b>Hôm nay</b>}
               </div>
-              <div className="weekly-day-bar" style={{ height }} />
-              <strong>{t('days')[index]}</strong>
-              <span>{date ? date.getDate() : ''}</span>
+              <strong>{fullDate}</strong>
+              <div className="weekly-day-images">
+                {images.slice(0, 3).map((src, imageIndex) => <img key={`${src}-${imageIndex}`} src={src} />)}
+                {!images.length && <Dumbbell size={22} />}
+              </div>
+              <div className="weekly-day-meta">
+                {hasActivity ? (
+                  <>
+                    <b>{sessions} {t('weekly_stat_sessions')}</b>
+                    <span>{exercises} {t('bài')} · {sets} {t('set')}</span>
+                    <span>{minutes} {t('min')}</span>
+                  </>
+                ) : (
+                  <span>Chưa tập</span>
+                )}
+              </div>
             </div>
           );
         })}

@@ -532,33 +532,64 @@ button:disabled {
 }
 
 .weekly-day-strip {
-  @apply mt-4 grid grid-cols-7 gap-2 rounded-lg bg-gradient-to-br from-emerald-50 to-orange-50 p-3;
+  @apply mt-4 grid grid-cols-1 gap-3 rounded-lg bg-gradient-to-br from-emerald-50 to-orange-50 p-3 sm:grid-cols-2 lg:grid-cols-7;
 }
 
 .weekly-day-cell {
-  @apply flex min-w-0 flex-col items-center justify-end gap-1 text-center;
-  min-height: 118px;
+  @apply flex min-w-0 flex-col items-center gap-2 rounded-lg border border-white/70 bg-white/75 p-3 text-center ring-1 ring-slate-100 transition;
+  min-height: 188px;
+}
+
+.weekly-day-cell.has-activity {
+  @apply border-orange-100 bg-orange-50/80;
+}
+
+.weekly-day-cell.is-today {
+  @apply border-orange-400 ring-2 ring-orange-200;
+}
+
+.weekly-day-head {
+  @apply flex w-full items-center justify-between gap-2;
+}
+
+.weekly-day-head span {
+  @apply text-sm font-black capitalize text-slate-900;
+}
+
+.weekly-day-head b {
+  @apply rounded-full bg-orange-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-white;
 }
 
 .weekly-day-images {
-  @apply grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-white text-slate-300 ring-1 ring-stone-200;
+  @apply relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-white text-slate-300 ring-1 ring-stone-200;
 }
 
 .weekly-day-images img {
-  @apply h-full w-full object-contain;
+  @apply absolute h-full w-full object-contain;
 }
 
-.weekly-day-bar {
-  @apply w-5 rounded-full bg-[#f05a28] transition-all;
-  min-height: 10px;
+.weekly-day-images img:nth-child(2) {
+  @apply translate-x-4 translate-y-2 scale-75 opacity-90;
+}
+
+.weekly-day-images img:nth-child(3) {
+  @apply -translate-x-4 translate-y-2 scale-75 opacity-80;
 }
 
 .weekly-day-cell strong {
-  @apply text-xs font-black text-slate-700;
+  @apply text-2xl font-black leading-none text-slate-950;
 }
 
-.weekly-day-cell span {
-  @apply text-[11px] font-semibold text-slate-500;
+.weekly-day-meta {
+  @apply mt-auto grid gap-0.5 text-xs font-bold text-slate-600;
+}
+
+.weekly-day-meta b {
+  @apply text-sm font-black text-slate-950;
+}
+
+.weekly-day-meta span {
+  @apply text-[11px] font-bold text-slate-500;
 }
 
 .weekly-activity-list {
