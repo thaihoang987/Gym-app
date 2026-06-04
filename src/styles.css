@@ -474,6 +474,46 @@ button:disabled {
   @apply mt-1 block text-[11px] font-bold text-emerald-100;
 }
 
+.muscle-map-wrap {
+  @apply rounded-lg border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-3;
+}
+
+.muscle-map-stage {
+  @apply flex items-start justify-center gap-3 sm:gap-6;
+}
+
+.muscle-map-side {
+  @apply min-w-0 flex-1 text-center;
+}
+
+.muscle-map-side p {
+  @apply mb-1 text-[10px] font-black uppercase tracking-wide text-slate-400;
+}
+
+.muscle-map-side svg {
+  @apply mx-auto block h-[230px] w-full max-w-[150px] overflow-visible;
+}
+
+.muscle-map-side path {
+  transition: fill 180ms ease, opacity 180ms ease, filter 180ms ease;
+}
+
+.muscle-map-side .muscle-active path {
+  filter: drop-shadow(0 2px 4px rgba(249, 115, 22, 0.24));
+}
+
+.muscle-map-tags {
+  @apply mt-3 flex flex-wrap justify-center gap-1.5;
+}
+
+.muscle-map-tags span {
+  @apply rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-bold text-slate-700;
+}
+
+.muscle-map-tags b {
+  @apply text-orange-700;
+}
+
 .weekly-stats-grid {
   @apply mt-4 grid grid-cols-2 gap-2 md:grid-cols-4;
 }

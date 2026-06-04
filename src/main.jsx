@@ -45,6 +45,7 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, T
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
+import { MUSCLE_MAP_PATHS } from './muscleMapPaths.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // gymStore — Single source of truth cho mọi data của user
@@ -3463,92 +3464,162 @@ function ActivityCalendar({ calendar, history, settings }) {
   );
 }
 
-// Map exercise targets → muscle region IDs
+// Map exercise targets → MuscleMap region IDs.
 const TARGET_TO_MUSCLE = {
-  'pectorals': ['chest'], 'chest': ['chest'],
-  'lats': ['lats'], 'upper back': ['upper-back'], 'traps': ['traps'],
-  'delts': ['shoulders'], 'shoulders': ['shoulders'],
-  'biceps': ['biceps'], 'forearms': ['forearms'],
+  'pectorals': ['chest'],
+  'chest': ['chest'],
+  'upper chest': ['upper-chest'],
+  'lower chest': ['lower-chest'],
+  'lats': ['upper-back'],
+  'latissimus dorsi': ['upper-back'],
+  'back': ['upper-back'],
+  'upper back': ['upper-back'],
+  'lower back': ['lower-back'],
+  'spine': ['lower-back'],
+  'rhomboids': ['upper-back'],
+  'traps': ['trapezius'],
+  'trapezius': ['trapezius'],
+  'levator scapulae': ['trapezius'],
+  'delts': ['deltoids'],
+  'deltoids': ['deltoids'],
+  'shoulders': ['deltoids'],
+  'front deltoids': ['front-deltoid'],
+  'front delts': ['front-deltoid'],
+  'rear deltoids': ['deltoids'],
+  'rear delts': ['deltoids'],
+  'rotator cuff': ['deltoids'],
+  'biceps': ['biceps'],
+  'forearms': ['forearm'],
+  'forearm': ['forearm'],
   'triceps': ['triceps'],
-  'abs': ['abs'], 'serratus anterior': ['abs'],
-  'quads': ['quads'], 'adductors': ['quads'],
-  'hamstrings': ['hamstrings'], 'glutes': ['glutes'],
-  'calves': ['calves'], 'abductors': ['glutes'],
-  'spine': ['upper-back'], 'levator scapulae': ['traps'],
+  'abs': ['abs'],
+  'abdominals': ['abs'],
+  'upper abs': ['upper-abs'],
+  'lower abs': ['lower-abs'],
+  'obliques': ['obliques'],
+  'serratus anterior': ['serratus'],
+  'serratus': ['serratus'],
+  'core': ['abs', 'obliques'],
+  'quads': ['quadriceps'],
+  'quadriceps': ['quadriceps'],
+  'inner quad': ['inner-quad'],
+  'outer quad': ['outer-quad'],
+  'hip flexors': ['hip-flexors'],
+  'adductors': ['adductors'],
+  'abductors': ['gluteal'],
+  'hamstrings': ['hamstring'],
+  'hamstring': ['hamstring'],
+  'glutes': ['gluteal'],
+  'gluteal': ['gluteal'],
+  'calves': ['calves'],
+  'soleus': ['calves'],
+  'tibialis': ['tibialis'],
+  'ankles': ['ankles'],
+  'feet': ['feet']
 };
 
+const MUSCLE_DISPLAY_NAMES = {
+  abs: 'Bụng',
+  biceps: 'Tay trước',
+  calves: 'Bắp chân',
+  chest: 'Ngực',
+  deltoids: 'Vai',
+  feet: 'Bàn chân',
+  forearm: 'Cẳng tay',
+  gluteal: 'Mông',
+  hamstring: 'Đùi sau',
+  hands: 'Bàn tay',
+  head: 'Đầu',
+  knees: 'Gối',
+  'lower-back': 'Lưng dưới',
+  obliques: 'Cơ liên sườn',
+  quadriceps: 'Đùi trước',
+  tibialis: 'Ống chân',
+  trapezius: 'Cầu vai',
+  triceps: 'Tay sau',
+  'upper-back': 'Lưng trên',
+  serratus: 'Cơ răng trước',
+  adductors: 'Đùi trong',
+  ankles: 'Cổ chân',
+  'hip-flexors': 'Gập hông',
+  'upper-chest': 'Ngực trên',
+  'lower-chest': 'Ngực dưới',
+  'inner-quad': 'Đùi trước trong',
+  'outer-quad': 'Đùi trước ngoài',
+  'upper-abs': 'Bụng trên',
+  'lower-abs': 'Bụng dưới',
+  'front-deltoid': 'Vai trước'
+};
+
+function normalizeMuscleAliases(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\[\]"]/g, '')
+    .split(/[,/;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function addMuscleScore(scoreMap, source, points) {
+  for (const alias of normalizeMuscleAliases(source)) {
+    const muscles = TARGET_TO_MUSCLE[alias] || [];
+    for (const muscle of muscles) {
+      scoreMap.set(muscle, (scoreMap.get(muscle) || 0) + points);
+    }
+  }
+}
+
 function MuscleHeatmap({ workedMuscles = new Map() }) {
-  // workedMuscles: Map<muscleId, intensity 0-1>
+  const activeMuscles = [...workedMuscles.entries()]
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
   const fill = (id) => {
     const v = workedMuscles.get(id) || 0;
-    if (v === 0) return '#e2e8f0';
-    const opacity = 0.3 + v * 0.7;
-    return `rgba(239,68,68,${opacity})`;
+    if (id === 'hair') return '#111827';
+    if (v === 0) return '#eef2f7';
+    const opacity = 0.28 + v * 0.72;
+    return `rgba(249, 115, 22, ${opacity})`;
   };
-  const stroke = '#94a3b8';
-  const sw = 0.8;
+  const renderSide = (key, label) => (
+    <div className="muscle-map-side">
+      <p>{label}</p>
+      <svg viewBox={MUSCLE_MAP_PATHS[key].viewBox} role="img" aria-label={label}>
+        {MUSCLE_MAP_PATHS[key].parts.map((part) => (
+          <g key={`${key}-${part.slug}`} className={workedMuscles.get(part.slug) ? 'muscle-active' : ''}>
+            {[...part.common, ...part.left, ...part.right].map((pathData, index) => (
+              <path
+                key={`${part.slug}-${index}`}
+                d={pathData}
+                fill={fill(part.slug)}
+                stroke="#334155"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              >
+                <title>{MUSCLE_DISPLAY_NAMES[part.slug] || part.slug}</title>
+              </path>
+            ))}
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+
   return (
-    <div className="flex justify-center gap-6">
-      {/* Front */}
-      <div className="text-center">
-        <p className="mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">Front</p>
-        <svg viewBox="0 0 80 160" width="90" height="180">
-          {/* Head */}
-          <ellipse cx="40" cy="12" rx="10" ry="11" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
-          {/* Neck */}
-          <rect x="35" y="21" width="10" height="7" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
-          {/* Chest */}
-          <path d="M22 28 Q40 24 58 28 L56 52 Q40 56 24 52 Z" fill={fill('chest')} stroke={stroke} strokeWidth={sw}/>
-          {/* Shoulders */}
-          <ellipse cx="17" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
-          <ellipse cx="63" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
-          {/* Biceps */}
-          <path d="M9 44 Q7 58 10 68 L17 65 Q16 54 17 44 Z" fill={fill('biceps')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M71 44 Q73 58 70 68 L63 65 Q64 54 63 44 Z" fill={fill('biceps')} stroke={stroke} strokeWidth={sw}/>
-          {/* Forearms */}
-          <path d="M10 68 Q8 82 11 92 L17 90 Q16 79 17 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M70 68 Q72 82 69 92 L63 90 Q64 79 63 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
-          {/* Abs */}
-          <path d="M24 52 Q40 56 56 52 L54 90 Q40 94 26 90 Z" fill={fill('abs')} stroke={stroke} strokeWidth={sw}/>
-          {/* Quads */}
-          <path d="M26 90 Q34 90 38 91 L37 130 Q32 132 26 128 Z" fill={fill('quads')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M54 90 Q46 90 42 91 L43 130 Q48 132 54 128 Z" fill={fill('quads')} stroke={stroke} strokeWidth={sw}/>
-          {/* Calves */}
-          <path d="M26 128 Q32 132 37 130 L36 155 Q31 158 27 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M54 128 Q48 132 43 130 L44 155 Q49 158 53 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
-        </svg>
+    <div className="muscle-map-wrap">
+      <div className="muscle-map-stage">
+        {renderSide('maleFront', 'Mặt trước')}
+        {renderSide('maleBack', 'Mặt sau')}
       </div>
-      {/* Back */}
-      <div className="text-center">
-        <p className="mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide">Back</p>
-        <svg viewBox="0 0 80 160" width="90" height="180">
-          <ellipse cx="40" cy="12" rx="10" ry="11" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
-          <rect x="35" y="21" width="10" height="7" fill="#f1f5f9" stroke={stroke} strokeWidth={sw}/>
-          {/* Traps */}
-          <path d="M28 22 Q40 20 52 22 L56 34 Q40 30 24 34 Z" fill={fill('traps')} stroke={stroke} strokeWidth={sw}/>
-          {/* Shoulders back */}
-          <ellipse cx="17" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
-          <ellipse cx="63" cy="35" rx="8" ry="10" fill={fill('shoulders')} stroke={stroke} strokeWidth={sw}/>
-          {/* Upper back */}
-          <path d="M24 34 Q40 30 56 34 L54 56 Q40 58 26 56 Z" fill={fill('upper-back')} stroke={stroke} strokeWidth={sw}/>
-          {/* Triceps */}
-          <path d="M9 44 Q7 58 10 68 L17 65 Q16 54 17 44 Z" fill={fill('triceps')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M71 44 Q73 58 70 68 L63 65 Q64 54 63 44 Z" fill={fill('triceps')} stroke={stroke} strokeWidth={sw}/>
-          {/* Forearms */}
-          <path d="M10 68 Q8 82 11 92 L17 90 Q16 79 17 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M70 68 Q72 82 69 92 L63 90 Q64 79 63 65 Z" fill={fill('forearms')} stroke={stroke} strokeWidth={sw}/>
-          {/* Lats */}
-          <path d="M26 56 Q40 58 54 56 L52 85 Q40 88 28 85 Z" fill={fill('lats')} stroke={stroke} strokeWidth={sw}/>
-          {/* Glutes */}
-          <path d="M28 85 Q34 88 40 88 Q46 88 52 85 L50 108 Q40 112 30 108 Z" fill={fill('glutes')} stroke={stroke} strokeWidth={sw}/>
-          {/* Hamstrings */}
-          <path d="M30 108 Q34 112 38 111 L37 130 Q32 132 28 128 Z" fill={fill('hamstrings')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M50 108 Q46 112 42 111 L43 130 Q48 132 52 128 Z" fill={fill('hamstrings')} stroke={stroke} strokeWidth={sw}/>
-          {/* Calves */}
-          <path d="M28 128 Q32 132 37 130 L36 155 Q31 158 27 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
-          <path d="M52 128 Q48 132 43 130 L44 155 Q49 158 51 155 Z" fill={fill('calves')} stroke={stroke} strokeWidth={sw}/>
-        </svg>
-      </div>
+      {!!activeMuscles.length && (
+        <div className="muscle-map-tags">
+          {activeMuscles.map(([muscle, value]) => (
+            <span key={muscle}>
+              {MUSCLE_DISPLAY_NAMES[muscle] || muscle} <b>{Math.round(value * 100)}%</b>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3661,25 +3732,19 @@ function WeeklyStatsCard({ stats, settings }) {
 
       {/* Muscle heatmap */}
       {byActivity.length > 0 && (() => {
-        // Tính intensity từ byActivity sets per muscle
         const muscleVol = new Map();
         for (const item of byActivity) {
-          const targets = String(item.target || item.name || '').toLowerCase().split(/[,/]+/).map(s => s.trim());
-          for (const tgt of targets) {
-            const muscles = TARGET_TO_MUSCLE[tgt] || [];
-            for (const m of muscles) {
-              muscleVol.set(m, (muscleVol.get(m) || 0) + Number(item.sets || 0));
-            }
-          }
+          const sets = Number(item.sets || 0);
+          addMuscleScore(muscleVol, item.target || item.name, sets);
+          addMuscleScore(muscleVol, item.muscleGroup, sets * 0.6);
         }
-        // Also from exercises_detail in byActivity
         for (const item of byActivity) {
           if (!item.exercises_detail) continue;
           for (const ex of item.exercises_detail) {
-            const muscles = TARGET_TO_MUSCLE[String(ex.target || '').toLowerCase()] || [];
-            for (const m of muscles) {
-              muscleVol.set(m, (muscleVol.get(m) || 0) + Number(ex.totalSets || 0));
-            }
+            const sets = Number(ex.totalSets || 0);
+            addMuscleScore(muscleVol, ex.target, sets);
+            addMuscleScore(muscleVol, ex.muscleGroup, sets * 0.6);
+            addMuscleScore(muscleVol, ex.secondaryMuscles, sets * 0.35);
           }
         }
         if (muscleVol.size === 0) return null;
