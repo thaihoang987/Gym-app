@@ -324,7 +324,7 @@
     // confirm
     confirm_yes: 'Yes, delete', confirm_cancel: 'Cancel',
     // general
-    cancel: 'Cancel', save: 'Save', delete: 'Delete', edit: 'Edit', add: 'Add', close: 'Close',
+    cancel: 'Cancel', save: 'Save', donate_title: 'Support Gym App', donate_desc: 'Gym App is free forever. If it helps your training, you can buy me a coffee.',, delete: 'Delete', edit: 'Edit', add: 'Add', close: 'Close',
     error_display: 'Display error', error_retry: 'Retry',
   },
 
@@ -606,7 +606,7 @@
     workout_empty_desc: 'Thêm bài tập vào group trước khi vào tập.',
     workout_exit_btn: 'Thoát',
     confirm_yes: 'Có, xoá', confirm_cancel: 'Huỷ',
-    cancel: 'Huỷ', save: 'Lưu', delete: 'Xoá', edit: 'Sửa', add: 'Thêm', close: 'Đóng',
+    cancel: 'Huỷ', save: 'Lưu', donate_title: 'Ủng hộ Gym App', donate_desc: 'Gym App miễn phí mãi mãi. Nếu app giúp ích cho bạn, bạn có thể mời tôi một ly cà phê.',, delete: 'Xoá', edit: 'Sửa', add: 'Thêm', close: 'Đóng',
     error_display: 'Có lỗi hiển thị', error_retry: 'Thử lại',
   },
 
@@ -692,7 +692,7 @@
     settings_export_excel: '导出Excel', settings_export_json: '导出备份', settings_export_data: '导出数据', settings_import_data: '导入数据',
     settings_import: '导入备份',
     confirm_yes: '是，删除', confirm_cancel: '取消',
-    cancel: '取消', save: '保存', delete: '删除', edit: '编辑', add: '添加', close: '关闭',
+    cancel: '取消', save: '保存', donate_title: '支持 Gym App', donate_desc: 'Gym App 永久免费。如果对您有帮助，可以请我喝杯咖啡。',, delete: '删除', edit: '编辑', add: '添加', close: '关闭',
     cal_activity: '活动',
     history_free_session: '自由训练',
     exercise_set_done: (n) => `已完成 ${n} 组`,
@@ -945,7 +945,7 @@
     settings_export_excel: 'Exportar Excel', settings_export_json: 'Exportar copia de seguridad', settings_export_data: 'Exportar datos', settings_import_data: 'Importar datos',
     settings_import: 'Importar copia',
     confirm_yes: 'Sí, eliminar', confirm_cancel: 'Cancelar',
-    cancel: 'Cancelar', save: 'Guardar', delete: 'Eliminar', edit: 'Editar', add: 'Añadir', close: 'Cerrar',
+    cancel: 'Cancelar', save: 'Guardar', donate_title: 'Apoya Gym App', donate_desc: 'Gym App es gratis para siempre. Si te ayuda, puedes invitarme un café.',, delete: 'Eliminar', edit: 'Editar', add: 'Añadir', close: 'Cerrar',
     cal_activity: 'actividad',
     history_free_session: 'Sesión libre',
     exercise_set_done: (n) => `${n} series hechas`,
@@ -1198,7 +1198,7 @@
     settings_export_excel: 'Exportar Excel', settings_export_json: 'Exportar backup', settings_export_data: 'Exportar dados', settings_import_data: 'Importar dados',
     settings_import: 'Importar backup',
     confirm_yes: 'Sim, excluir', confirm_cancel: 'Cancelar',
-    cancel: 'Cancelar', save: 'Salvar', delete: 'Excluir', edit: 'Editar', add: 'Adicionar', close: 'Fechar',
+    cancel: 'Cancelar', save: 'Salvar', donate_title: 'Apoie o Gym App', donate_desc: 'Gym App é gratuito para sempre. Se te ajuda, pode me pagar um café.',, delete: 'Excluir', edit: 'Editar', add: 'Adicionar', close: 'Fechar',
     cal_activity: 'atividade',
     history_free_session: 'Sessão livre',
     exercise_set_done: (n) => `${n} séries feitas`,
@@ -1451,7 +1451,7 @@
     settings_export_excel: 'Excel出力', settings_export_json: 'バックアップ出力', settings_export_data: 'データ出力', settings_import_data: 'データ読込',
     settings_import: 'バックアップ読込',
     confirm_yes: 'はい、削除', confirm_cancel: 'キャンセル',
-    cancel: 'キャンセル', save: '保存', delete: '削除', edit: '編集', add: '追加', close: '閉じる',
+    cancel: 'キャンセル', save: '保存', donate_title: 'Gym App を支援', donate_desc: 'Gym App は永久無料です。役に立ったらコーヒーをご馳走ください。',, delete: '削除', edit: '編集', add: '追加', close: '閉じる',
     cal_activity: '活動',
     history_free_session: '自由セッション',
     exercise_set_done: (n) => `${n} セット完了`,
@@ -1704,7 +1704,7 @@
     settings_export_excel: 'Excel 내보내기', settings_export_json: '백업 내보내기', settings_export_data: '데이터 내보내기', settings_import_data: '데이터 가져오기',
     settings_import: '백업 가져오기',
     confirm_yes: '예, 삭제', confirm_cancel: '취소',
-    cancel: '취소', save: '저장', delete: '삭제', edit: '편집', add: '추가', close: '닫기',
+    cancel: '취소', save: '저장', donate_title: 'Gym App 후원', donate_desc: 'Gym App은 영원히 무료입니다. 도움이 됐다면 커피 한 잔 사주세요.',, delete: '삭제', edit: '편집', add: '추가', close: '닫기',
     cal_activity: '활동',
     history_free_session: '자유 세션',
     exercise_set_done: (n) => `${n}세트 완료`,
@@ -1957,7 +1957,7 @@
     settings_export_excel: 'Excel exportieren', settings_export_json: 'Backup exportieren', settings_export_data: 'Daten exportieren', settings_import_data: 'Daten importieren',
     settings_import: 'Backup importieren',
     confirm_yes: 'Ja, löschen', confirm_cancel: 'Abbrechen',
-    cancel: 'Abbrechen', save: 'Speichern', delete: 'Löschen', edit: 'Bearbeiten', add: 'Hinzufügen', close: 'Schließen',
+    cancel: 'Abbrechen', save: 'Speichern', donate_title: 'Gym App unterstützen', donate_desc: 'Gym App ist für immer kostenlos. Wenn es hilft, kannst du mir einen Kaffee kaufen.',, delete: 'Löschen', edit: 'Bearbeiten', add: 'Hinzufügen', close: 'Schließen',
     cal_activity: 'Aktivität',
     history_free_session: 'Freie Einheit',
     exercise_set_done: (n) => `${n} Sätze erledigt`,
@@ -2210,7 +2210,7 @@
     settings_export_excel: 'Exporter Excel', settings_export_json: 'Exporter sauvegarde', settings_export_data: 'Exporter données', settings_import_data: 'Importer données',
     settings_import: 'Importer sauvegarde',
     confirm_yes: 'Oui, supprimer', confirm_cancel: 'Annuler',
-    cancel: 'Annuler', save: 'Enregistrer', delete: 'Supprimer', edit: 'Modifier', add: 'Ajouter', close: 'Fermer',
+    cancel: 'Annuler', save: 'Enregistrer', donate_title: 'Soutenir Gym App', donate_desc: 'Gym App est gratuit pour toujours. Si ça vous aide, offrez-moi un café.',, delete: 'Supprimer', edit: 'Modifier', add: 'Ajouter', close: 'Fermer',
     cal_activity: 'activité',
     history_free_session: 'Séance libre',
     exercise_set_done: (n) => `${n} séries faites`,
@@ -2463,7 +2463,7 @@
     settings_export_excel: 'Экспорт Excel', settings_export_json: 'Экспорт резервной копии', settings_export_data: 'Экспорт данных', settings_import_data: 'Импорт данных',
     settings_import: 'Импорт резервной копии',
     confirm_yes: 'Да, удалить', confirm_cancel: 'Отмена',
-    cancel: 'Отмена', save: 'Сохранить', delete: 'Удалить', edit: 'Редактировать', add: 'Добавить', close: 'Закрыть',
+    cancel: 'Отмена', save: 'Сохранить', donate_title: 'Поддержать Gym App', donate_desc: 'Gym App бесплатен навсегда. Если помогает — угостите меня кофе.',, delete: 'Удалить', edit: 'Редактировать', add: 'Добавить', close: 'Закрыть',
     cal_activity: 'активность',
     history_free_session: 'Свободная тренировка',
     exercise_set_done: (n) => `${n} подходов выполнено`,
@@ -2649,6 +2649,7 @@ export function createT(locale) {
     return val;
   };
 }
+
 
 
 
