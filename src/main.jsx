@@ -6405,7 +6405,7 @@ function Analytics({ userId, settings }) {
                 {/* Max weight chart */}
                 <div>
                   <div className="mb-1 flex items-center gap-2">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Max Weight ({exerciseChartUnit})</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t('analytics_max_weight')} ({exerciseChartUnit})</p>
                     <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600"><span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white text-[8px]">P</span> PR</span>
                   </div>
                   <ResponsiveContainer width="100%" height={200}>
@@ -6420,7 +6420,7 @@ function Analytics({ userId, settings }) {
                 </div>
                 {/* Volume chart */}
                 <div>
-                  <p className="mb-1 text-xs font-bold text-slate-500 uppercase tracking-wide">Volume (kg×reps)</p>
+                  <p className="mb-1 text-xs font-bold text-slate-500 uppercase tracking-wide">{t('analytics_volume_chart')}</p>
                   <ResponsiveContainer width="100%" height={160}>
                     <AreaChart data={exerciseChartRows}>
                       <defs>
@@ -7211,5 +7211,6 @@ createRoot(document.getElementById('root')).render(
     </DialogProvider>
   </ServerStatusProvider>
 );
+
 
 

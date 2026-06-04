@@ -611,7 +611,7 @@
   },
 
   'zh-CN': {
-    nav_home: '首页', weekly_stats_empty: '本周暂无训练记录。', weekly_muscle_activity: '本周肌肉活动', heatmap_low: '低', heatmap_high: '高', heatmap_front: '正面', heatmap_back: '背面', schedule_record: '训练记录', nav_start: '继续训练', nav_library: '动作库', nav_builder: '训练计划', nav_analytics: '统计', nav_settings: '设置',
+    nav_home: '首页', weekly_stats_empty: '本周暂无训练记录。', weekly_muscle_activity: '本周肌肉活动', heatmap_low: '低', heatmap_high: '高', heatmap_front: '正面', heatmap_back: '背面', schedule_record: '训练记录', weekly_stats_title: '周统计', weekly_stats_range: '训练周', weekly_stat_sessions: '次', weekly_stat_exercises: '动作', weekly_stat_sets: '组', weekly_stat_minutes: '分钟', weekly_stat_volume: '容量', analytics_max_weight: '最大重量', analytics_volume_chart: '容量 (kg×次数)', analytics_plan: '计划', nav_start: '继续训练', nav_library: '动作库', nav_builder: '训练计划', nav_analytics: '统计', nav_settings: '设置',
     login_subtitle: '会员登录', login_username: '用户名', login_password: '密码', login_remember: '在此设备上记住我', login_btn: '登录', login_hint: '默认账户: admin / admin123',
     logout: '退出登录', exercises_count: (n) => `${n} 个动作`,
     loading: '加载中...', mode_free: '自由', mode_fixed: '固定', mode_rolling: '循环',
@@ -864,7 +864,7 @@
   },
 
   'es-ES': {
-    nav_home: 'Inicio', weekly_stats_empty: 'Sin historial esta semana.', weekly_muscle_activity: 'Actividad muscular esta semana', heatmap_low: 'Bajo', heatmap_high: 'Alto', heatmap_front: 'Frontal', heatmap_back: 'Posterior', schedule_record: 'Historial', nav_start: 'Entrenar', nav_library: 'Ejercicios', nav_builder: 'Plan', nav_analytics: 'Estadísticas', nav_settings: 'Ajustes',
+    nav_home: 'Inicio', weekly_stats_empty: 'Sin historial esta semana.', weekly_muscle_activity: 'Actividad muscular esta semana', heatmap_low: 'Bajo', heatmap_high: 'Alto', heatmap_front: 'Frontal', heatmap_back: 'Posterior', schedule_record: 'Historial', weekly_stats_title: 'Estadísticas semanales', weekly_stats_range: 'Semana de entrenamiento', weekly_stat_sessions: 'sesiones', weekly_stat_exercises: 'ejercicios', weekly_stat_sets: 'series', weekly_stat_minutes: 'minutos', weekly_stat_volume: 'vol', analytics_max_weight: 'Peso máx.', analytics_volume_chart: 'Volumen (kg×reps)', analytics_plan: 'plan', nav_start: 'Entrenar', nav_library: 'Ejercicios', nav_builder: 'Plan', nav_analytics: 'Estadísticas', nav_settings: 'Ajustes',
     login_subtitle: 'Iniciar sesión', login_username: 'Usuario', login_password: 'Contraseña', login_remember: 'Recordar en este dispositivo', login_btn: 'Entrar', login_hint: 'Por defecto: admin / admin123',
     logout: 'Cerrar sesión', exercises_count: (n) => `${n} ejercicios`,
     loading: 'Cargando...', mode_free: 'Libre', mode_fixed: 'Fijo', mode_rolling: 'Rotativo',
@@ -1117,7 +1117,7 @@
   },
 
   'pt-BR': {
-    nav_home: 'Início', weekly_stats_empty: 'Sem histórico esta semana.', weekly_muscle_activity: 'Atividade muscular esta semana', heatmap_low: 'Baixo', heatmap_high: 'Alto', heatmap_front: 'Frente', heatmap_back: 'Costas', schedule_record: 'Histórico', nav_start: 'Treinar', nav_library: 'Exercícios', nav_builder: 'Plano', nav_analytics: 'Estatísticas', nav_settings: 'Configurações',
+    nav_home: 'Início', weekly_stats_empty: 'Sem histórico esta semana.', weekly_muscle_activity: 'Atividade muscular esta semana', heatmap_low: 'Baixo', heatmap_high: 'Alto', heatmap_front: 'Frente', heatmap_back: 'Costas', schedule_record: 'Histórico', weekly_stats_title: 'Estatísticas semanais', weekly_stats_range: 'Semana de treino', weekly_stat_sessions: 'sessões', weekly_stat_exercises: 'exercícios', weekly_stat_sets: 'séries', weekly_stat_minutes: 'minutos', weekly_stat_volume: 'vol', analytics_max_weight: 'Peso máx.', analytics_volume_chart: 'Volume (kg×reps)', analytics_plan: 'plano', nav_start: 'Treinar', nav_library: 'Exercícios', nav_builder: 'Plano', nav_analytics: 'Estatísticas', nav_settings: 'Configurações',
     login_subtitle: 'Login do membro', login_username: 'Usuário', login_password: 'Senha', login_remember: 'Lembrar neste dispositivo', login_btn: 'Entrar', login_hint: 'Padrão: admin / admin123',
     logout: 'Sair', exercises_count: (n) => `${n} exercícios`,
     loading: 'Carregando...', mode_free: 'Livre', mode_fixed: 'Fixo', mode_rolling: 'Rotativo',
@@ -1370,7 +1370,7 @@
   },
 
   'ja-JP': {
-    nav_home: 'ホーム', weekly_stats_empty: '今週の履歴なし。', weekly_muscle_activity: '今週の筋肉活動', heatmap_low: '低', heatmap_high: '高', heatmap_front: '正面', heatmap_back: '背面', schedule_record: 'スケジュール記録', nav_start: 'トレーニング', nav_library: '種目', nav_builder: 'プラン', nav_analytics: '統計', nav_settings: '設定',
+    nav_home: 'ホーム', weekly_stats_empty: '今週の履歴なし。', weekly_muscle_activity: '今週の筋肉活動', heatmap_low: '低', heatmap_high: '高', heatmap_front: '正面', heatmap_back: '背面', schedule_record: 'スケジュール記録', weekly_stats_title: '週間統計', weekly_stats_range: 'トレーニング週', weekly_stat_sessions: 'セッション', weekly_stat_exercises: '種目', weekly_stat_sets: 'セット', weekly_stat_minutes: '分', weekly_stat_volume: 'vol', analytics_max_weight: '最大重量', analytics_volume_chart: 'ボリューム (kg×回)', analytics_plan: 'プラン', nav_start: 'トレーニング', nav_library: '種目', nav_builder: 'プラン', nav_analytics: '統計', nav_settings: '設定',
     login_subtitle: 'ログイン', login_username: 'ユーザー名', login_password: 'パスワード', login_remember: 'このデバイスで記憶', login_btn: 'ログイン', login_hint: 'デフォルト: admin / admin123',
     logout: 'ログアウト', exercises_count: (n) => `${n} 種目`,
     loading: '読み込み中...', mode_free: '自由', mode_fixed: '固定', mode_rolling: 'ローリング',
@@ -1623,7 +1623,7 @@
   },
 
   'ko-KR': {
-    nav_home: '홈', weekly_stats_empty: '이번 주 기록 없음.', weekly_muscle_activity: '이번 주 근육 활동', heatmap_low: '낮음', heatmap_high: '높음', heatmap_front: '앞면', heatmap_back: '뒷면', schedule_record: '일정 기록', nav_start: '운동', nav_library: '운동 목록', nav_builder: '플랜', nav_analytics: '통계', nav_settings: '설정',
+    nav_home: '홈', weekly_stats_empty: '이번 주 기록 없음.', weekly_muscle_activity: '이번 주 근육 활동', heatmap_low: '낮음', heatmap_high: '높음', heatmap_front: '앞면', heatmap_back: '뒷면', schedule_record: '일정 기록', weekly_stats_title: '주간 통계', weekly_stats_range: '훈련 주', weekly_stat_sessions: '세션', weekly_stat_exercises: '운동', weekly_stat_sets: '세트', weekly_stat_minutes: '분', weekly_stat_volume: 'vol', analytics_max_weight: '최대 중량', analytics_volume_chart: '볼륨 (kg×회)', analytics_plan: '플랜', nav_start: '운동', nav_library: '운동 목록', nav_builder: '플랜', nav_analytics: '통계', nav_settings: '설정',
     login_subtitle: '로그인', login_username: '사용자명', login_password: '비밀번호', login_remember: '이 기기에서 기억하기', login_btn: '로그인', login_hint: '기본값: admin / admin123',
     logout: '로그아웃', exercises_count: (n) => `${n}개 운동`,
     loading: '로딩 중...', mode_free: '자유', mode_fixed: '고정', mode_rolling: '순환',
@@ -1876,7 +1876,7 @@
   },
 
   'de-DE': {
-    nav_home: 'Start', weekly_stats_empty: 'Keine Trainingshistorie diese Woche.', weekly_muscle_activity: 'Muskelaktivität diese Woche', heatmap_low: 'Niedrig', heatmap_high: 'Hoch', heatmap_front: 'Vorderseite', heatmap_back: 'Rückseite', schedule_record: 'Trainingsprotokoll', nav_start: 'Training', nav_library: 'Übungen', nav_builder: 'Plan', nav_analytics: 'Statistik', nav_settings: 'Einstellungen',
+    nav_home: 'Start', weekly_stats_empty: 'Keine Trainingshistorie diese Woche.', weekly_muscle_activity: 'Muskelaktivität diese Woche', heatmap_low: 'Niedrig', heatmap_high: 'Hoch', heatmap_front: 'Vorderseite', heatmap_back: 'Rückseite', schedule_record: 'Trainingsprotokoll', weekly_stats_title: 'Wochenstatistik', weekly_stats_range: 'Trainingswoche', weekly_stat_sessions: 'Einheiten', weekly_stat_exercises: 'Übungen', weekly_stat_sets: 'Sätze', weekly_stat_minutes: 'Min', weekly_stat_volume: 'Vol', analytics_max_weight: 'Max. Gewicht', analytics_volume_chart: 'Volumen (kg×Wdh)', analytics_plan: 'Plan', nav_start: 'Training', nav_library: 'Übungen', nav_builder: 'Plan', nav_analytics: 'Statistik', nav_settings: 'Einstellungen',
     login_subtitle: 'Anmelden', login_username: 'Benutzername', login_password: 'Passwort', login_remember: 'Auf diesem Gerät merken', login_btn: 'Anmelden', login_hint: 'Standard: admin / admin123',
     logout: 'Abmelden', exercises_count: (n) => `${n} Übungen`,
     loading: 'Laden...', mode_free: 'Frei', mode_fixed: 'Fest', mode_rolling: 'Rollierend',
@@ -2129,7 +2129,7 @@
   },
 
   'fr-FR': {
-    nav_home: 'Accueil', weekly_stats_empty: 'Aucun historique cette semaine.', weekly_muscle_activity: 'Activité musculaire cette semaine', heatmap_low: 'Faible', heatmap_high: 'Élevé', heatmap_front: 'Face avant', heatmap_back: 'Face arrière', schedule_record: 'Historique', nav_start: 'Entraîner', nav_library: 'Exercices', nav_builder: 'Plan', nav_analytics: 'Statistiques', nav_settings: 'Paramètres',
+    nav_home: 'Accueil', weekly_stats_empty: 'Aucun historique cette semaine.', weekly_muscle_activity: 'Activité musculaire cette semaine', heatmap_low: 'Faible', heatmap_high: 'Élevé', heatmap_front: 'Face avant', heatmap_back: 'Face arrière', schedule_record: 'Historique', weekly_stats_title: 'Stats hebdomadaires', weekly_stats_range: 'Semaine d''entraînement', weekly_stat_sessions: 'séances', weekly_stat_exercises: 'exercices', weekly_stat_sets: 'séries', weekly_stat_minutes: 'min', weekly_stat_volume: 'vol', analytics_max_weight: 'Poids max.', analytics_volume_chart: 'Volume (kg×reps)', analytics_plan: 'plan', nav_start: 'Entraîner', nav_library: 'Exercices', nav_builder: 'Plan', nav_analytics: 'Statistiques', nav_settings: 'Paramètres',
     login_subtitle: 'Connexion membre', login_username: 'Identifiant', login_password: 'Mot de passe', login_remember: 'Se souvenir sur cet appareil', login_btn: 'Se connecter', login_hint: 'Par défaut: admin / admin123',
     logout: 'Déconnexion', exercises_count: (n) => `${n} exercices`,
     loading: 'Chargement...', mode_free: 'Libre', mode_fixed: 'Fixe', mode_rolling: 'Roulant',
@@ -2382,7 +2382,7 @@
   },
 
   'ru-RU': {
-    nav_home: 'Главная', weekly_stats_empty: 'Нет истории на этой неделе.', weekly_muscle_activity: 'Активность мышц на этой неделе', heatmap_low: 'Низкий', heatmap_high: 'Высокий', heatmap_front: 'Спереди', heatmap_back: 'Сзади', schedule_record: 'История расписания', nav_start: 'Тренировка', nav_library: 'Упражнения', nav_builder: 'План', nav_analytics: 'Статистика', nav_settings: 'Настройки',
+    nav_home: 'Главная', weekly_stats_empty: 'Нет истории на этой неделе.', weekly_muscle_activity: 'Активность мышц на этой неделе', heatmap_low: 'Низкий', heatmap_high: 'Высокий', heatmap_front: 'Спереди', heatmap_back: 'Сзади', schedule_record: 'История расписания', weekly_stats_title: 'Недельная статистика', weekly_stats_range: 'Тренировочная неделя', weekly_stat_sessions: 'сессий', weekly_stat_exercises: 'упражнений', weekly_stat_sets: 'подходов', weekly_stat_minutes: 'мин', weekly_stat_volume: 'объём', analytics_max_weight: 'Макс. вес', analytics_volume_chart: 'Объём (кг×повт)', analytics_plan: 'план', nav_start: 'Тренировка', nav_library: 'Упражнения', nav_builder: 'План', nav_analytics: 'Статистика', nav_settings: 'Настройки',
     login_subtitle: 'Вход', login_username: 'Имя пользователя', login_password: 'Пароль', login_remember: 'Запомнить на устройстве', login_btn: 'Войти', login_hint: 'По умолчанию: admin / admin123',
     logout: 'Выйти', exercises_count: (n) => `${n} упражнений`,
     loading: 'Загрузка...', mode_free: 'Свободный', mode_fixed: 'Фиксированный', mode_rolling: 'Циклический',
@@ -2649,6 +2649,8 @@ export function createT(locale) {
     return val;
   };
 }
+
+
 
 
 
