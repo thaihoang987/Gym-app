@@ -500,7 +500,7 @@ button:disabled {
 }
 
 .muscle-map-side .muscle-active path {
-  filter: drop-shadow(0 0 7px rgba(9, 132, 227, 0.35));
+  filter: drop-shadow(0 0 8px rgba(255, 69, 58, 0.42));
 }
 
 .muscle-map-tags {
@@ -508,11 +508,11 @@ button:disabled {
 }
 
 .muscle-map-tags span {
-  @apply rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-slate-700;
+  @apply rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-bold text-slate-700;
 }
 
 .muscle-map-tags b {
-  @apply text-sky-700;
+  @apply text-red-600;
 }
 
 .weekly-stats-grid {

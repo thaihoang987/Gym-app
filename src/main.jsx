@@ -1227,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.42'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.43'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3500,12 +3500,12 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
   const fill = (id) => {
     const v = bodyMuscles.get(id) || 0;
     if (id === 'hair') return '#2f3341';
-    if (v === 0) return '#3f3f3f';
-    if (v < 0.22) return '#9ddcff';
-    if (v < 0.45) return '#54b6f2';
-    if (v < 0.68) return '#0984e3';
-    if (v < 0.86) return '#ff9f43';
-    return '#ee5253';
+    if (v === 0) return '#d1d5db';
+    if (v < 0.22) return '#ffe45c';
+    if (v < 0.45) return '#ffb21f';
+    if (v < 0.68) return '#ff7a1a';
+    if (v < 0.86) return '#ff453a';
+    return '#ff2d55';
   };
   const renderPaths = (part, side) => {
     const paths = part.path || {};
@@ -3689,11 +3689,11 @@ function WeeklyStatsCard({ stats, settings }) {
             <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
             <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
               <span>Low</span>
-              <span className="h-2.5 w-5 rounded-full bg-[#3f3f3f]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#9ddcff]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#54b6f2]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#0984e3]" />
-              <span className="h-2.5 w-5 rounded-full bg-[#ee5253]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#d1d5db]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ffe45c]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ffb21f]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ff7a1a]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ff2d55]" />
               <span>High</span>
             </div>
           </div>
