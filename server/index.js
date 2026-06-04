@@ -776,7 +776,37 @@ function getWeeklyStats(userId) {
     current.reps += Number(row.reps || 0);
     current.volume += Number(row.volume || 0);
     if (!current.imageUrl && row.imageUrl) current.imageUrl = row.imageUrl;
+    if (!current.sessionIds) current.sessionIds = [];
+    current.sessionIds.push(row.id);
     byActivityMap.set(name, current);
+  }
+
+  // Per-exercise breakdown per activity
+  for (const [, item] of byActivityMap) {
+    if (!item.sessionIds?.length) continue;
+    const placeholders = item.sessionIds.map(() => '?').join(',');
+    const exRows = all(`
+      SELECT e.id, e.name, e.image_path,
+        COUNT(wl.id) AS total_sets,
+        COALESCE(SUM(wl.reps), 0) AS total_reps,
+        COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
+        COALESCE(MAX(wl.weight_kg), 0) AS max_weight
+      FROM workout_logs wl
+      JOIN exercises e ON e.id = wl.exercise_id
+      WHERE wl.session_id IN (${placeholders}) AND wl.user_id = ?
+      GROUP BY e.id
+      ORDER BY volume_kg DESC
+    `, [...item.sessionIds, userId]).map((r) => ({
+      id: r.id, name: r.name,
+      imageUrl: assetUrl(r.image_path),
+      totalSets: Number(r.total_sets || 0),
+      totalReps: Number(r.total_reps || 0),
+      volumeKg: Math.round(Number(r.volume_kg || 0)),
+      maxWeight: Number(r.max_weight || 0)
+    }));
+    item.exercises_detail = exRows;
+    item.volume = Math.round(item.volume || 0);
+    delete item.sessionIds;
   }
 
   const byDay = Array.from({ length: 7 }, (_, index) => {

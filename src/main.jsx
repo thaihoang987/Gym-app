@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.20'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.21'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3312,6 +3312,7 @@ function ActivityCalendar({ calendar, history, settings }) {
 
 function WeeklyStatsCard({ stats, settings }) {
   const t = useLang();
+  const [openActivity, setOpenActivity] = useState(null);
   const safeStats = stats || {};
   const start = safeStats.weekStartIso ? parseServerDate(safeStats.weekStartIso) : null;
   const end = safeStats.weekEndIso ? parseServerDate(safeStats.weekEndIso) : null;
@@ -3373,12 +3374,36 @@ function WeeklyStatsCard({ stats, settings }) {
         {byActivity.length === 0 ? (
           <p className="weekly-empty">{t('weekly_stats_empty')}</p>
         ) : byActivity.map((item) => (
-          <div key={item.name} className="weekly-activity-row">
-            {item.imageUrl ? <img src={item.imageUrl} /> : <span><Dumbbell size={18} /></span>}
-            <div>
-              <strong>{item.name}</strong>
-              <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}</p>
+          <div key={item.name}>
+            <div
+              className="weekly-activity-row cursor-pointer hover:bg-slate-50 rounded-lg transition-colors"
+              onClick={() => setOpenActivity(openActivity === item.name ? null : item.name)}
+            >
+              {item.imageUrl ? <img src={item.imageUrl} /> : <span><Dumbbell size={18} /></span>}
+              <div className="flex-1 min-w-0">
+                <strong>{item.name}</strong>
+                <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}{item.volume > 0 ? ` · ${Math.round(item.volume).toLocaleString()} kg` : ''}</p>
+              </div>
+              <ChevronRight size={16} className={`shrink-0 text-slate-400 transition-transform ${openActivity === item.name ? 'rotate-90' : ''}`} />
             </div>
+            {openActivity === item.name && item.exercises_detail?.length > 0 && (
+              <div className="ml-12 mt-1 mb-2 space-y-1">
+                {item.exercises_detail.map((ex) => (
+                  <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                    {ex.imageUrl
+                      ? <img src={ex.imageUrl} className="h-8 w-8 shrink-0 rounded object-contain bg-white" />
+                      : <div className="grid h-8 w-8 shrink-0 place-items-center rounded bg-slate-100 text-base">🏋️</div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-800 leading-tight truncate">{ex.name}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
+                      </p>
+                    </div>
+                    {ex.volumeKg > 0 && <span className="shrink-0 text-xs font-black text-slate-600">{ex.volumeKg.toLocaleString()} kg</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
