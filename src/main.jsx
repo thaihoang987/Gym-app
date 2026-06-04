@@ -987,6 +987,15 @@ function applyOfflineQueueToCachedApi(path, data) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_panel_title'), ROLLING: t('mode_free') });
+
+// Volume = weight × reps (tonnage). Hiển thị rõ đơn vị
+function formatVolume(kg) {
+  const v = Math.round(Number(kg || 0));
+  if (v === 0) return null;
+  if (v >= 1000000) return `${(v / 1000000).toFixed(1)}Mt`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}t`;
+  return `${v} kg`;
+}
 const defaultKgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const defaultLbOptions = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140, 160, 180, 200, 220];
 const kgOptions = defaultKgOptions;
@@ -1217,7 +1226,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.27'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.28'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2787,7 +2796,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                     </div>
                     {done && Number(ws.totalSets || 0) > 0 ? (
                       <p className="mt-0.5 text-xs text-emerald-300/70">
-                        {ws.totalSets} sets{Number(ws.volumeKg || 0) > 0 ? ` · ${ws.volumeKg} kg` : ''}{Number(ws.maxWeight || 0) > 0 ? ` · max ${ws.maxWeight} kg` : ''}
+                        {ws.totalSets} sets{Number(ws.volumeKg || 0) > 0 ? ` · ${formatVolume(ws.volumeKg)} vol` : ''}{Number(ws.maxWeight || 0) > 0 ? ` · max ${ws.maxWeight}kg` : ''}
                       </p>
                     ) : (
                       <p className="mt-0.5 text-xs text-white/40">
@@ -2820,7 +2829,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                               {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
                             </p>
                           </div>
-                          {ex.volumeKg > 0 && <span className="shrink-0 text-[11px] font-black text-emerald-300">{ex.volumeKg} kg</span>}
+                          {ex.volumeKg > 0 && <span className="shrink-0 text-[11px] font-black text-emerald-300">{formatVolume(ex.volumeKg)}</span>}
                         </div>
                       ))}
                     </div>
@@ -3474,7 +3483,7 @@ function WeeklyStatsCard({ stats, settings }) {
           {rangeLabel && <p>{rangeLabel}</p>}
         </div>
         <div className="weekly-stats-volume">
-          <span>{Math.round(Number(safeStats.totalVolume || 0)).toLocaleString()}</span>
+          <span>{formatVolume(safeStats.totalVolume) || '—'}</span>
           <small>{t('weekly_stat_volume')}</small>
         </div>
       </div>
@@ -3518,7 +3527,7 @@ function WeeklyStatsCard({ stats, settings }) {
               {item.imageUrl ? <img src={item.imageUrl} /> : <span><Dumbbell size={18} /></span>}
               <div className="flex-1 min-w-0">
                 <strong>{item.name}</strong>
-                <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}{item.volume > 0 ? ` · ${Math.round(item.volume).toLocaleString()} kg` : ''}</p>
+                <p>{item.sessions} {t('weekly_stat_sessions')} · {item.exercises} {t('bài')} · {item.sets} {t('set')} · {item.minutes} {t('min')}{item.volume > 0 ? ` · ${formatVolume(item.volume)} vol` : ''}</p>
               </div>
               <ChevronRight size={16} className={`shrink-0 text-slate-400 transition-transform ${openActivity === item.name ? 'rotate-90' : ''}`} />
             </div>
@@ -3533,7 +3542,7 @@ function WeeklyStatsCard({ stats, settings }) {
                         {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
                       </p>
                     </div>
-                    {ex.volumeKg > 0 && <span className="shrink-0 text-xs font-black text-slate-600">{ex.volumeKg.toLocaleString()} kg</span>}
+                    {ex.volumeKg > 0 && <span className="shrink-0 text-xs font-black text-slate-600">{formatVolume(ex.volumeKg)}</span>}
                   </div>
                 ))}
               </div>
