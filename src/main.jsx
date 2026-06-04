@@ -2637,7 +2637,15 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
       <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} userId={userId} settings={settings} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
-      <WeeklyStatsCard stats={data?.weeklyStats} settings={settings} />
+      <WeeklyStatsCard
+        stats={data?.weeklyStats}
+        settings={settings}
+        suggestion={suggestion}
+        history={data?.recentHistory || []}
+        routines={routineData.routines}
+        rules={routineData.rules}
+        userId={userId}
+      />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
     </section>
   );
@@ -3557,14 +3565,24 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
   );
 }
 
-function WeeklyStatsCard({ stats, settings }) {
+function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines = [], rules = [], userId }) {
   const t = useLang();
   const [openActivity, setOpenActivity] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [sessionDetails, setSessionDetails] = useState({});
+
+  useEffect(() => {
+    if (selectedDay) { document.body.style.overflow = 'hidden'; }
+    else { document.body.style.overflow = ''; }
+    return () => { document.body.style.overflow = ''; };
+  }, [selectedDay]);
+
   const safeStats = stats || {};
   const start = safeStats.weekStartIso ? parseServerDate(safeStats.weekStartIso) : null;
   const end = safeStats.weekEndIso ? parseServerDate(safeStats.weekEndIso) : null;
   const endLabel = end ? new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1) : null;
-  const rangeLabel = start && endLabel ? `${formatDate(start, settings)} - ${formatDate(endLabel, settings)}` : '';
+  const statsRangeLabel = start && endLabel ? `${formatDate(start, settings)} - ${formatDate(endLabel, settings)}` : '';
   const byDay = Array.isArray(safeStats.byDay) ? safeStats.byDay : [];
   const byActivity = Array.isArray(safeStats.byActivity) ? safeStats.byActivity : [];
   const activities = Array.isArray(safeStats.activities) ? safeStats.activities : [];
@@ -3576,13 +3594,61 @@ function WeeklyStatsCard({ stats, settings }) {
     [t('weekly_stat_minutes'), safeStats.totalMinutes || 0]
   ];
 
+  // Schedule grid logic (copied from CurrentWeekPlan)
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const historyByDay = new Map();
+  for (const row of history) {
+    const key = localIsoDate(parseServerDate(row.completed_at));
+    if (!historyByDay.has(key)) historyByDay.set(key, []);
+    historyByDay.get(key).push(row);
+  }
+  const doneDays = new Set(historyByDay.keys());
+  const routineById = new Map(routines.map((routine) => [routine.id, routine]));
+  const fixedByDay = new Map(rules.filter((rule) => rule.mode === 'FIXED').map((rule) => [rule.day_of_week, routineById.get(rule.routine_id)]));
+  const dayCount = 7;
+  const centerOffset = -3;
+  const scheduleItems = Array.from({ length: dayCount }, (_, itemIndex) => {
+    const date = new Date(startOfToday);
+    date.setDate(startOfToday.getDate() + centerOffset + itemIndex + weekOffset);
+    const weekdayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
+    const key = localIsoDate(date);
+    const dayHistory = historyByDay.get(key) || [];
+    const done = doneDays.has(key);
+    const mainDone = dayHistory[0];
+    const fixedRoutine = fixedByDay.get(weekdayIndex);
+    const routine = suggestion?.mode === 'FIXED' ? fixedRoutine : null;
+    return {
+      key,
+      label: t('days')[weekdayIndex],
+      date,
+      isToday: date.toDateString() === today.toDateString(),
+      isPast: date < startOfToday,
+      done,
+      mainDone,
+      dayHistory,
+      routine,
+      title: done ? (mainDone?.routine_name || mainDone?.group_name || t('session_free')) : routine?.name || t('no_session'),
+      imageUrl: done ? (mainDone?.gifUrl || mainDone?.imageUrl) : exerciseAutoMediaUrl(routine?.exercises?.[0]),
+      exercise: done ? null : (routine?.exercises?.[0] || null),
+      content: done
+        ? `${t('sets_min', mainDone?.sets || 0, mainDone?.duration_minutes || 0)}${dayHistory.length > 1 ? ` · ${t('more_sessions', dayHistory.length - 1)}` : ''}`
+        : routine ? `${routine.groups?.length || 0} Group · ${routine.exercises?.length || 0} ${t('bài')}` : t('go_schedule')
+    };
+  });
+  const firstDate = scheduleItems[0]?.date;
+  const lastDate = scheduleItems[scheduleItems.length - 1]?.date;
+  const rangeLabel = firstDate && lastDate
+    ? `${firstDate.getDate()}/${firstDate.getMonth() + 1} – ${lastDate.getDate()}/${lastDate.getMonth() + 1}`
+    : '';
+
   return (
     <div className="weekly-stats-panel">
       <div className="weekly-stats-header">
         <div>
           <p className="weekly-stats-eyebrow">{t('weekly_stats_range')}</p>
           <h2>{t('weekly_stats_title')}</h2>
-          {rangeLabel && <p>{rangeLabel}</p>}
+          {statsRangeLabel && <p>{statsRangeLabel}</p>}
         </div>
         <div className="weekly-stats-volume">
           <span>{formatVolume(safeStats.totalVolume) || '—'}</span>
@@ -3599,34 +3665,205 @@ function WeeklyStatsCard({ stats, settings }) {
         ))}
       </div>
 
-      <div className="week-plan-grid my-3">
-        {byDay.map((day, index) => {
-          const date = parseServerDate(day.day);
-          const todayDate = new Date(); todayDate.setHours(0,0,0,0);
-          const isToday = day.day === todayIso;
-          const done = Number(day.sessions || 0) > 0;
-          const isPast = date && date < todayDate;
-          const isFuture = !isPast && !isToday;
-          const sets = Number(day.sets || 0);
-          const minutes = Number(day.minutes || 0);
-          const extraCount = Number(day.sessions || 0) - 1;
-          const imageUrl = (Array.isArray(day.images) ? day.images : [])[0] || null;
-          const label = date ? formatDate(date, settings, { weekday: 'short' }) : t('days')[index];
-          const title = done ? (day.name || t('session_free')) : isToday ? t('today_title') : t('no_session');
-          const content = done ? `${sets} ${t('set')} · ${minutes} ${t('min')}${extraCount > 0 ? ` · +${extraCount}` : ''}` : '';
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="section-title mb-0">Schedule Record</h2>
+        <div className="flex items-center gap-2">
+          <button
+            className="tiny-btn"
+            onClick={() => setWeekOffset((v) => v - 3)}
+            title="Lui 3 ngày"
+          >‹‹</button>
+          {weekOffset !== 0 && (
+            <button
+              className="ghost-btn px-2 py-1 text-xs"
+              onClick={() => setWeekOffset(0)}
+              title="Về hôm nay"
+            >↩</button>
+          )}
+          <span className="text-xs text-slate-500 font-semibold">{rangeLabel}</span>
+          <button
+            className="tiny-btn"
+            onClick={() => setWeekOffset((v) => v + 3)}
+            title="Tới 3 ngày"
+          >››</button>
+        </div>
+      </div>
+      {/* Day detail popup */}
+      {selectedDay && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ paddingBottom: 'calc(1rem + 4.5rem + env(safe-area-inset-bottom))' }} onClick={() => setSelectedDay(null)}>
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"
+            style={{ maxHeight: 'calc(85vh - 4.5rem)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-white pt-4 pb-2 px-5 rounded-t-2xl">
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{selectedDay.label} {selectedDay.date?.getDate()}/{selectedDay.date && selectedDay.date.getMonth() + 1}</p>
+                  <h3 className="text-xl font-black text-slate-900">Schedule Record</h3>
+                </div>
+                <button className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600" onClick={() => setSelectedDay(null)}><X size={16} /></button>
+              </div>
+            </div>
+            <div className="overflow-y-auto px-5 space-y-4 pb-5">
+              {selectedDay.dayHistory.map((row) => {
+                const detail = sessionDetails[row.id];
+                const sessionName = row.routine_name || row.group_name || t('session_free');
+                return (
+                  <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50 overflow-hidden">
+                    <div className="flex items-center gap-3 bg-white px-4 py-3 border-b border-slate-100">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black text-slate-900">{sessionName}</p>
+                        <p className="text-xs text-slate-500">{row.sets || 0} sets · {row.duration_minutes || 0} min</p>
+                      </div>
+                    </div>
+                    {detail ? (
+                      <div className="p-3 space-y-3">
+                        {Object.entries(
+                          (detail.exercises || []).reduce((acc, ex) => {
+                            const g = ex.groupName || ex.target || '—';
+                            if (!acc[g]) acc[g] = [];
+                            acc[g].push(ex);
+                            return acc;
+                          }, {})
+                        ).map(([groupName, exercises]) => (
+                          <div key={groupName}>
+                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">{groupName}</p>
+                            <div className="space-y-2">
+                              {exercises.map((ex) => {
+                                const exSets = ex.sets || [];
+                                const prevSets = ex.previous || [];
+                                const exVol = exSets.reduce((s, st) => s + Number(st.weightKg||0)*Number(st.reps||0), 0);
+                                const prevVol = prevSets.reduce((s, st) => s + Number(st.weightKg||0)*Number(st.reps||0), 0);
+                                const volDiff = prevVol > 0 ? Math.round(((exVol - prevVol)/prevVol)*100) : null;
+                                return (
+                                  <div key={ex.id} className="rounded-xl bg-white border border-slate-100 overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50">
+                                      <GifThumb exercise={ex} className="h-12 w-12" rounded="rounded-lg" bg="bg-white" autoplay={true} />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold text-slate-800 leading-tight">{ex.name}</p>
+                                        <p className="text-xs text-slate-400">{ex.target}{ex.equipment ? ` · ${ex.equipment}` : ''}</p>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        {ex.maxWeight > 0 && <p className="text-xs font-black text-slate-600">max {ex.maxWeight}kg</p>}
+                                        {volDiff !== null && (
+                                          <p className={`text-[10px] font-black ${volDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                            {volDiff >= 0 ? '↑' : '↓'}{Math.abs(volDiff)}%
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="px-3 py-2 space-y-1">
+                                      {exSets.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {exSets.map((s, si) => (
+                                            <span key={s.id || si} className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
+                                              {si + 1}. {Number(s.weightKg||0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {prevSets.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] text-slate-400 mb-1">{t('detail_prev')}</p>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {prevSets.map((s, si) => (
+                                              <span key={s.id || si} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                                                {si + 1}. {Number(s.weightKg||0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-slate-400">Loading...</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="week-plan-grid">
+        {scheduleItems.map((item) => {
+          const hasRoutine = Boolean(item.routine);
+          const isFuture = !item.isPast && !item.isToday;
           let badge = null;
-          if (done) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#16a34a',color:'#fff'}}>✓ {t('today_done')}</span>;
-          else if (isPast) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#f05a28',color:'#fff'}}>✗ {t('not_trained')}</span>;
-          else badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'rgba(0,0,0,0.12)',color:'inherit',opacity:0.7}}>– {t('no_session')}</span>;
+          if (item.done) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#16a34a',color:'#fff'}}>
+                ✓ {t('today_done')}
+              </span>
+            );
+          } else if (hasRoutine && item.isPast) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#f05a28',color:'#fff'}}>
+                ✗ {t('not_trained')}
+              </span>
+            );
+          } else if (hasRoutine && (item.isToday || isFuture)) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'#2563eb',color:'#fff'}}>
+                ◉ {t('schedule_fixed')}
+              </span>
+            );
+          } else if (!hasRoutine && !item.done) {
+            badge = (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black"
+                style={{background:'rgba(0,0,0,0.12)',color:'inherit',opacity:0.7}}>
+                – {t('no_session')}
+              </span>
+            );
+          }
+          const clickable = item.done && item.dayHistory.length > 0;
           return (
-            <div key={day.day || index} className={`week-day-card ${isToday ? 'today' : ''} ${isPast && !done ? 'past' : ''} ${done ? 'done' : ''}`}>
-              <div className="week-day-date"><p>{label}</p><strong>{date ? date.getDate() : ''}</strong></div>
-              {imageUrl
-                ? <GifThumb exercise={{gifUrl: imageUrl, imageUrl}} className="week-day-image" rounded="rounded-lg" bg="bg-white" autoplay={true} />
-                : <div className="week-day-image empty"><Dumbbell size={22} /></div>}
+            <div
+              key={item.key}
+              className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''} ${clickable ? 'cursor-pointer hover:ring-2 hover:ring-emerald-400 transition-all' : ''}`}
+              onClick={async () => {
+                if (!clickable) return;
+                setSelectedDay(item);
+                const missing = item.dayHistory.filter((row) => !sessionDetails[row.id]);
+                const results = await Promise.all(missing.map((row) =>
+                  api(`/api/sessions/${row.id}/detail?userId=${userId}`).catch(() => null)
+                ));
+                const next = { ...sessionDetails };
+                missing.forEach((row, i) => { if (results[i]) next[row.id] = results[i]; });
+                setSessionDetails(next);
+              }}
+            >
+              <div className="week-day-date">
+                <p>{item.label}</p>
+                <strong>{item.date.getDate()}</strong>
+              </div>
+              {(item.imageUrl || item.exercise) ? (
+                <GifThumb
+                  exercise={item.exercise || { gifUrl: item.imageUrl, imageUrl: item.imageUrl }}
+                  className="week-day-image"
+                  rounded="rounded-lg"
+                  bg="bg-white"
+                  autoplay={true}
+                />
+              ) : (
+                <div className="week-day-image empty"><Dumbbell size={22} /></div>
+              )}
               <div className="week-day-content">
-                <h3>{title}</h3>
-                <p>{content}</p>
+                <h3>{item.title}</h3>
+                <p>{item.content}</p>
                 <div className="mt-1 md:flex md:justify-center">{badge}</div>
               </div>
             </div>
