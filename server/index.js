@@ -2175,13 +2175,13 @@ function importBackupData(userId, backup) {
       );
     }
     for (const group of data.groups || []) {
-      db.prepare('INSERT OR IGNORE INTO custom_groups (id, user_id, name, icon, color_hex, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at);
+      db.prepare('INSERT OR IGNORE INTO custom_groups (id, user_id, name, icon, color_hex, created_at, order_index) VALUES (?, ?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at, group.order_index ?? 1);
     }
     for (const item of data.groupExercises || []) {
       db.prepare('INSERT OR IGNORE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(item.id, item.group_id, item.exercise_id, item.icon || '🏋️', item.order_index || 1);
     }
     for (const routine of data.routines || []) {
-      db.prepare('INSERT OR IGNORE INTO routines (id, user_id, name, color_hex, created_at) VALUES (?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at);
+      db.prepare('INSERT OR IGNORE INTO routines (id, user_id, name, color_hex, created_at, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at, routine.order_index ?? 1);
     }
     for (const item of data.routineGroups || []) {
       db.prepare('INSERT OR IGNORE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1);
