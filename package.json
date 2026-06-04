@@ -1,6 +1,6 @@
 {
   "name": "family-gym",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,6 +24,7 @@
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "gifuct-js": "^2.1.2",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
