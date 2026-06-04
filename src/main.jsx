@@ -1225,7 +1225,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.30'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.31'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3161,10 +3161,12 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
       </div>
       {/* Day detail popup */}
       {selectedDay && (
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSelectedDay(null)}>
+        <div className="fixed inset-0 z-[10000] flex flex-col justify-end bg-black/50 backdrop-blur-sm" onClick={() => setSelectedDay(null)}>
+          {/* Spacer để popup không dính taskbar */}
+          <div style={{ height: 'calc(4.5rem + env(safe-area-inset-bottom))' }} />
           <div
-            className="w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white"
-            style={{ maxHeight: 'calc(100vh - 5.5rem - env(safe-area-inset-bottom))', paddingBottom: '1.5rem' }}
+            className="w-full max-w-lg mx-auto overflow-y-auto rounded-t-2xl bg-white flex-shrink-0"
+            style={{ maxHeight: 'calc(80vh - 4.5rem)', paddingBottom: '1.5rem' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Handle */}
