@@ -1225,7 +1225,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.31'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.32'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -4220,7 +4220,7 @@ function SortableExerciseRow({ exercise, onRemove }) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
-      <GifThumb exercise={exercise} className="h-14 w-14" />
+      <GifThumb exercise={exercise} className="h-14 w-14" autoplay={true} />
       <span className="min-w-0 flex-1 text-base font-semibold">{exercise.name}</span>
       <button className="small-danger shrink-0" onClick={() => onRemove(exercise.id)}><Trash2 size={16} /> {t('delete')}</button>
     </div>
