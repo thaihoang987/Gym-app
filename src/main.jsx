@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.12'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.13'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1296,16 +1296,27 @@ function recalcWeeklyFromHistory(dashboard) {
   const weekly = dashboard?.suggestion?.weekly;
   if (!Array.isArray(weekly)) return dashboard;
   const history = Array.isArray(dashboard.recentHistory) ? dashboard.recentHistory : [];
+  const normalizeName = (value) => String(value || '').trim().toLocaleLowerCase('vi-VN');
   return {
     ...dashboard,
     suggestion: {
       ...(dashboard.suggestion || {}),
       weekly: weekly.map((routine) => {
         const rows = history.filter((row) => historyRowInWeek(row, routine));
-        const directCount = rows.filter((row) => Number(row.routine_id) === Number(routine.id)).length;
+        const routineName = normalizeName(routine.name);
+        const directCount = rows.filter((row) => (
+          Number(row.routine_id) === Number(routine.id)
+          || (!row.routine_id && normalizeName(row.routine_name) === routineName)
+        )).length;
         const groups = Array.isArray(routine.groups) ? routine.groups : [];
         const groupCoverage = groups.length
-          ? Math.min(...groups.map((group) => rows.filter((row) => Number(row.group_id) === Number(group.id)).length))
+          ? Math.min(...groups.map((group) => {
+            const groupName = normalizeName(group.name);
+            return rows.filter((row) => (
+              Number(row.group_id) === Number(group.id)
+              || (!row.group_id && normalizeName(row.group_name) === groupName)
+            )).length;
+          }))
           : 0;
         return {
           ...routine,

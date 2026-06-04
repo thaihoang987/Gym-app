@@ -1355,6 +1355,8 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
   return all(`
     SELECT
       ws.id,
+      ws.routine_id,
+      ws.group_id,
       ws.schedule_mode,
       ws.started_at,
       ws.completed_at,
