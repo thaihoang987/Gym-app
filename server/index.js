@@ -786,7 +786,8 @@ function getWeeklyStats(userId) {
     if (!item.sessionIds?.length) continue;
     const placeholders = item.sessionIds.map(() => '?').join(',');
     const exRows = all(`
-      SELECT e.id, e.name, COALESCE(e.gif_path, e.image_path) AS image_path,
+      SELECT e.id, e.name, e.target, e.muscle_group, e.secondary_muscles_json,
+        COALESCE(e.gif_path, e.image_path) AS image_path,
         COUNT(wl.id) AS total_sets,
         COALESCE(SUM(wl.reps), 0) AS total_reps,
         COALESCE(SUM(wl.weight_kg * wl.reps), 0) AS volume_kg,
@@ -798,6 +799,9 @@ function getWeeklyStats(userId) {
       ORDER BY volume_kg DESC
     `, [...item.sessionIds, userId]).map((r) => ({
       id: r.id, name: r.name,
+      target: r.target,
+      muscleGroup: r.muscle_group,
+      secondaryMuscles: JSON.parse(r.secondary_muscles_json || '[]'),
       imageUrl: assetUrl(r.image_path),
       totalSets: Number(r.total_sets || 0),
       totalReps: Number(r.total_reps || 0),

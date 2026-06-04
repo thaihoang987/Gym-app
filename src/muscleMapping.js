@@ -1,0 +1,215 @@
+// Muscle alias normalization for the weekly heatmap.
+// Sources used for naming conventions:
+// - MuscleMap render keys: https://github.com/melihcolpan/MuscleMap
+// - ExRx muscle/exercise directories: https://exrx.net/Lists/Muscle and https://exrx.net/Lists/Directory
+// - TeachMeAnatomy upper/lower limb muscle grouping: https://teachmeanatomy.info/
+// - Kenhub anatomy muscle group references: https://www.kenhub.com/en/library/anatomy
+// - SEER upper extremity muscle group overview: https://training.seer.cancer.gov/anatomy/muscular/groups/upper.html
+
+export const MUSCLE_DISPLAY_NAMES = {
+  abs: 'Bụng',
+  biceps: 'Tay trước',
+  calves: 'Bắp chân',
+  chest: 'Ngực',
+  deltoids: 'Vai',
+  feet: 'Bàn chân',
+  forearm: 'Cẳng tay',
+  gluteal: 'Mông',
+  hamstring: 'Đùi sau',
+  hands: 'Bàn tay',
+  head: 'Đầu',
+  knees: 'Gối',
+  'lower-back': 'Lưng dưới',
+  obliques: 'Cơ liên sườn',
+  quadriceps: 'Đùi trước',
+  tibialis: 'Ống chân',
+  trapezius: 'Cầu vai',
+  triceps: 'Tay sau',
+  'upper-back': 'Lưng trên',
+  serratus: 'Cơ răng trước',
+  adductors: 'Đùi trong',
+  ankles: 'Cổ chân',
+  neck: 'Cổ',
+  'hip-flexors': 'Gập hông',
+  'upper-chest': 'Ngực trên',
+  'lower-chest': 'Ngực dưới',
+  'inner-quad': 'Đùi trước trong',
+  'outer-quad': 'Đùi trước ngoài',
+  'upper-abs': 'Bụng trên',
+  'lower-abs': 'Bụng dưới',
+  'front-deltoid': 'Vai trước',
+  'rear-deltoid': 'Vai sau',
+  'upper-trapezius': 'Cầu vai trên',
+  'lower-trapezius': 'Cầu vai dưới',
+  'rotator-cuff': 'Chóp xoay vai',
+  rhomboids: 'Cơ trám'
+};
+
+export const TARGET_TO_MUSCLE = {
+  // Chest / pectoral region
+  pecs: ['chest'],
+  pectoral: ['chest'],
+  pectorals: ['chest'],
+  'pectoralis major': ['chest'],
+  'pectoralis minor': ['chest'],
+  chest: ['chest'],
+  'upper chest': ['upper-chest'],
+  clavicular: ['upper-chest'],
+  'clavicular head': ['upper-chest'],
+  'incline chest': ['upper-chest'],
+  'lower chest': ['lower-chest'],
+  sternal: ['lower-chest'],
+  'sternal head': ['lower-chest'],
+  decline: ['lower-chest'],
+
+  // Back
+  back: ['upper-back'],
+  lats: ['upper-back'],
+  lat: ['upper-back'],
+  'latissimus dorsi': ['upper-back'],
+  'teres major': ['upper-back'],
+  'upper back': ['upper-back'],
+  'middle back': ['upper-back'],
+  'lower back': ['lower-back'],
+  erectors: ['lower-back'],
+  'erector spinae': ['lower-back'],
+  spine: ['lower-back'],
+  'spinal erectors': ['lower-back'],
+  rhomboid: ['rhomboids'],
+  rhomboids: ['rhomboids'],
+  traps: ['trapezius'],
+  trapezius: ['trapezius'],
+  'upper traps': ['upper-trapezius'],
+  'upper trapezius': ['upper-trapezius'],
+  'lower traps': ['lower-trapezius'],
+  'lower trapezius': ['lower-trapezius'],
+  'levator scapulae': ['upper-trapezius'],
+
+  // Shoulders
+  shoulder: ['deltoids'],
+  shoulders: ['deltoids'],
+  delt: ['deltoids'],
+  delts: ['deltoids'],
+  deltoid: ['deltoids'],
+  deltoids: ['deltoids'],
+  'anterior deltoid': ['front-deltoid'],
+  'front deltoid': ['front-deltoid'],
+  'front deltoids': ['front-deltoid'],
+  'front delts': ['front-deltoid'],
+  'posterior deltoid': ['rear-deltoid'],
+  'rear deltoid': ['rear-deltoid'],
+  'rear deltoids': ['rear-deltoid'],
+  'rear delts': ['rear-deltoid'],
+  'rotator cuff': ['rotator-cuff'],
+  supraspinatus: ['rotator-cuff'],
+  infraspinatus: ['rotator-cuff'],
+  subscapularis: ['rotator-cuff'],
+
+  // Arms
+  bicep: ['biceps'],
+  biceps: ['biceps'],
+  'biceps brachii': ['biceps'],
+  brachialis: ['biceps'],
+  brachioradialis: ['forearm'],
+  tricep: ['triceps'],
+  triceps: ['triceps'],
+  'triceps brachii': ['triceps'],
+  forearm: ['forearm'],
+  forearms: ['forearm'],
+  wrist: ['forearm'],
+  wrists: ['forearm'],
+  'wrist flexors': ['forearm'],
+  'wrist extensors': ['forearm'],
+  grip: ['forearm'],
+  'grip muscles': ['forearm'],
+  hands: ['hands'],
+
+  // Core
+  abs: ['abs'],
+  abdominal: ['abs'],
+  abdominals: ['abs'],
+  'rectus abdominis': ['abs'],
+  core: ['abs', 'obliques'],
+  waist: ['abs', 'obliques'],
+  'upper abs': ['upper-abs'],
+  'lower abs': ['lower-abs'],
+  oblique: ['obliques'],
+  obliques: ['obliques'],
+  serratus: ['serratus'],
+  'serratus anterior': ['serratus'],
+
+  // Hips / legs
+  glute: ['gluteal'],
+  glutes: ['gluteal'],
+  gluteal: ['gluteal'],
+  'gluteus maximus': ['gluteal'],
+  'gluteus medius': ['gluteal'],
+  'gluteus minimus': ['gluteal'],
+  abductors: ['gluteal'],
+  'hip abductors': ['gluteal'],
+  quads: ['quadriceps'],
+  quad: ['quadriceps'],
+  quadriceps: ['quadriceps'],
+  'quadriceps femoris': ['quadriceps'],
+  'rectus femoris': ['quadriceps'],
+  'vastus lateralis': ['outer-quad'],
+  'vastus medialis': ['inner-quad'],
+  'vastus intermedius': ['quadriceps'],
+  'inner quad': ['inner-quad'],
+  'outer quad': ['outer-quad'],
+  adductor: ['adductors'],
+  adductors: ['adductors'],
+  'hip adductors': ['adductors'],
+  groin: ['adductors'],
+  'inner thighs': ['adductors'],
+  hamstring: ['hamstring'],
+  hamstrings: ['hamstring'],
+  'biceps femoris': ['hamstring'],
+  semitendinosus: ['hamstring'],
+  semimembranosus: ['hamstring'],
+  'hip flexor': ['hip-flexors'],
+  'hip flexors': ['hip-flexors'],
+  iliopsoas: ['hip-flexors'],
+  psoas: ['hip-flexors'],
+  calves: ['calves'],
+  calf: ['calves'],
+  gastrocnemius: ['calves'],
+  soleus: ['calves'],
+  tibialis: ['tibialis'],
+  'tibialis anterior': ['tibialis'],
+  shins: ['tibialis'],
+  ankles: ['ankles'],
+  ankle: ['ankles'],
+  'ankle stabilizers': ['ankles'],
+  feet: ['feet'],
+  foot: ['feet'],
+  sternocleidomastoid: ['neck'],
+
+  // Dataset broad labels
+  'cardiovascular system': [],
+  bodyweight: [],
+  'body weight': [],
+  other: []
+};
+
+export function normalizeMuscleAliases(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeMuscleAliases(item));
+  }
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/[\[\]"]/g, '')
+    .split(/[,/;|]+/)
+    .map((item) => item.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+}
+
+export function addMuscleScore(scoreMap, source, points) {
+  for (const alias of normalizeMuscleAliases(source)) {
+    const muscles = TARGET_TO_MUSCLE[alias] || [];
+    for (const muscle of muscles) {
+      scoreMap.set(muscle, (scoreMap.get(muscle) || 0) + points);
+    }
+  }
+}

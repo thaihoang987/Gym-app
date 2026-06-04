@@ -46,6 +46,7 @@ import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
 import { MUSCLE_MAP_PATHS } from './muscleMapPaths.js';
+import { MUSCLE_DISPLAY_NAMES, addMuscleScore } from './muscleMapping.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // gymStore — Single source of truth cho mọi data của user
@@ -1226,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.36'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.37'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3462,111 +3463,6 @@ function ActivityCalendar({ calendar, history, settings }) {
       {tip && <div className="calendar-tip" style={{ left: tip.x + 10, top: tip.y + 10 }}>{tip.text}</div>}
     </div>
   );
-}
-
-// Map exercise targets → MuscleMap region IDs.
-const TARGET_TO_MUSCLE = {
-  'pectorals': ['chest'],
-  'chest': ['chest'],
-  'upper chest': ['upper-chest'],
-  'lower chest': ['lower-chest'],
-  'lats': ['upper-back'],
-  'latissimus dorsi': ['upper-back'],
-  'back': ['upper-back'],
-  'upper back': ['upper-back'],
-  'lower back': ['lower-back'],
-  'spine': ['lower-back'],
-  'rhomboids': ['upper-back'],
-  'traps': ['trapezius'],
-  'trapezius': ['trapezius'],
-  'levator scapulae': ['trapezius'],
-  'delts': ['deltoids'],
-  'deltoids': ['deltoids'],
-  'shoulders': ['deltoids'],
-  'front deltoids': ['front-deltoid'],
-  'front delts': ['front-deltoid'],
-  'rear deltoids': ['deltoids'],
-  'rear delts': ['deltoids'],
-  'rotator cuff': ['deltoids'],
-  'biceps': ['biceps'],
-  'forearms': ['forearm'],
-  'forearm': ['forearm'],
-  'triceps': ['triceps'],
-  'abs': ['abs'],
-  'abdominals': ['abs'],
-  'upper abs': ['upper-abs'],
-  'lower abs': ['lower-abs'],
-  'obliques': ['obliques'],
-  'serratus anterior': ['serratus'],
-  'serratus': ['serratus'],
-  'core': ['abs', 'obliques'],
-  'quads': ['quadriceps'],
-  'quadriceps': ['quadriceps'],
-  'inner quad': ['inner-quad'],
-  'outer quad': ['outer-quad'],
-  'hip flexors': ['hip-flexors'],
-  'adductors': ['adductors'],
-  'abductors': ['gluteal'],
-  'hamstrings': ['hamstring'],
-  'hamstring': ['hamstring'],
-  'glutes': ['gluteal'],
-  'gluteal': ['gluteal'],
-  'calves': ['calves'],
-  'soleus': ['calves'],
-  'tibialis': ['tibialis'],
-  'ankles': ['ankles'],
-  'feet': ['feet']
-};
-
-const MUSCLE_DISPLAY_NAMES = {
-  abs: 'Bụng',
-  biceps: 'Tay trước',
-  calves: 'Bắp chân',
-  chest: 'Ngực',
-  deltoids: 'Vai',
-  feet: 'Bàn chân',
-  forearm: 'Cẳng tay',
-  gluteal: 'Mông',
-  hamstring: 'Đùi sau',
-  hands: 'Bàn tay',
-  head: 'Đầu',
-  knees: 'Gối',
-  'lower-back': 'Lưng dưới',
-  obliques: 'Cơ liên sườn',
-  quadriceps: 'Đùi trước',
-  tibialis: 'Ống chân',
-  trapezius: 'Cầu vai',
-  triceps: 'Tay sau',
-  'upper-back': 'Lưng trên',
-  serratus: 'Cơ răng trước',
-  adductors: 'Đùi trong',
-  ankles: 'Cổ chân',
-  'hip-flexors': 'Gập hông',
-  'upper-chest': 'Ngực trên',
-  'lower-chest': 'Ngực dưới',
-  'inner-quad': 'Đùi trước trong',
-  'outer-quad': 'Đùi trước ngoài',
-  'upper-abs': 'Bụng trên',
-  'lower-abs': 'Bụng dưới',
-  'front-deltoid': 'Vai trước'
-};
-
-function normalizeMuscleAliases(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[\[\]"]/g, '')
-    .split(/[,/;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function addMuscleScore(scoreMap, source, points) {
-  for (const alias of normalizeMuscleAliases(source)) {
-    const muscles = TARGET_TO_MUSCLE[alias] || [];
-    for (const muscle of muscles) {
-      scoreMap.set(muscle, (scoreMap.get(muscle) || 0) + points);
-    }
-  }
 }
 
 function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
