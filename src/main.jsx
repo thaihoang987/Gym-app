@@ -2835,7 +2835,7 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-white/90 leading-tight truncate">{ex.name}</p>
                             <p className="text-[10px] text-emerald-300/60">
-                              {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
+                              {ex.totalSets} {t('set')} · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
                             </p>
                           </div>
                           {ex.volumeKg > 0 && <span className="shrink-0 text-[11px] font-black text-emerald-300">{formatVolume(ex.volumeKg)}</span>}
@@ -3207,7 +3207,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
                     <div className="flex items-center gap-3 bg-white px-4 py-3 border-b border-slate-100">
                       <div className="min-w-0 flex-1">
                         <p className="font-black text-slate-900">{sessionName}</p>
-                        <p className="text-xs text-slate-500">{row.sets || 0} sets · {row.duration_minutes || 0} min</p>
+                        <p className="text-xs text-slate-500">{row.sets || 0} {t('set')} · {row.duration_minutes || 0} {t('min')}</p>
                       </div>
                     </div>
                     {detail ? (
@@ -3278,7 +3278,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
                         ))}
                       </div>
                     ) : (
-                      <div className="p-4 text-center text-sm text-slate-400">Loading...</div>
+                      <div className="p-4 text-center text-sm text-slate-400">{t('loading')}</div>
                     )}
                   </div>
                 );
@@ -3715,7 +3715,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
                     <div className="flex items-center gap-3 bg-white px-4 py-3 border-b border-slate-100">
                       <div className="min-w-0 flex-1">
                         <p className="font-black text-slate-900">{sessionName}</p>
-                        <p className="text-xs text-slate-500">{row.sets || 0} sets · {row.duration_minutes || 0} min</p>
+                        <p className="text-xs text-slate-500">{row.sets || 0} {t('set')} · {row.duration_minutes || 0} {t('min')}</p>
                       </div>
                     </div>
                     {detail ? (
@@ -3785,7 +3785,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
                         ))}
                       </div>
                     ) : (
-                      <div className="p-4 text-center text-sm text-slate-400">Loading...</div>
+                      <div className="p-4 text-center text-sm text-slate-400">{t('loading')}</div>
                     )}
                   </div>
                 );
@@ -3895,7 +3895,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 leading-tight truncate">{ex.name}</p>
                       <p className="text-[10px] text-slate-500">
-                        {ex.totalSets} sets · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
+                        {ex.totalSets} {t('set')} · {ex.totalReps} reps{ex.maxWeight > 0 ? ` · max ${ex.maxWeight}kg` : ''}
                       </p>
                     </div>
                     {ex.volumeKg > 0 && <span className="shrink-0 text-xs font-black text-slate-600">{formatVolume(ex.volumeKg)}</span>}
@@ -3939,16 +3939,16 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
         const normalized = new Map([...muscleVol.entries()].map(([k, v]) => [k, v / maxVol]));
         return (
           <div className="mt-4 border-t border-slate-100 pt-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Muscle Activity This Week</p>
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">{t('weekly_muscle_activity')}</p>
             <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
             <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
-              <span>Low</span>
+              <span>{t('heatmap_low')}</span>
               <span className="h-2.5 w-5 rounded-full bg-[#cfd4dc]" />
               <span className="h-2.5 w-5 rounded-full bg-[#ffe45c]" />
               <span className="h-2.5 w-5 rounded-full bg-[#ffb21f]" />
               <span className="h-2.5 w-5 rounded-full bg-[#ff7a1a]" />
               <span className="h-2.5 w-5 rounded-full bg-[#ff2d55]" />
-              <span>High</span>
+              <span>{t('heatmap_high')}</span>
             </div>
           </div>
         );
@@ -7204,4 +7204,5 @@ createRoot(document.getElementById('root')).render(
     </DialogProvider>
   </ServerStatusProvider>
 );
+
 
