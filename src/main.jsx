@@ -992,9 +992,8 @@ const getModeLabels = (t) => ({ FREE: t('mode_free'), FIXED: t('schedule_fixed_p
 function formatVolume(kg) {
   const v = Math.round(Number(kg || 0));
   if (v === 0) return null;
-  if (v >= 1000000) return `${(v / 1000000).toFixed(1)}Mt`;
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}t`;
-  return `${v} kg`;
+  if (v >= 10000) return `${Math.round(v / 1000)}k vol`;
+  return `${v.toLocaleString()} vol`;
 }
 const defaultKgOptions = Array.from({ length: 121 }, (_, index) => index * 2.5);
 const defaultLbOptions = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140, 160, 180, 200, 220];
@@ -1226,7 +1225,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.29'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.30'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
