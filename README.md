@@ -136,6 +136,7 @@ This repo includes a GitHub Actions workflow that builds and pushes a Docker ima
 
 - Image: `ghcr.io/thaihoang987/gym-app:latest`
 - SHA tags: `ghcr.io/thaihoang987/gym-app:sha-<commit>`
+- Release tags: `ghcr.io/thaihoang987/gym-app:0.3.47` when pushing Git tags like `v0.3.47`
 - Workflow: `.github/workflows/docker.yml`
 
 If the package is public, Unraid users can run the image directly with:
@@ -145,6 +146,22 @@ ghcr.io/thaihoang987/gym-app:latest
 ```
 
 If the package is private, open the package page on GitHub and set visibility to public, or log in to GHCR from Unraid before pulling.
+
+## Publish to Unraid Community Apps
+
+This repo includes an Unraid Community Applications template:
+
+- [`unraid-template.xml`](unraid-template.xml)
+
+Publishing checklist:
+
+1. Push to `main` and confirm the Docker workflow publishes `ghcr.io/thaihoang987/gym-app:latest`.
+2. In GitHub Packages, set the GHCR package visibility to **Public**.
+3. Test install on your own Unraid server with `/mnt/user/appdata/gym-app/data` mapped to `/app/data`.
+4. Optional but recommended: create an Unraid forum support topic and update the `<Support>` link in `unraid-template.xml`.
+5. Submit the repository at `https://ca.unraid.net/submit`.
+
+Full checklist: [`docs/UNRAID_COMMUNITY_APPS.md`](docs/UNRAID_COMMUNITY_APPS.md).
 
 ## Update flow
 

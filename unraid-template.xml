@@ -8,14 +8,14 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-app/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-app</Project>
-  <Overview>Gym App - A local-first workout tracker for personal or family use. Features 1300+ exercises with GIFs, custom exercises, workout scheduling, body weight tracking, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile (add to home screen).</Overview>
+  <Overview>Gym App - A self-hosted, local-first workout tracker for personal or family use. Features 1300+ exercises with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. The bundled exercise dataset is intended for personal, educational, and non-commercial use.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/unraid-template.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <Author>thaihoang987</Author>
-  <Date>2026-06-01</Date>
+  <Date>2026-06-04</Date>
 
   <!-- PORT -->
   <Config
