@@ -42,7 +42,6 @@ import {
 } from 'lucide-react';
 import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { decompressFrames, parseGIF } from 'gifuct-js';
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
@@ -1228,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.38'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.39'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3792,109 +3791,6 @@ function exerciseAutoMediaUrl(exercise) {
   return exercise?.gifUrl || exercise?.imageUrl || '';
 }
 
-function isVideoUrl(url = '') {
-  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(String(url || ''));
-}
-
-function SlowGifCanvas({ src, poster, alt = '', className = '', paused = false, speed = 1.65 }) {
-  const canvasRef = React.useRef(null);
-  const [fallback, setFallback] = useState(false);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer = null;
-    const canvas = canvasRef.current;
-    if (!src || paused || !canvas) return () => {};
-
-    async function run() {
-      try {
-        setReady(false);
-        setFallback(false);
-        const response = await fetch(src, { cache: 'force-cache' });
-        const buffer = await response.arrayBuffer();
-        if (cancelled) return;
-        const gif = parseGIF(buffer);
-        const frames = decompressFrames(gif, true);
-        if (!frames.length) throw new Error('No GIF frames');
-        const ctx = canvas.getContext('2d');
-        const width = gif.lsd?.width || frames[0].dims.width;
-        const height = gif.lsd?.height || frames[0].dims.height;
-        canvas.width = width;
-        canvas.height = height;
-        let index = 0;
-        let previous = null;
-        const draw = () => {
-          if (cancelled || paused) return;
-          const frame = frames[index];
-          if (previous?.disposalType === 2) {
-            ctx.clearRect(previous.dims.left, previous.dims.top, previous.dims.width, previous.dims.height);
-          }
-          const imageData = ctx.createImageData(frame.dims.width, frame.dims.height);
-          imageData.data.set(frame.patch);
-          ctx.putImageData(imageData, frame.dims.left, frame.dims.top);
-          previous = frame;
-          index = (index + 1) % frames.length;
-          setReady(true);
-          const delay = Math.max(70, Number(frame.delay || 100));
-          timer = window.setTimeout(draw, delay * speed);
-        };
-        draw();
-      } catch {
-        if (!cancelled) setFallback(true);
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [src, paused, speed]);
-
-  if (paused || fallback) {
-    return <img src={poster || src} alt={alt} className={className} />;
-  }
-
-  return (
-    <div className={`slow-gif-shell ${className}`}>
-      {!ready && <img src={poster || src} alt={alt} />}
-      <canvas ref={canvasRef} aria-label={alt} />
-    </div>
-  );
-}
-
-function ExerciseMediaPlayer({ exercise, className = '', paused = false, slowGif = true }) {
-  const imageSrc = exerciseMediaUrl(exercise);
-  const autoSrc = exerciseAutoMediaUrl(exercise);
-  const src = paused || exercise?.displayMedia === 'image' ? imageSrc : autoSrc;
-  const videoSrc = exercise?.videoUrl || exercise?.video || (isVideoUrl(autoSrc) ? autoSrc : '');
-  const poster = imageSrc && imageSrc !== videoSrc ? imageSrc : exercise?.imageUrl;
-
-  if (!src && !videoSrc) return null;
-  if (!paused && videoSrc) {
-    return (
-      <video
-        src={videoSrc}
-        poster={poster}
-        className={className}
-        muted
-        loop
-        playsInline
-        autoPlay
-        preload="metadata"
-        ref={(node) => {
-          if (node) node.playbackRate = 0.75;
-        }}
-      />
-    );
-  }
-  if (!paused && slowGif && exercise?.gifUrl && exercise?.displayMedia !== 'image') {
-    return <SlowGifCanvas src={exercise.gifUrl} poster={poster} alt={exercise?.name || ''} className={className} />;
-  }
-  return <img src={src || poster} alt={exercise?.name || ''} className={className} />;
-}
-
 // GifThumb — thumbnail play GIF. autoplay=true luôn chạy GIF
 function GifThumb({ exercise, className = 'h-12 w-12', rounded = 'rounded', bg = 'bg-white', autoplay = false }) {
   const [playing, setPlaying] = useState(autoplay);
@@ -4124,7 +4020,7 @@ function ExerciseLibrary({ userId, settings }) {
         <button className="ghost-btn" onClick={() => setSelectedExercise(null)}>{t('lib_back')}</button>
         <article className="panel">
           {selectedExercise.gifUrl || selectedExercise.imageUrl ? (
-            <ExerciseMediaPlayer exercise={selectedExercise} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl rounded-lg bg-white object-contain md:h-[360px]" />
+            <img src={selectedExercise.gifUrl || selectedExercise.imageUrl} alt={selectedExercise.name} className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl rounded-lg bg-white object-contain md:h-[360px]" />
           ) : (
             <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center rounded-lg bg-white text-7xl ring-1 ring-slate-200 md:h-[360px]">{selectedExercise.customIcon || '🏋️'}</div>
           )}
@@ -5678,10 +5574,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           >
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (
-              <ExerciseMediaPlayer
-                exercise={exercise}
-                paused={paused}
+              <img
+                src={paused || exercise.displayMedia === 'image' ? exerciseMediaUrl(exercise) : exerciseAutoMediaUrl(exercise)}
+                alt={exercise.name}
                 className="mx-auto h-[300px] max-h-[45vh] w-full max-w-xl object-contain md:h-[360px]"
+                onError={(e) => {
+                  const fallback = exercise.gifUrl && e.target.src !== exercise.gifUrl ? exercise.gifUrl
+                    : (exercise.imageUrl && e.target.src !== exercise.imageUrl ? exercise.imageUrl : null);
+                  if (fallback) e.target.src = fallback;
+                  else e.target.style.display = 'none';
+                }}
               />
             ) : (
               <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
