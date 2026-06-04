@@ -3599,30 +3599,34 @@ function WeeklyStatsCard({ stats, settings }) {
         ))}
       </div>
 
-      {/* Schedule Record — week-plan-grid + week-day-card y het CurrentWeekPlan */}
       <div className="week-plan-grid my-3">
         {byDay.map((day, index) => {
           const date = parseServerDate(day.day);
-          const sessions = Number(day.sessions || 0);
+          const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+          const isToday = day.day === todayIso;
+          const done = Number(day.sessions || 0) > 0;
+          const isPast = date && date < todayDate;
+          const isFuture = !isPast && !isToday;
           const sets = Number(day.sets || 0);
           const minutes = Number(day.minutes || 0);
-          const images = Array.isArray(day.images) ? day.images : [];
-          const isToday = day.day === todayIso;
-          const done = sessions > 0;
-          const isPast = date && date < new Date(new Date().toDateString());
+          const extraCount = Number(day.sessions || 0) - 1;
+          const imageUrl = (Array.isArray(day.images) ? day.images : [])[0] || null;
           const label = date ? formatDate(date, settings, { weekday: 'short' }) : t('days')[index];
-          const imageUrl = images[0] || null;
-          const extraCount = sessions - 1;
+          const title = done ? (day.name || t('session_free')) : isToday ? t('today_title') : t('no_session');
+          const content = done ? `${sets} ${t('set')} · ${minutes} ${t('min')}${extraCount > 0 ? ` · +${extraCount}` : ''}` : '';
           let badge = null;
-          if (done) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#16a34a',color:'#fff'}}><Check size={8}/> {t('today_done')}</span>;
+          if (done) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#16a34a',color:'#fff'}}>✓ {t('today_done')}</span>;
           else if (isPast) badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'#f05a28',color:'#fff'}}>✗ {t('not_trained')}</span>;
+          else badge = <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black" style={{background:'rgba(0,0,0,0.12)',color:'inherit',opacity:0.7}}>– {t('no_session')}</span>;
           return (
             <div key={day.day || index} className={`week-day-card ${isToday ? 'today' : ''} ${isPast && !done ? 'past' : ''} ${done ? 'done' : ''}`}>
               <div className="week-day-date"><p>{label}</p><strong>{date ? date.getDate() : ''}</strong></div>
-              {imageUrl ? <img src={imageUrl} className="week-day-image" onError={(e)=>{e.target.style.display='none';}} /> : <div className="week-day-image empty"><Dumbbell size={22} /></div>}
+              {imageUrl
+                ? <GifThumb exercise={{gifUrl: imageUrl, imageUrl}} className="week-day-image" rounded="rounded-lg" bg="bg-white" autoplay={true} />
+                : <div className="week-day-image empty"><Dumbbell size={22} /></div>}
               <div className="week-day-content">
-                <h3>{done ? (day.name || t('session_free')) : (isToday ? t('today_title') : '–')}</h3>
-                <p>{done ? `${sets} ${t('set')} · ${minutes} ${t('min')}${extraCount>0?` · +${extraCount}`:''}` : ''}</p>
+                <h3>{title}</h3>
+                <p>{content}</p>
                 <div className="mt-1 md:flex md:justify-center">{badge}</div>
               </div>
             </div>
