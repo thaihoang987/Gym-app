@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.26'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.27'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3112,6 +3112,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
       routine,
       title: done ? (mainDone?.routine_name || mainDone?.group_name || t('session_free')) : routine?.name || t('no_session'),
       imageUrl: done ? (mainDone?.gifUrl || mainDone?.imageUrl) : exerciseAutoMediaUrl(routine?.exercises?.[0]),
+      exercise: done ? null : (routine?.exercises?.[0] || null),
       content: done
         ? `${t('sets_min', mainDone?.sets || 0, mainDone?.duration_minutes || 0)}${dayHistory.length > 1 ? ` · ${t('more_sessions', dayHistory.length - 1)}` : ''}`
         : routine ? `${routine.groups?.length || 0} Group · ${routine.exercises?.length || 0} ${t('bài')}` : t('go_schedule')
@@ -3153,7 +3154,11 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
       {/* Day detail popup */}
       {selectedDay && (
         <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSelectedDay(null)}>
-          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white pb-8" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white"
+            style={{ maxHeight: 'calc(85vh - env(safe-area-inset-bottom))', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Handle */}
             <div className="sticky top-0 bg-white pt-3 pb-2 px-5">
               <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
@@ -3194,25 +3199,50 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
                             <div className="space-y-2">
                               {exercises.map((ex) => {
                                 const exSets = ex.sets || [];
+                                const prevSets = ex.previous || [];
+                                const exVol = exSets.reduce((s, st) => s + Number(st.weightKg||0)*Number(st.reps||0), 0);
+                                const prevVol = prevSets.reduce((s, st) => s + Number(st.weightKg||0)*Number(st.reps||0), 0);
+                                const volDiff = prevVol > 0 ? Math.round(((exVol - prevVol)/prevVol)*100) : null;
                                 return (
-                                  <div key={ex.id} className="rounded-lg bg-white border border-slate-100 p-2.5">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <GifThumb exercise={ex} className="h-10 w-10" rounded="rounded-md" />
+                                  <div key={ex.id} className="rounded-xl bg-white border border-slate-100 overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50">
+                                      <GifThumb exercise={ex} className="h-12 w-12" rounded="rounded-lg" bg="bg-white" autoplay={true} />
                                       <div className="min-w-0 flex-1">
                                         <p className="text-sm font-bold text-slate-800 leading-tight">{ex.name}</p>
-                                        <p className="text-xs text-slate-400">{ex.target} · {ex.equipment}</p>
+                                        <p className="text-xs text-slate-400">{ex.target}{ex.equipment ? ` · ${ex.equipment}` : ''}</p>
                                       </div>
-                                      {ex.maxWeight > 0 && <span className="text-xs font-black text-slate-500">max {ex.maxWeight}kg</span>}
+                                      <div className="text-right shrink-0">
+                                        {ex.maxWeight > 0 && <p className="text-xs font-black text-slate-600">max {ex.maxWeight}kg</p>}
+                                        {volDiff !== null && (
+                                          <p className={`text-[10px] font-black ${volDiff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                            {volDiff >= 0 ? '↑' : '↓'}{Math.abs(volDiff)}%
+                                          </p>
+                                        )}
+                                      </div>
                                     </div>
-                                    {exSets.length > 0 && (
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {exSets.map((s, si) => (
-                                          <span key={s.id || si} className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
-                                            {si + 1}. {Number(s.weightKg || 0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <div className="px-3 py-2 space-y-1">
+                                      {exSets.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {exSets.map((s, si) => (
+                                            <span key={s.id || si} className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
+                                              {si + 1}. {Number(s.weightKg||0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {prevSets.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] text-slate-400 mb-1">{t('detail_prev')}</p>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {prevSets.map((s, si) => (
+                                              <span key={s.id || si} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                                                {si + 1}. {Number(s.weightKg||0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -3290,8 +3320,14 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
               <p>{item.label}</p>
               <strong>{item.date.getDate()}</strong>
             </div>
-            {item.imageUrl ? (
-              <img src={item.imageUrl} className="week-day-image" />
+            {(item.imageUrl || item.exercise) ? (
+              <GifThumb
+                exercise={item.exercise || { gifUrl: item.imageUrl, imageUrl: item.imageUrl }}
+                className="week-day-image"
+                rounded="rounded-lg"
+                bg="bg-white"
+                autoplay={true}
+              />
             ) : (
               <div className="week-day-image empty"><Dumbbell size={22} /></div>
             )}
@@ -3622,12 +3658,11 @@ function exerciseAutoMediaUrl(exercise) {
   return exercise?.gifUrl || exercise?.imageUrl || '';
 }
 
-// GifThumb — thumbnail tự động play GIF khi hover/tap, dùng cho mọi nơi trừ Library
-function GifThumb({ exercise, className = 'h-12 w-12', rounded = 'rounded', bg = 'bg-white' }) {
-  const [playing, setPlaying] = useState(false);
+// GifThumb — thumbnail play GIF. autoplay=true luôn chạy GIF
+function GifThumb({ exercise, className = 'h-12 w-12', rounded = 'rounded', bg = 'bg-white', autoplay = false }) {
+  const [playing, setPlaying] = useState(autoplay);
   const gifUrl = exercise?.gifUrl;
-  const imgUrl = exercise?.imageUrl || exercise?.imageUrl;
-  const staticSrc = exerciseMediaUrl(exercise);   // image ưu tiên
+  const staticSrc = exerciseMediaUrl(exercise);
   const animSrc = gifUrl || staticSrc;
   const hasGif = Boolean(gifUrl) && exercise?.displayMedia !== 'image';
   const icon = exercise?.customIcon || '🏋️';
@@ -3635,15 +3670,16 @@ function GifThumb({ exercise, className = 'h-12 w-12', rounded = 'rounded', bg =
   if (!staticSrc && !animSrc) {
     return <span className={`grid ${className} shrink-0 place-items-center ${rounded} ${bg} text-2xl`}>{icon}</span>;
   }
+  const src = (autoplay || playing) && hasGif ? animSrc : staticSrc;
   return (
     <img
-      src={playing && hasGif ? animSrc : staticSrc}
+      src={src}
       alt={exercise?.name || ''}
       className={`${className} shrink-0 ${rounded} ${bg} object-contain`}
-      onMouseEnter={() => hasGif && setPlaying(true)}
-      onMouseLeave={() => setPlaying(false)}
-      onClick={() => hasGif && setPlaying((v) => !v)}
-      style={{ cursor: hasGif ? 'pointer' : 'default' }}
+      onMouseEnter={() => !autoplay && hasGif && setPlaying(true)}
+      onMouseLeave={() => !autoplay && setPlaying(false)}
+      onClick={() => !autoplay && hasGif && setPlaying((v) => !v)}
+      style={{ cursor: !autoplay && hasGif ? 'pointer' : 'default' }}
     />
   );
 }
