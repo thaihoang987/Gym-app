@@ -1227,7 +1227,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.40'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.41'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3473,11 +3473,13 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
     .slice(0, 6);
   const fill = (id) => {
     const v = workedMuscles.get(id) || 0;
-    if (id === 'hair') return '#111827';
-    if (v === 0) return '#eef2f7';
-    const hue = 48 - Math.round(v * 42);
-    const lightness = 72 - Math.round(v * 25);
-    return `hsl(${hue}, 96%, ${lightness}%)`;
+    if (id === 'hair') return '#2f3341';
+    if (v === 0) return '#d7dbe2';
+    if (v < 0.22) return '#ffe3a3';
+    if (v < 0.45) return '#ffb15f';
+    if (v < 0.68) return '#ff6b45';
+    if (v < 0.86) return '#ef3f4c';
+    return '#c81e46';
   };
   const renderSide = (key, label) => (
     <div className="muscle-map-side">
@@ -3490,8 +3492,8 @@ function MuscleHeatmap({ workedMuscles = new Map(), gender = 'male' }) {
                 key={`${part.slug}-${index}`}
                 d={pathData}
                 fill={fill(part.slug)}
-                stroke="#334155"
-                strokeWidth="2"
+                stroke="#f8fafc"
+                strokeWidth="1.6"
                 vectorEffect="non-scaling-stroke"
               >
                 <title>{MUSCLE_DISPLAY_NAMES[part.slug] || part.slug}</title>
@@ -3652,10 +3654,14 @@ function WeeklyStatsCard({ stats, settings }) {
           <div className="mt-4 border-t border-slate-100 pt-4">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Muscle Activity This Week</p>
             <MuscleHeatmap workedMuscles={normalized} gender={settings?.gender} />
-            <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-slate-400">
-              <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" /> Low
-              <span className="h-2.5 w-2.5 rounded-sm bg-yellow-300" /> Medium
-              <span className="h-2.5 w-2.5 rounded-sm bg-red-500" /> High
+            <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
+              <span>Low</span>
+              <span className="h-2.5 w-5 rounded-full bg-[#d7dbe2]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ffe3a3]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ffb15f]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#ff6b45]" />
+              <span className="h-2.5 w-5 rounded-full bg-[#c81e46]" />
+              <span>High</span>
             </div>
           </div>
         );
