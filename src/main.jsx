@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.22'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.23'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2620,7 +2620,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
       <BodyWeightInput userId={userId} settings={settings} />
       <TodayWorkoutCard suggestion={suggestion} clock={clock} todaySummary={todaySummary} onStartRoutine={startRoutine} settings={settings} activeSession={activeSession} userId={userId} onChanged={loadAll} />
       <FreeTraining routines={routineData.routines} groups={groups} onStartRoutine={startRoutine} onStartGroup={startGroup} />
-      <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} />
+      <CurrentWeekPlan suggestion={suggestion} history={data?.recentHistory || []} routines={routineData.routines} rules={routineData.rules} userId={userId} settings={settings} />
       <ActivityCalendar calendar={data?.activityCalendar || []} history={data?.recentHistory || []} settings={settings} />
       <WeeklyStatsCard stats={data?.weeklyStats} settings={settings} />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
@@ -3061,9 +3061,11 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   );
 }
 
-function CurrentWeekPlan({ suggestion, history, routines, rules }) {
+function CurrentWeekPlan({ suggestion, history, routines, rules, userId, settings }) {
   const t = useLang();
-  const [offset, setOffset] = useState(0); // offset in days from today-centered view
+  const [offset, setOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null); // { key, label, dayHistory }
+  const [sessionDetails, setSessionDetails] = useState({}); // sessionId -> detail
 
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -3143,6 +3145,87 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
             >››</button>
           </div>
       </div>
+      {/* Day detail popup */}
+      {selectedDay && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSelectedDay(null)}>
+          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white pb-8" onClick={(e) => e.stopPropagation()}>
+            {/* Handle */}
+            <div className="sticky top-0 bg-white pt-3 pb-2 px-5">
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{selectedDay.label} {selectedDay.date?.getDate()}/{selectedDay.date && selectedDay.date.getMonth() + 1}</p>
+                  <h3 className="text-xl font-black text-slate-900">Schedule Record</h3>
+                </div>
+                <button className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600" onClick={() => setSelectedDay(null)}><X size={16} /></button>
+              </div>
+            </div>
+            {/* Sessions */}
+            <div className="px-5 space-y-4">
+              {selectedDay.dayHistory.map((row) => {
+                const detail = sessionDetails[row.id];
+                const sessionName = row.routine_name || row.group_name || t('session_free');
+                return (
+                  <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50 overflow-hidden">
+                    <div className="flex items-center gap-3 bg-white px-4 py-3 border-b border-slate-100">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black text-slate-900">{sessionName}</p>
+                        <p className="text-xs text-slate-500">{row.sets || 0} sets · {row.duration_minutes || 0} min</p>
+                      </div>
+                    </div>
+                    {detail ? (
+                      <div className="p-3 space-y-3">
+                        {/* Group by groupName nếu có, không thì flat */}
+                        {Object.entries(
+                          (detail.exercises || []).reduce((acc, ex) => {
+                            const g = ex.groupName || ex.target || '—';
+                            if (!acc[g]) acc[g] = [];
+                            acc[g].push(ex);
+                            return acc;
+                          }, {})
+                        ).map(([groupName, exercises]) => (
+                          <div key={groupName}>
+                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">{groupName}</p>
+                            <div className="space-y-2">
+                              {exercises.map((ex) => {
+                                const exSets = ex.sets || [];
+                                return (
+                                  <div key={ex.id} className="rounded-lg bg-white border border-slate-100 p-2.5">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <GifThumb exercise={ex} className="h-10 w-10" rounded="rounded-md" />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold text-slate-800 leading-tight">{ex.name}</p>
+                                        <p className="text-xs text-slate-400">{ex.target} · {ex.equipment}</p>
+                                      </div>
+                                      {ex.maxWeight > 0 && <span className="text-xs font-black text-slate-500">max {ex.maxWeight}kg</span>}
+                                    </div>
+                                    {exSets.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {exSets.map((s, si) => (
+                                          <span key={s.id || si} className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
+                                            {si + 1}. {Number(s.weightKg || 0) > 0 ? `${s.weightKg}kg` : 'BW'} × {s.reps}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-slate-400">Loading...</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="week-plan-grid">
         {scheduleItems.map((item) => {
           const hasRoutine = Boolean(item.routine);
@@ -3180,8 +3263,24 @@ function CurrentWeekPlan({ suggestion, history, routines, rules }) {
             );
           }
 
+          const clickable = item.done && item.dayHistory.length > 0;
           return (
-          <div key={item.key} className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''}`}>
+          <div
+            key={item.key}
+            className={`week-day-card ${item.isToday ? 'today' : ''} ${item.isPast && !item.done ? 'past' : ''} ${item.done ? 'done' : ''} ${clickable ? 'cursor-pointer hover:ring-2 hover:ring-emerald-400 transition-all' : ''}`}
+            onClick={async () => {
+              if (!clickable) return;
+              setSelectedDay(item);
+              // Fetch detail cho tất cả session trong ngày chưa có
+              const missing = item.dayHistory.filter((row) => !sessionDetails[row.id]);
+              const results = await Promise.all(missing.map((row) =>
+                api(`/api/sessions/${row.id}/detail?userId=${userId}`).catch(() => null)
+              ));
+              const next = { ...sessionDetails };
+              missing.forEach((row, i) => { if (results[i]) next[row.id] = results[i]; });
+              setSessionDetails(next);
+            }}
+          >
             <div className="week-day-date">
               <p>{item.label}</p>
               <strong>{item.date.getDate()}</strong>

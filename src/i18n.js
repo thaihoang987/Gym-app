@@ -25,7 +25,7 @@
     free_no_routine: 'No workout groups.', free_no_group: 'No exercise groups.',
     exercises: (n) => `${n} exercises`,
     // week plan
-    week_title: 'This week\'s schedule', rolling_title: 'Rolling schedule (next 3)', no_session: 'Not scheduled',
+    week_title: 'Schedule Record', rolling_title: 'Rolling schedule (next 3)', no_session: 'Not scheduled',
     session_free: 'Free workout', sets_min: (s, m) => `${s} sets · ${m} min`,
     go_schedule: 'Go to Schedule to assign a routine.',
     more_sessions: (n) => `+${n} more`,
@@ -344,7 +344,7 @@
     free_title: 'Tập tự do', free_routines: 'Group Buổi tập', free_groups: 'Group Bài tập',
     free_no_routine: 'Chưa có Group Buổi tập.', free_no_group: 'Chưa có Group Bài tập.',
     exercises: (n) => `${n} bài tập`,
-    week_title: 'Lịch tập tuần này', rolling_title: 'Lịch cuốn chiếu 3 buổi tới', no_session: 'Chưa gán buổi tập',
+    week_title: 'Lịch tập', rolling_title: 'Lịch cuốn chiếu 3 buổi tới', no_session: 'Chưa gán buổi tập',
     session_free: 'Buổi tập tự do', sets_min: (s, m) => `${s} set · ${m} phút`,
     go_schedule: 'Vào Lịch tập để gán Group Buổi tập.', more_sessions: (n) => `+${n} buổi khác`,
     cal_4weeks: '4 tuần gần nhất', cal_total: 'Tổng hoạt động', cal_no_data: 'Chưa có dữ liệu lịch sử.',
