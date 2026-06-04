@@ -1217,7 +1217,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.18'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.19'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6233,6 +6233,22 @@ function SettingsPage({ userId, boot, onChanged }) {
         <button className="primary" onClick={addUser}>{t('settings_add_user')}</button>
         <AdminUsers users={boot.users} adminId={userId} />
       </div>}
+      <div className="rounded-2xl overflow-hidden" style={{background:'linear-gradient(135deg,#1e3a5f,#064e3b)'}}>
+        <div className="px-5 py-5 text-center">
+          <p className="text-base font-black text-white">☕ Support Gym App</p>
+          <p className="mt-1 text-xs text-emerald-200/80">Gym App is free forever. If it helps your training, you can buy me a coffee.</p>
+          <div className="mt-4 flex gap-3">
+            <a href="https://ko-fi.com/leonbell" target="_blank" rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15 py-2.5 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95">
+              ☕ Ko-fi
+            </a>
+            <a href="https://paypal.me/leonbell95" target="_blank" rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15 py-2.5 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95">
+              💳 PayPal
+            </a>
+          </div>
+        </div>
+      </div>
       <p className="pb-4 text-center text-xs text-slate-400">Gym App {`v${__APP_VERSION__}`}</p>
     </section>
   );
