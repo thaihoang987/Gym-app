@@ -1250,7 +1250,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.50'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.51'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5932,6 +5932,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       ))
     } : current);
     if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
+
+    // Superset auto-advance: nếu đang trong superset và đây là set đầu tiên tick xong
+    // (tức là tất cả set của bài này đã done sau tick này)
+    const afterSets = sets.map((item) => item.setIndex === set.setIndex ? { ...item, done: true } : item);
+    const allDoneForExercise = afterSets.every((s) => s.done);
+    if (supersetContext && allDoneForExercise && !options.skipSupersetAdvance) {
+      // Tick xong set cuối → chuyển bài kế trong superset (không nghỉ giữa bài)
+      if (!supersetContext.isLastExercise) {
+        setTimeout(() => openExercise(index + 1), 300);
+      } else if (!supersetContext.isLastRound) {
+        // Hết 1 vòng → nghỉ rồi quay vòng đầu
+        startTimer(Number(settings?.rest_seconds || 60));
+        advanceAfterRestRef.current = supersetContext.nextRoundFirstIndex;
+      }
+      // isLastRound + isLastExercise → ở lại, user tự nhấn End
+    }
   };
   const saveNote = async (value) => {
     setNote(value);
