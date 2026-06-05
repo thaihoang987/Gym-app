@@ -539,8 +539,13 @@ async function flushOfflineQueue(userId) {
           await api(`/api/groups/${realGroupId}`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
         }
       } else if (entry.type === 'createGroup') {
-        const created = await api('/api/groups', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, colorHex: entry.colorHex }) });
+        const created = await api('/api/groups', { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, colorHex: entry.colorHex, isSuperset: entry.isSuperset, supersetRounds: entry.supersetRounds }) });
         groupIdMap.set(String(entry.groupId), created.id);
+      } else if (entry.type === 'updateGroup') {
+        const groupId = groupIdMap.get(String(entry.groupId)) || entry.groupId;
+        if (!String(groupId).startsWith('offline_')) {
+          await api(`/api/groups/${groupId}`, { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, name: entry.name, icon: entry.icon, isSuperset: entry.isSuperset, supersetRounds: entry.supersetRounds }) });
+        }
       } else if (entry.type === 'deleteCustomExercise') {
         await api(`/api/exercises/${entry.exerciseId}/custom`, { method: 'DELETE', offlineQueue: false, body: JSON.stringify({ userId }) });
       } else if (entry.type === 'reorderGroups') {
@@ -620,6 +625,7 @@ async function syncPendingBeforeCatalogLoad(userId) {
   if (!queue.length) return;
   const hasCatalogChanges = queue.some((entry) => [
     'createGroup',
+    'updateGroup',
     'addGroupExercise',
     'removeGroupExercise',
     'reorderGroupExercises',
@@ -647,6 +653,7 @@ function userIdFromApiPath(path) {
 function pendingOfflineState(userId) {
   const queue = getOfflineQueue(userId);
   const createdGroups = queue.filter((entry) => entry.type === 'createGroup');
+  const updatedGroups = queue.filter((entry) => entry.type === 'updateGroup');
   const deletedGroupIds = new Set(queue.filter((entry) => entry.type === 'deleteGroup').map((entry) => String(entry.groupId)));
   const deletedExerciseIds = new Set(queue.filter((entry) => entry.type === 'deleteCustomExercise').map((entry) => String(entry.exerciseId)));
   const addGroupExercises = queue.filter((entry) => entry.type === 'addGroupExercise');
@@ -660,7 +667,7 @@ function pendingOfflineState(userId) {
   const completedSessionIds = new Set(queue.filter((entry) => entry.type === 'complete').map((entry) => Number(entry.sessionId)));
   const createdSessions = queue.filter((entry) => entry.type === 'createSession' && !deletedSessionIds.has(Number(entry.sessionId)));
   const logs = queue.filter((entry) => entry.type === 'log' && !deletedSessionIds.has(Number(entry.sessionId)));
-  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups, reorderedRoutines, assignedScheduleRules, deletedScheduleRuleIds };
+  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, updatedGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups, reorderedRoutines, assignedScheduleRules, deletedScheduleRuleIds };
 }
 
 function readApiCache(path) {
@@ -802,8 +809,8 @@ function findOfflineSessionPayload(userId, sessionId) {
 }
 
 function applyOfflineGroupMutations(userId, groups) {
-  const { createdGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups } = pendingOfflineState(userId);
-  if (!createdGroups.length && !deletedGroupIds.size && !deletedExerciseIds.size && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length && !reorderedGroups.length) return groups;
+  const { createdGroups, updatedGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups } = pendingOfflineState(userId);
+  if (!createdGroups.length && !updatedGroups.length && !deletedGroupIds.size && !deletedExerciseIds.size && !addGroupExercises.length && !removeGroupExercises.length && !reorderedGroupExercises.length && !reorderedGroups.length) return groups;
   const exercises = collectCachedExercises(userId);
   const byId = new Map(exercises.map((exercise) => [String(exercise.id), exercise]));
   const removeKeys = new Set(removeGroupExercises.map((entry) => `${entry.groupId}:${entry.exerciseId}`));
@@ -840,7 +847,18 @@ function applyOfflineGroupMutations(userId, groups) {
       const order = new Map(reorder.exerciseIds.map((id, index) => [String(id), index]));
       nextExercises = [...nextExercises].sort((a, b) => (order.get(String(a.id)) ?? 9999) - (order.get(String(b.id)) ?? 9999));
     }
-    return { ...group, exercises: nextExercises };
+    const update = [...updatedGroups].reverse().find((entry) => String(entry.groupId) === String(group.id));
+    return {
+      ...group,
+      ...(update ? {
+        name: update.name ?? group.name,
+        icon: update.icon ?? group.icon,
+        isSuperset: update.isSuperset ?? group.isSuperset,
+        supersetRounds: update.supersetRounds ?? group.supersetRounds,
+        syncStatus: 'pending'
+      } : {}),
+      exercises: nextExercises
+    };
   }).sort((a, b) => {
     const reorder = [...reorderedGroups].reverse().find((entry) => Array.isArray(entry.groupIds));
     if (!reorder) return 0;
@@ -1232,7 +1250,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.48'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.49'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1761,12 +1779,14 @@ async function api(path, options = {}) {
       try { body = JSON.parse(options.body || '{}'); } catch {}
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       const groupId = `offline_group_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '💪', colorHex: body.colorHex || '#78e0a6' });
+      addToOfflineQueue(userId, { type: 'createGroup', groupId, name: body.name, icon: body.icon || '\u{1F4AA}', colorHex: body.colorHex || '#78e0a6', isSuperset: body.isSuperset || false, supersetRounds: body.supersetRounds || 1 });
       optimisticOfflineGroup(userId, {
         id: groupId,
         name: body.name,
-        icon: body.icon || '💪',
+        icon: body.icon || '\u{1F4AA}',
         color_hex: body.colorHex || '#78e0a6',
+        isSuperset: body.isSuperset || false,
+        supersetRounds: body.supersetRounds || 1,
         exercises: []
       });
       return { id: groupId, offline: true };
@@ -1892,6 +1912,28 @@ async function api(path, options = {}) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
       const groupId = decodeURIComponent(reorderGroupExerciseMatch[1]);
       addToOfflineQueue(userId, { type: 'reorderGroupExercises', groupId, exerciseIds: body.exerciseIds || [] });
+      cacheGroupMutations(userId);
+      return { ok: true, offline: true };
+    }
+    const updateGroupMatch = path.match(/\/api\/groups\/([^/?]+)(?:\?|$)/);
+    if (offlineQueue && method === 'PATCH' && updateGroupMatch && !path.includes('/exercises') && path !== '/api/groups-order') {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const groupId = decodeURIComponent(updateGroupMatch[1]);
+      addToOfflineQueue(userId, { type: 'updateGroup', groupId, name: body.name, icon: body.icon, isSuperset: body.isSuperset, supersetRounds: body.supersetRounds });
+      updateStore(Number(userId), (store) => ({
+        ...store,
+        groups: (store.groups || []).map((group) => String(group.id) === String(groupId) ? {
+          ...group,
+          name: body.name ?? group.name,
+          icon: body.icon ?? group.icon,
+          isSuperset: body.isSuperset ?? group.isSuperset,
+          supersetRounds: body.supersetRounds ?? group.supersetRounds,
+          syncStatus: 'pending'
+        } : group)
+      }));
       cacheGroupMutations(userId);
       return { ok: true, offline: true };
     }
@@ -4922,11 +4964,20 @@ function Builder({ userId, boot, onStart, onChanged }) {
   const [editingRoutineName, setEditingRoutineName] = useState('');
 
   const startEditGroup = (group) => { setEditingGroupId(group.id); setEditingGroupName(group.name); };
+  const updateGroup = async (groupId, patch) => {
+    const group = groups.find((item) => String(item.id) === String(groupId));
+    if (!group) return;
+    const nextGroups = groups.map((item) => String(item.id) === String(groupId) ? { ...item, ...patch } : item);
+    routeGetResponseToStore(`/api/groups?userId=${userId}`, nextGroups);
+    writeGroupsCache(userId, nextGroups);
+    await api(`/api/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify({ userId, ...patch }) });
+    load();
+    onChanged();
+  };
   const saveEditGroup = async (groupId) => {
     if (!editingGroupName.trim()) return;
-    await api(`/api/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify({ userId, name: editingGroupName.trim() }) });
+    await updateGroup(groupId, { name: editingGroupName.trim() });
     setEditingGroupId(null);
-    load();
   };
   const startEditRoutine = (routine) => { setEditingRoutineId(routine.id); setEditingRoutineName(routine.name); };
   const saveEditRoutine = async (routineId) => {
@@ -5129,9 +5180,35 @@ function Builder({ userId, boot, onStart, onChanged }) {
             </div>
             <details className="details-arrow mt-3">
               <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-bold text-teal-950">
-                <span className="flex items-center gap-1.5">
-                  <ChevronRight size={14} className="details-chevron transition-transform" />
-                  {t('builder_exercise_list')}
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <ChevronRight size={14} className="details-chevron transition-transform" />
+                    {t('builder_exercise_list')}
+                  </span>
+                  {editingGroupId !== group.id && (
+                    <label className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-1 text-[11px] font-black text-orange-700 ring-1 ring-orange-200" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="accent-orange-600"
+                        checked={Boolean(group.isSuperset)}
+                        onChange={(event) => updateGroup(group.id, { isSuperset: event.target.checked })}
+                      />
+                      {t('superset_label')}
+                    </label>
+                  )}
+                  {editingGroupId !== group.id && Boolean(group.isSuperset) && (
+                    <label className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-1 text-[11px] font-black text-slate-700 ring-1 ring-slate-200" onClick={(event) => event.stopPropagation()}>
+                      {t('superset_rounds')}
+                      <input
+                        className="w-12 rounded border border-slate-200 px-1 py-0.5 text-center"
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={group.supersetRounds || 1}
+                        onChange={(event) => updateGroup(group.id, { isSuperset: true, supersetRounds: Number(event.target.value || 1) })}
+                      />
+                    </label>
+                  )}
                 </span>
                 {editingGroupId !== group.id && (
                   <button

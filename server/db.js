@@ -150,6 +150,8 @@ export function migrate() {
       icon TEXT NOT NULL DEFAULT '💪',
       color_hex TEXT NOT NULL DEFAULT '#78e0a6',
       order_index INTEGER NOT NULL DEFAULT 1,
+      is_superset INTEGER NOT NULL DEFAULT 0,
+      superset_rounds INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -270,6 +272,12 @@ export function migrate() {
   if (!hasColumn('custom_groups', 'order_index')) {
     db.exec('ALTER TABLE custom_groups ADD COLUMN order_index INTEGER NOT NULL DEFAULT 1');
     db.exec('UPDATE custom_groups SET order_index = id WHERE order_index IS NULL OR order_index = 1');
+  }
+  if (!hasColumn('custom_groups', 'is_superset')) {
+    db.exec('ALTER TABLE custom_groups ADD COLUMN is_superset INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!hasColumn('custom_groups', 'superset_rounds')) {
+    db.exec('ALTER TABLE custom_groups ADD COLUMN superset_rounds INTEGER NOT NULL DEFAULT 1');
   }
   if (!hasColumn('routines', 'order_index')) {
     db.exec('ALTER TABLE routines ADD COLUMN order_index INTEGER NOT NULL DEFAULT 1');

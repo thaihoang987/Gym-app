@@ -477,7 +477,7 @@ function importExcelRows(userId, rows) {
         );
         bump(type);
       } else if (type === 'Group bài tập') {
-        db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, order_index, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.icon, data.color_hex, data.order_index || data.id || 1, data.created_at);
+        db.prepare('INSERT OR REPLACE INTO custom_groups (id, user_id, name, icon, color_hex, order_index, is_superset, superset_rounds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.icon, data.color_hex, data.order_index || data.id || 1, data.is_superset || 0, data.superset_rounds || 1, data.created_at);
         bump(type);
       } else if (type === 'Bài trong group') {
         db.prepare('INSERT OR REPLACE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(data.id, data.group_id, data.exercise_id, data.icon, data.order_index);
@@ -515,7 +515,7 @@ function getRoutine(routineId, userId) {
   if (!routine) return null;
 
   const groups = all(`
-    SELECT cg.*, rg.id AS routine_group_id, rg.order_index AS routine_group_order, rg.is_superset, rg.superset_rounds
+    SELECT cg.*, rg.id AS routine_group_id, rg.order_index AS routine_group_order, rg.is_superset AS routine_is_superset, rg.superset_rounds AS routine_superset_rounds
     FROM routine_groups rg
     JOIN custom_groups cg ON cg.id = rg.group_id
     WHERE rg.routine_id = ?
@@ -523,8 +523,8 @@ function getRoutine(routineId, userId) {
   `, [routineId]).map((group) => ({
     ...group,
     routineGroupId: group.routine_group_id,
-    isSuperset: Boolean(group.is_superset),
-    supersetRounds: Math.max(1, Number(group.superset_rounds || 1)),
+    isSuperset: Boolean(group.routine_is_superset || group.is_superset),
+    supersetRounds: Math.max(1, Number((group.routine_is_superset ? group.routine_superset_rounds : group.superset_rounds) || group.routine_superset_rounds || 1)),
     exercises: getGroupExercises(group.id)
   }));
 
@@ -1327,6 +1327,8 @@ app.get('/api/groups', (req, res) => {
     name: group.name,
     icon: group.icon,
     colorHex: group.color_hex,
+    isSuperset: Boolean(group.is_superset),
+    supersetRounds: Math.max(1, Number(group.superset_rounds || 1)),
     exercises: getGroupExercises(group.id)
   }));
   res.json(groups);
@@ -1335,7 +1337,7 @@ app.get('/api/groups', (req, res) => {
 app.post('/api/groups', (req, res) => {
   const userId = getUserId(req);
   requireBody(['name'], req.body);
-  const result = db.prepare('INSERT INTO custom_groups (user_id, name, icon, color_hex) VALUES (?, ?, ?, ?)').run(userId, req.body.name.trim(), req.body.icon || '💪', req.body.colorHex || '#78e0a6');
+  const result = db.prepare('INSERT INTO custom_groups (user_id, name, icon, color_hex, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?, ?)').run(userId, req.body.name.trim(), req.body.icon || '\u{1F4AA}', req.body.colorHex || '#78e0a6', req.body.isSuperset ? 1 : 0, Math.max(1, Math.min(20, Number(req.body.supersetRounds || 1))));
   const nextOrder = one('SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM custom_groups WHERE user_id = ? AND id <> ?', [userId, result.lastInsertRowid]).next_order;
   db.prepare('UPDATE custom_groups SET order_index = ? WHERE id = ? AND user_id = ?').run(nextOrder, result.lastInsertRowid, userId);
   res.status(201).json({ id: result.lastInsertRowid });
@@ -1360,7 +1362,15 @@ app.patch('/api/groups/:id', (req, res) => {
   const groupId = Number(req.params.id);
   const group = one('SELECT * FROM custom_groups WHERE id = ? AND user_id = ?', [groupId, userId]);
   if (!group) return res.status(404).json({ error: 'Không tìm thấy Group Bài tập' });
-  db.prepare('UPDATE custom_groups SET name = ?, icon = ? WHERE id = ?').run(req.body.name || group.name, req.body.icon || group.icon, groupId);
+  const name = req.body.name === undefined ? group.name : (req.body.name || group.name);
+  const icon = req.body.icon === undefined ? group.icon : (req.body.icon || group.icon);
+  const isSuperset = req.body.isSuperset === undefined ? group.is_superset : (req.body.isSuperset ? 1 : 0);
+  const rounds = req.body.supersetRounds === undefined ? group.superset_rounds : Math.max(1, Math.min(20, Number(req.body.supersetRounds || 1)));
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE custom_groups SET name = ?, icon = ?, is_superset = ?, superset_rounds = ? WHERE id = ? AND user_id = ?').run(name, icon, isSuperset, rounds, groupId, userId);
+    db.prepare('UPDATE routine_groups SET is_superset = ?, superset_rounds = ? WHERE group_id = ? AND routine_id IN (SELECT id FROM routines WHERE user_id = ?)').run(isSuperset, rounds, groupId, userId);
+  });
+  tx();
   res.json({ ok: true });
 });
 
@@ -2211,7 +2221,7 @@ function importBackupData(userId, backup) {
       );
     }
     for (const group of data.groups || []) {
-      db.prepare('INSERT OR IGNORE INTO custom_groups (id, user_id, name, icon, color_hex, created_at, order_index) VALUES (?, ?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '💪', group.color_hex || '#78e0a6', group.created_at, group.order_index ?? 1);
+      db.prepare('INSERT OR IGNORE INTO custom_groups (id, user_id, name, icon, color_hex, created_at, order_index, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(group.id, userId, group.name, group.icon || '\u{1F4AA}', group.color_hex || '#78e0a6', group.created_at, group.order_index ?? 1, group.is_superset || 0, group.superset_rounds || 1);
     }
     for (const item of data.groupExercises || []) {
       db.prepare('INSERT OR IGNORE INTO group_exercises (id, group_id, exercise_id, icon, order_index) VALUES (?, ?, ?, ?, ?)').run(item.id, item.group_id, item.exercise_id, item.icon || '🏋️', item.order_index || 1);
