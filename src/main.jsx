@@ -1250,7 +1250,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.49'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.50'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -4960,10 +4960,17 @@ function Builder({ userId, boot, onStart, onChanged }) {
   };
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [editingGroupName, setEditingGroupName] = useState('');
+  const [editingGroupIsSuperset, setEditingGroupIsSuperset] = useState(false);
+  const [editingGroupRounds, setEditingGroupRounds] = useState(3);
   const [editingRoutineId, setEditingRoutineId] = useState(null);
   const [editingRoutineName, setEditingRoutineName] = useState('');
 
-  const startEditGroup = (group) => { setEditingGroupId(group.id); setEditingGroupName(group.name); };
+  const startEditGroup = (group) => {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
+    setEditingGroupIsSuperset(Boolean(group.isSuperset));
+    setEditingGroupRounds(Math.max(1, Number(group.supersetRounds || 3)));
+  };
   const updateGroup = async (groupId, patch) => {
     const group = groups.find((item) => String(item.id) === String(groupId));
     if (!group) return;
@@ -4976,7 +4983,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
   };
   const saveEditGroup = async (groupId) => {
     if (!editingGroupName.trim()) return;
-    await updateGroup(groupId, { name: editingGroupName.trim() });
+    await updateGroup(groupId, { name: editingGroupName.trim(), isSuperset: editingGroupIsSuperset, supersetRounds: editingGroupRounds });
     setEditingGroupId(null);
   };
   const startEditRoutine = (routine) => { setEditingRoutineId(routine.id); setEditingRoutineName(routine.name); };
@@ -5144,15 +5151,30 @@ function Builder({ userId, boot, onStart, onChanged }) {
               </div>
               <div className="min-w-0 flex-1">
                 {editingGroupId === group.id ? (
-                  <div className="flex items-center gap-2">
-                    <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
-                    <button className="small-action shrink-0" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
-                    <button className="icon-btn shrink-0" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input className="input flex-1 py-1 text-sm" autoFocus value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditGroup(group.id); if (e.key === 'Escape') setEditingGroupId(null); }} placeholder={t('builder_rename_placeholder')} />
+                      <button className="small-action shrink-0" onClick={() => saveEditGroup(group.id)}><Check size={15} /></button>
+                      <button className="icon-btn shrink-0" onClick={() => setEditingGroupId(null)}><X size={15} /></button>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" className="h-4 w-4 accent-orange-600" checked={editingGroupIsSuperset} onChange={(e) => setEditingGroupIsSuperset(e.target.checked)} />
+                        <span className="text-sm font-bold text-slate-700">Superset</span>
+                      </label>
+                      {editingGroupIsSuperset && (
+                        <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                          <span>Rounds:</span>
+                          <input type="number" min={1} max={10} className="input w-16 py-0.5 text-center text-sm" value={editingGroupRounds} onChange={(e) => setEditingGroupRounds(Math.max(1, Number(e.target.value)))} />
+                        </label>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span className="break-words font-bold leading-tight">{group.name}</span>
+                      {group.isSuperset && <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">⚡ Superset ×{group.supersetRounds || 3}</span>}
                       {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', group.exercises.length)}</p>
