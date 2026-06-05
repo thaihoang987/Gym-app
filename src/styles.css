@@ -626,6 +626,55 @@ button:disabled {
   @apply grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white object-contain text-slate-400 ring-1 ring-stone-200;
 }
 
+.superset-player {
+  @apply rounded-xl border border-orange-200 bg-orange-50 p-3;
+}
+
+.superset-player-head {
+  @apply flex items-start justify-between gap-3;
+}
+
+.superset-player-head p,
+.superset-flow span {
+  @apply text-[11px] font-black uppercase tracking-wide text-orange-700;
+}
+
+.superset-player-head h2 {
+  @apply text-xl font-black text-slate-950;
+}
+
+.superset-player-head strong {
+  @apply block text-sm font-black text-slate-950;
+}
+
+.superset-player-head span {
+  @apply mt-1 block text-xs font-bold text-slate-500;
+}
+
+.superset-flow {
+  @apply mt-3 grid gap-2 md:grid-cols-3;
+}
+
+.superset-flow > div {
+  @apply rounded-lg bg-white p-3 ring-1 ring-orange-100;
+}
+
+.superset-flow > div.current {
+  @apply bg-slate-950 text-white ring-slate-950;
+}
+
+.superset-flow strong {
+  @apply mt-1 block text-base font-black leading-tight;
+}
+
+.superset-flow p {
+  @apply mt-1 text-sm font-bold text-emerald-200;
+}
+
+.superset-actions {
+  @apply mt-3 grid gap-2 md:grid-cols-4;
+}
+
 .label {
   @apply mb-1 block text-sm font-semibold text-teal-950;
 }
@@ -708,6 +757,18 @@ button:disabled {
 .exercise-drag-row.drop-target {
   margin-top: 1rem;
   @apply bg-orange-50 ring-orange-300;
+}
+
+.superset-builder-row {
+  @apply rounded-lg border border-slate-200 bg-slate-50 p-3 ring-1 ring-transparent;
+}
+
+.superset-builder-row.dragging {
+  @apply bg-orange-50 opacity-70 ring-orange-300;
+}
+
+.superset-builder-row.active {
+  @apply border-orange-200 bg-orange-50;
 }
 
 .drag-handle {

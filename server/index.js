@@ -486,7 +486,7 @@ function importExcelRows(userId, rows) {
         db.prepare('INSERT OR REPLACE INTO routines (id, user_id, name, color_hex, order_index, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, userId, data.name, data.color_hex, data.order_index || data.id || 1, data.created_at);
         bump(type);
       } else if (type === 'Group bài trong buổi') {
-        db.prepare('INSERT OR REPLACE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(data.id, data.routine_id, data.group_id, data.order_index);
+        db.prepare('INSERT OR REPLACE INTO routine_groups (id, routine_id, group_id, order_index, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, data.routine_id, data.group_id, data.order_index, data.is_superset || 0, data.superset_rounds || 1);
         bump(type);
       } else if (type === 'Lịch tập') {
         db.prepare('INSERT OR REPLACE INTO routine_schedule_rules (id, user_id, routine_id, mode, day_of_week, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(data.id, userId, data.routine_id, data.mode, data.day_of_week, data.order_index);
@@ -515,13 +515,16 @@ function getRoutine(routineId, userId) {
   if (!routine) return null;
 
   const groups = all(`
-    SELECT cg.*, rg.order_index AS routine_group_order
+    SELECT cg.*, rg.id AS routine_group_id, rg.order_index AS routine_group_order, rg.is_superset, rg.superset_rounds
     FROM routine_groups rg
     JOIN custom_groups cg ON cg.id = rg.group_id
     WHERE rg.routine_id = ?
     ORDER BY rg.order_index, cg.name
   `, [routineId]).map((group) => ({
     ...group,
+    routineGroupId: group.routine_group_id,
+    isSuperset: Boolean(group.is_superset),
+    supersetRounds: Math.max(1, Number(group.superset_rounds || 1)),
     exercises: getGroupExercises(group.id)
   }));
 
@@ -531,7 +534,14 @@ function getRoutine(routineId, userId) {
     name: routine.name,
     colorHex: routine.color_hex,
     groups,
-    exercises: groups.flatMap((group) => group.exercises.map((exercise) => ({ ...exercise, groupName: group.name })))
+    exercises: groups.flatMap((group) => group.exercises.map((exercise) => ({
+      ...exercise,
+      groupName: group.name,
+      groupId: group.id,
+      routineGroupId: group.routineGroupId,
+      isSuperset: group.isSuperset,
+      supersetRounds: group.supersetRounds
+    })))
   };
 }
 
@@ -1449,8 +1459,8 @@ app.post('/api/routines', (req, res) => {
   const result = db.prepare('INSERT INTO routines (user_id, name, color_hex) VALUES (?, ?, ?)').run(userId, req.body.name.trim(), req.body.colorHex || '#c8ff2e');
   const nextOrder = one('SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM routines WHERE user_id = ? AND id <> ?', [userId, result.lastInsertRowid]).next_order;
   db.prepare('UPDATE routines SET order_index = ? WHERE id = ? AND user_id = ?').run(nextOrder, result.lastInsertRowid, userId);
-  const addGroup = db.prepare('INSERT OR IGNORE INTO routine_groups (routine_id, group_id, order_index) VALUES (?, ?, ?)');
-  (req.body.groupIds || []).forEach((groupId, index) => addGroup.run(result.lastInsertRowid, groupId, index + 1));
+  const addGroup = db.prepare('INSERT OR IGNORE INTO routine_groups (routine_id, group_id, order_index, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?)');
+  (req.body.groupIds || []).forEach((groupId, index) => addGroup.run(result.lastInsertRowid, groupId, index + 1, 0, 1));
   res.status(201).json(getRoutine(result.lastInsertRowid, userId));
 });
 
@@ -1493,7 +1503,7 @@ app.post('/api/routines/:id/groups', (req, res) => {
   if (!group) return res.status(404).json({ error: 'Group not found' });
 
   const nextOrder = one('SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM routine_groups WHERE routine_id = ?', [routineId]).next_order;
-  db.prepare('INSERT OR IGNORE INTO routine_groups (routine_id, group_id, order_index) VALUES (?, ?, ?)').run(routineId, groupId, nextOrder);
+  db.prepare('INSERT OR IGNORE INTO routine_groups (routine_id, group_id, order_index, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?)').run(routineId, groupId, nextOrder, req.body.isSuperset ? 1 : 0, Math.max(1, Math.min(20, Number(req.body.supersetRounds || 1))));
   res.status(201).json(getRoutine(routineId, userId));
 });
 
@@ -1510,6 +1520,32 @@ app.delete('/api/routines/:routineId/groups/:groupId', (req, res) => {
   });
   tx();
   res.json({ ok: true });
+});
+
+app.patch('/api/routines/:routineId/groups/:groupId', (req, res) => {
+  const userId = getUserId(req);
+  const routineId = Number(req.params.routineId);
+  const groupId = Number(req.params.groupId);
+  const routine = one('SELECT id FROM routines WHERE id = ? AND user_id = ?', [routineId, userId]);
+  if (!routine) return res.status(404).json({ error: 'Routine not found' });
+  const row = one('SELECT id FROM routine_groups WHERE routine_id = ? AND group_id = ?', [routineId, groupId]);
+  if (!row) return res.status(404).json({ error: 'Group not found in routine' });
+  const isSuperset = req.body.isSuperset === undefined ? undefined : (req.body.isSuperset ? 1 : 0);
+  const rounds = req.body.supersetRounds === undefined ? undefined : Math.max(1, Math.min(20, Number(req.body.supersetRounds || 1)));
+  if (isSuperset === undefined && rounds === undefined) return res.json({ ok: true, routine: getRoutine(routineId, userId) });
+  const updates = [];
+  const values = [];
+  if (isSuperset !== undefined) {
+    updates.push('is_superset = ?');
+    values.push(isSuperset);
+  }
+  if (rounds !== undefined) {
+    updates.push('superset_rounds = ?');
+    values.push(rounds);
+  }
+  values.push(routineId, groupId);
+  db.prepare(`UPDATE routine_groups SET ${updates.join(', ')} WHERE routine_id = ? AND group_id = ?`).run(...values);
+  res.json({ ok: true, routine: getRoutine(routineId, userId) });
 });
 
 app.patch('/api/routines/:id', (req, res) => {
@@ -2184,7 +2220,7 @@ function importBackupData(userId, backup) {
       db.prepare('INSERT OR IGNORE INTO routines (id, user_id, name, color_hex, created_at, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(routine.id, userId, routine.name, routine.color_hex || '#c8ff2e', routine.created_at, routine.order_index ?? 1);
     }
     for (const item of data.routineGroups || []) {
-      db.prepare('INSERT OR IGNORE INTO routine_groups (id, routine_id, group_id, order_index) VALUES (?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1);
+      db.prepare('INSERT OR IGNORE INTO routine_groups (id, routine_id, group_id, order_index, is_superset, superset_rounds) VALUES (?, ?, ?, ?, ?, ?)').run(item.id, item.routine_id, item.group_id, item.order_index || 1, item.is_superset || 0, item.superset_rounds || 1);
     }
     for (const rule of data.scheduleRules || []) {
       db.prepare('INSERT OR IGNORE INTO routine_schedule_rules (id, user_id, routine_id, mode, day_of_week, order_index) VALUES (?, ?, ?, ?, ?, ?)').run(rule.id, userId, rule.routine_id, rule.mode, rule.day_of_week, rule.order_index);

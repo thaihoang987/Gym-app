@@ -95,7 +95,7 @@ export function migrate() {
       sound_rest_done INTEGER NOT NULL DEFAULT 1,
       vibrate_rest_done INTEGER NOT NULL DEFAULT 1,
       countdown_3s INTEGER NOT NULL DEFAULT 0,
-      auto_next_set INTEGER NOT NULL DEFAULT 0,
+      auto_next_set INTEGER NOT NULL DEFAULT 1,
       keep_screen_awake INTEGER NOT NULL DEFAULT 0,
       theme_mode TEXT NOT NULL DEFAULT 'light',
       primary_color TEXT NOT NULL DEFAULT '#f05a28',
@@ -180,6 +180,8 @@ export function migrate() {
       routine_id INTEGER NOT NULL,
       group_id INTEGER NOT NULL,
       order_index INTEGER NOT NULL DEFAULT 1,
+      is_superset INTEGER NOT NULL DEFAULT 0,
+      superset_rounds INTEGER NOT NULL DEFAULT 1,
       FOREIGN KEY (routine_id) REFERENCES routines(id) ON DELETE CASCADE,
       FOREIGN KEY (group_id) REFERENCES custom_groups(id) ON DELETE CASCADE,
       UNIQUE(routine_id, group_id)
@@ -276,6 +278,12 @@ export function migrate() {
   if (!hasColumn('group_exercises', 'icon')) {
     db.exec('ALTER TABLE group_exercises ADD COLUMN icon TEXT');
   }
+  if (!hasColumn('routine_groups', 'is_superset')) {
+    db.exec('ALTER TABLE routine_groups ADD COLUMN is_superset INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!hasColumn('routine_groups', 'superset_rounds')) {
+    db.exec('ALTER TABLE routine_groups ADD COLUMN superset_rounds INTEGER NOT NULL DEFAULT 1');
+  }
   if (!hasColumn('exercise_notes', 'target_sets')) {
     db.exec('ALTER TABLE exercise_notes ADD COLUMN target_sets INTEGER NOT NULL DEFAULT 3');
   }
@@ -333,7 +341,7 @@ export function migrate() {
     ['sound_rest_done', 'INTEGER NOT NULL DEFAULT 1'],
     ['vibrate_rest_done', 'INTEGER NOT NULL DEFAULT 1'],
     ['countdown_3s', 'INTEGER NOT NULL DEFAULT 0'],
-    ['auto_next_set', 'INTEGER NOT NULL DEFAULT 0'],
+    ['auto_next_set', 'INTEGER NOT NULL DEFAULT 1'],
     ['keep_screen_awake', 'INTEGER NOT NULL DEFAULT 0'],
     ['theme_mode', "TEXT NOT NULL DEFAULT 'light'"],
     ['primary_color', "TEXT NOT NULL DEFAULT '#f05a28'"],
@@ -362,6 +370,7 @@ export function migrate() {
     }
   }
   db.prepare('UPDATE user_settings SET rest_seconds = 60 WHERE rest_seconds = 90').run();
+  db.prepare('UPDATE user_settings SET auto_next_set = 1 WHERE auto_next_set = 0').run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');
 
   const userCount = db.prepare('SELECT COUNT(*) AS total FROM users').get().total;

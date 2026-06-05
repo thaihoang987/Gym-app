@@ -1232,7 +1232,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.47'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.3.48'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -4133,6 +4133,8 @@ function workoutExerciseGroups(sessionData, t) {
     return sessionData.routine.groups.map((group) => ({
       id: group.id,
       name: group.name,
+      isSuperset: Boolean(group.isSuperset),
+      supersetRounds: Math.max(1, Number(group.supersetRounds || 1)),
       exercises: (group.exercises || []).map((exercise) => takeFlatExercise(exercise, group.name))
     })).filter((group) => group.exercises.length);
   }
@@ -4146,6 +4148,101 @@ function workoutExerciseGroups(sessionData, t) {
   }
 
   return [{ id: 'all', name: t ? t('nav_library') : 'Exercises', exercises: flat.map((exercise, index) => ({ ...exercise, workoutIndex: index })) }];
+}
+
+function supersetContextForIndex(sessionData, index) {
+  if (!sessionData?.routine?.groups?.length) return null;
+  let flatIndex = 0;
+  for (const group of sessionData.routine.groups) {
+    const exercises = group.exercises || [];
+    const startIndex = flatIndex;
+    const endIndex = flatIndex + exercises.length - 1;
+    if (index >= startIndex && index <= endIndex) {
+      if (!group.isSuperset || exercises.length < 2) return null;
+      const exerciseIndex = index - startIndex;
+      const rounds = Math.max(1, Number(group.supersetRounds || 1));
+      const exercise = sessionData.exercises?.[index] || exercises[exerciseIndex];
+      const currentRound = Math.min(rounds, Math.max(1, Number(exercise?.completedSets || 0) + 1));
+      const nextExercise = exerciseIndex < exercises.length - 1
+        ? { ...exercises[exerciseIndex + 1], workoutIndex: index + 1 }
+        : null;
+      const thenExercise = exerciseIndex < exercises.length - 2
+        ? { ...exercises[exerciseIndex + 2], workoutIndex: index + 2 }
+        : null;
+      const nextRoundFirstIndex = startIndex;
+      const afterSupersetIndex = endIndex + 1 < (sessionData.exercises || []).length ? endIndex + 1 : null;
+      return {
+        group,
+        exercises,
+        startIndex,
+        endIndex,
+        exerciseIndex,
+        exerciseCount: exercises.length,
+        rounds,
+        currentRound,
+        isLastExercise: exerciseIndex === exercises.length - 1,
+        isLastRound: currentRound >= rounds,
+        nextExercise,
+        thenExercise,
+        nextRoundFirstIndex,
+        afterSupersetIndex
+      };
+    }
+    flatIndex += exercises.length;
+  }
+  return null;
+}
+
+function SupersetPlayerPanel({ context, exercise, currentSet, weightUnit, settings, onDone, onSkip, onBack, onEnd }) {
+  const t = useLang();
+  if (!context) return null;
+  const targetWeight = currentSet
+    ? (weightUnit === 'lb' ? `${Number(kgToLb(currentSet.weightKg).toFixed(1))} lb` : `${currentSet.weightKg} kg`)
+    : '-';
+  const nextLabel = context.isLastExercise
+    ? (context.isLastRound ? `🏆 ${t('superset_complete')}` : `🏁 ${t('superset_end_round')}`)
+    : context.nextExercise?.name;
+  const thenLabel = context.isLastExercise
+    ? (!context.isLastRound ? `${t('workout_timer_rest')} ${settings?.rest_seconds || 60}s` : null)
+    : context.thenExercise?.name || (context.isLastRound ? `🏆 ${t('superset_complete')}` : `🏁 ${t('superset_end_round')}`);
+
+  return (
+    <div className="superset-player">
+      <div className="superset-player-head">
+        <div>
+          <p>{t('superset_label')}</p>
+          <h2>{context.group.name}</h2>
+        </div>
+        <div className="text-right">
+          <strong>{t('superset_round_status', context.currentRound, context.rounds)}</strong>
+          <span>{t('superset_exercise_status', context.exerciseIndex + 1, context.exerciseCount)}</span>
+        </div>
+      </div>
+      <div className="superset-flow">
+        <div className="current">
+          <span>{t('superset_current')}</span>
+          <strong>{exercise.name}</strong>
+          <p>{targetWeight} × {currentSet?.reps || '-'} reps</p>
+        </div>
+        <div>
+          <span>{t('superset_next')}</span>
+          <strong>{nextLabel}</strong>
+        </div>
+        {thenLabel && (
+          <div>
+            <span>{t('superset_then')}</span>
+            <strong>{thenLabel}</strong>
+          </div>
+        )}
+      </div>
+      <div className="superset-actions">
+        <button className="primary-green" onClick={onDone}>{t('superset_done')}</button>
+        <button className="ghost-btn" onClick={onSkip}>{t('superset_skip')}</button>
+        <button className="ghost-btn" onClick={onBack}>{t('superset_back')}</button>
+        <button className="danger-btn" onClick={onEnd}>{t('superset_end')}</button>
+      </div>
+    </div>
+  );
 }
 
 function SessionDetail({ detail, settings }) {
@@ -4650,18 +4747,54 @@ function SortableExerciseRow({ exercise, onRemove }) {
   );
 }
 
-function SortableRoutineGroupRow({ group, onRemove }) {
+function SortableRoutineGroupRow({ group, onRemove, onUpdate }) {
   const t = useLang();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: group.id });
   return (
     <div
       ref={setNodeRef}
-      className={`exercise-drag-row ${isDragging ? 'dragging' : ''}`}
+      className={`superset-builder-row ${isDragging ? 'dragging' : ''} ${group.isSuperset ? 'active' : ''}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
-      <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
-      <span className="min-w-0 flex-1 text-sm font-semibold">{group.name}</span>
-      <button className="small-danger" onClick={() => onRemove(group.id)}><Trash2 size={16} /> {t('builder_remove_from_routine')}</button>
+      <div className="flex items-start gap-3">
+        <button className="drag-handle" type="button" title={t('builder_drag_title')} {...attributes} {...listeners}><GripVertical size={18} /></button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-sm text-slate-950">{group.isSuperset ? `${t('superset_label')} · ${group.name}` : group.name}</strong>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">{t('superset_exercise_count', group.exercises?.length || 0)}</span>
+            {group.isSuperset && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-black text-orange-700">{group.supersetRounds || 1} {t('superset_rounds')}</span>}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(group.exercises || []).slice(0, 5).map((exercise) => (
+              <span key={exercise.id} className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{exercise.name}</span>
+            ))}
+            {(group.exercises || []).length > 5 && <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-400 ring-1 ring-slate-200">+{group.exercises.length - 5}</span>}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-xs font-black text-slate-700 ring-1 ring-slate-200">
+              <input
+                type="checkbox"
+                className="accent-orange-600"
+                checked={Boolean(group.isSuperset)}
+                onChange={(event) => onUpdate(group.id, { isSuperset: event.target.checked })}
+              />
+              {t('superset_enable')}
+            </label>
+            <label className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-xs font-black text-slate-700 ring-1 ring-slate-200">
+              {t('superset_rounds')}
+              <input
+                className="w-16 rounded border border-slate-200 px-2 py-1 text-center"
+                type="number"
+                min="1"
+                max="20"
+                value={group.supersetRounds || 1}
+                onChange={(event) => onUpdate(group.id, { supersetRounds: Number(event.target.value || 1), isSuperset: true })}
+              />
+            </label>
+          </div>
+        </div>
+        <button className="small-danger" onClick={() => onRemove(group.id)}><Trash2 size={16} /> {t('builder_remove_from_routine')}</button>
+      </div>
     </div>
   );
 }
@@ -4838,6 +4971,32 @@ function Builder({ userId, boot, onStart, onChanged }) {
   };
   const removeRoutineGroup = async (routineId, groupId) => {
     await api(`/api/routines/${routineId}/groups/${groupId}?userId=${userId}`, { method: 'DELETE' });
+    load();
+    onChanged();
+  };
+  const updateRoutineGroup = async (routineId, groupId, patch) => {
+    const payload = {
+      userId,
+      isSuperset: patch.isSuperset,
+      supersetRounds: patch.supersetRounds
+    };
+    routeGetResponseToStore(`/api/routines?userId=${userId}`, {
+      routines: routineData.routines.map((routine) => routine.id === routineId ? {
+        ...routine,
+        groups: routine.groups.map((group) => group.id === groupId ? {
+          ...group,
+          isSuperset: patch.isSuperset ?? group.isSuperset,
+          supersetRounds: patch.supersetRounds ?? group.supersetRounds
+        } : group),
+        exercises: routine.exercises.map((exercise) => exercise.groupId === groupId ? {
+          ...exercise,
+          isSuperset: patch.isSuperset ?? exercise.isSuperset,
+          supersetRounds: patch.supersetRounds ?? exercise.supersetRounds
+        } : exercise)
+      } : routine),
+      rules
+    });
+    await api(`/api/routines/${routineId}/groups/${groupId}`, { method: 'PATCH', body: JSON.stringify(payload) });
     load();
     onChanged();
   };
@@ -5088,7 +5247,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleRoutineGroupDragEnd(event, routine.id)}>
                     <SortableContext items={routine.groups.map((group) => group.id)} strategy={verticalListSortingStrategy}>
                       {routine.groups.map((group) => (
-                        <SortableRoutineGroupRow key={group.id} group={group} onRemove={(groupId) => removeRoutineGroup(routine.id, groupId)} />
+                        <SortableRoutineGroupRow key={group.id} group={group} onRemove={(groupId) => removeRoutineGroup(routine.id, groupId)} onUpdate={(groupId, patch) => updateRoutineGroup(routine.id, groupId, patch)} />
                       ))}
                     </SortableContext>
                   </DndContext>
@@ -5380,6 +5539,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [manualWeight, setManualWeight] = useState('');
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
+  const advanceAfterRestRef = React.useRef(null);
   const [swipeDx, setSwipeDx] = useState(0);
   const [slideDir, setSlideDir] = useState(null); // 'out-left' | 'out-right' | 'in-left' | 'in-right' | null
   const swipeStartX = React.useRef(0);
@@ -5503,9 +5663,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           oscillator.stop(audio.currentTime + 0.18);
         }
       }
+      const advanceIndex = advanceAfterRestRef.current;
+      advanceAfterRestRef.current = null;
+      if (advanceIndex !== null && settings?.auto_next_set) {
+        openExercise(advanceIndex);
+      }
     }
     previousTimer.current = timer;
-  }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done]);
+  }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done, settings?.auto_next_set]);
 
   if (!data) {
     // Sau 1s loading → thử fallback cache offline
@@ -5615,7 +5780,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setSets(nextSets);
     await saveTargetSets(nextSets.length);
   };
-  const completeSet = async (set) => {
+  const completeSet = async (set, options = {}) => {
     // Untick: chỉ cho phép untick set done cuối cùng (ngược thứ tự)
     if (set.done) {
       const lastDone = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0];
@@ -5645,7 +5810,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
-      startTimer(Number(settings?.rest_seconds || 60));
+      if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
       return;
     }
     let result;
@@ -5667,7 +5832,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           : item
       ))
     } : current);
-    startTimer(Number(settings?.rest_seconds || 60));
+    if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
   };
   const saveNote = async (value) => {
     setNote(value);
@@ -5731,6 +5896,50 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     onClose();
   };
+  const supersetContext = supersetContextForIndex(data, index);
+  const supersetCurrentSet = supersetContext ? sets.find((set) => !set.done) || sets[sets.length - 1] : null;
+  const autoAdvanceAfterDone = Number(settings?.auto_next_set ?? 1) !== 0;
+  const skipSupersetStep = () => {
+    if (!supersetContext) return;
+    if (!supersetContext.isLastExercise) {
+      openExercise(index + 1);
+      return;
+    }
+    if (!supersetContext.isLastRound) {
+      startTimer(Number(settings?.rest_seconds || 60));
+      advanceAfterRestRef.current = supersetContext.nextRoundFirstIndex;
+      return;
+    }
+    if (supersetContext.afterSupersetIndex !== null) openExercise(supersetContext.afterSupersetIndex);
+    else complete();
+  };
+  const endSuperset = () => {
+    if (!supersetContext) return;
+    if (supersetContext.afterSupersetIndex !== null) openExercise(supersetContext.afterSupersetIndex);
+    else complete();
+  };
+  const completeSupersetStep = async () => {
+    if (!supersetContext || !supersetCurrentSet || supersetCurrentSet.done) return;
+    await completeSet(supersetCurrentSet, { skipTimer: true });
+    if (!supersetContext.isLastExercise) {
+      if (autoAdvanceAfterDone) openExercise(index + 1);
+      return;
+    }
+    if (!supersetContext.isLastRound) {
+      startTimer(Number(settings?.rest_seconds || 60));
+      advanceAfterRestRef.current = supersetContext.nextRoundFirstIndex;
+      if (!autoAdvanceAfterDone) return;
+      return;
+    }
+    if (supersetContext.afterSupersetIndex !== null) {
+      openExercise(supersetContext.afterSupersetIndex);
+    } else {
+      await complete();
+    }
+  };
+  const backSupersetStep = () => {
+    if (index > 0) openExercise(index - 1);
+  };
   const exerciseGroups = workoutExerciseGroups(data);
 
   // Hiển thị summary card sau khi hoàn thành
@@ -5785,8 +5994,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             {exerciseGroups.map((group) => (
               <div key={group.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <h2 className="font-black text-slate-950">{group.name}</h2>
-                  <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', group.exercises.length)}</span>
+                  <h2 className="font-black text-slate-950">{group.isSuperset ? `${t('superset_label')} · ${group.name}` : group.name}</h2>
+                  <span className="text-xs font-bold text-slate-500">
+                    {t('builder_exercises_count', group.exercises.length)}
+                    {group.isSuperset ? ` · ${group.supersetRounds || 1} ${t('superset_rounds')}` : ''}
+                  </span>
                 </div>
                 <div className="grid gap-2">
                   {group.exercises.map((item) => (
@@ -5872,6 +6084,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               else if (dx > THRESHOLD && canPrev) openExercise(index - 1);
             }}
           >
+          <SupersetPlayerPanel
+            context={supersetContext}
+            exercise={exercise}
+            currentSet={supersetCurrentSet}
+            weightUnit={currentWeightUnit()}
+            settings={settings}
+            onDone={completeSupersetStep}
+            onSkip={skipSupersetStep}
+            onBack={backSupersetStep}
+            onEnd={endSuperset}
+          />
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (
               <img
