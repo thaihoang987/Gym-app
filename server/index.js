@@ -1141,6 +1141,7 @@ app.patch('/api/settings', (req, res) => {
     progressiveOverload: 'progressive_overload',
     soundRestDone: 'sound_rest_done',
     vibrateRestDone: 'vibrate_rest_done',
+    notifyRestDone: 'notify_rest_done',
     countdown3s: 'countdown_3s',
     autoNextSet: 'auto_next_set',
     keepScreenAwake: 'keep_screen_awake',

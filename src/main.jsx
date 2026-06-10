@@ -5742,47 +5742,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
   }, []);
 
-  const showRestNotification = React.useCallback((seconds) => {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const body = seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`;
-    try {
-      restNotificationRef.current = new Notification(t('workout_timer_rest'), {
-        body,
-        tag: 'gym-rest-timer',
-        icon: '/pwa-192.png',
-        badge: '/pwa-192.png',
-        silent: true,
-      });
-      restNotificationRef.current.onclick = () => {
-        window.focus();
-        restNotificationRef.current?.close();
-      };
-    } catch (e) {}
-  }, [t]);
-
   const startTimer = React.useCallback((seconds) => {
     timerEndAt.current = Date.now() + seconds * 1000;
     setTimer(seconds);
     setTimerMinimized(false);
     setTimerSwipeDx(0);
     closeRestNotification();
-    if ('Notification' in window && Notification.permission === 'default') {
+    if (settings?.notify_rest_done !== 0 && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-  }, [closeRestNotification]);
-
-  // Hiển thị/đóng thông báo đếm giờ nghỉ khi chuyển nền/khoá màn hình
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        if (timer > 0) showRestNotification(timer);
-      } else {
-        closeRestNotification();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [timer, showRestNotification, closeRestNotification]);
+  }, [closeRestNotification, settings?.notify_rest_done]);
 
   useEffect(() => {
     if (!timerEndAt.current) return;
@@ -5791,18 +5760,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const clamped = Math.max(0, remaining);
       setTimer(clamped);
       if (clamped === 0) timerEndAt.current = 0;
-      if (document.hidden && clamped > 0) showRestNotification(clamped);
     }, 500);
     return () => clearInterval(id);
-  }, [timerEndAt.current > 0 ? timerEndAt.current : 0, showRestNotification]);
+  }, [timerEndAt.current > 0 ? timerEndAt.current : 0]);
   useEffect(() => {
     if (previousTimer.current > 0 && timer === 0) {
       if (settings?.vibrate_rest_done && navigator.vibrate) navigator.vibrate([180, 80, 180]);
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      // Chỉ thông báo khi app đang ở nền/màn hình khoá và người dùng chưa tắt trong settings
+      if (document.hidden && settings?.notify_rest_done !== 0 && 'Notification' in window && Notification.permission === 'granted') {
         closeRestNotification();
         try {
+          const nextSet = sets.find((set) => !set.done);
+          const body = exercise?.name
+            ? (nextSet ? `${exercise.name} - ${t('workout_set_label') || 'Set'} ${nextSet.setIndex}` : exercise.name)
+            : t('workout_timer_off');
           const doneNotif = new Notification(t('workout_timer_done'), {
-            body: t('workout_timer_off'),
+            body,
             tag: 'gym-rest-timer',
             icon: '/pwa-192.png',
             badge: '/pwa-192.png',
@@ -6993,6 +6966,7 @@ function SettingsPage({ userId, boot, onChanged }) {
   const [progressiveOverload, setProgressiveOverload] = useState(Boolean(settings.progressive_overload));
   const [soundRestDone, setSoundRestDone] = useState(Boolean(settings.sound_rest_done));
   const [vibrateRestDone, setVibrateRestDone] = useState(Boolean(settings.vibrate_rest_done));
+  const [notifyRestDone, setNotifyRestDone] = useState(settings.notify_rest_done === undefined ? true : Boolean(settings.notify_rest_done));
   const [countdown3s, setCountdown3s] = useState(Boolean(settings.countdown_3s));
   const [autoNextSet, setAutoNextSet] = useState(Boolean(settings.auto_next_set));
   const [notifyWorkout, setNotifyWorkout] = useState(Boolean(settings.notify_workout));
@@ -7057,6 +7031,7 @@ function SettingsPage({ userId, boot, onChanged }) {
     weightStepsKg: parseWeightSteps(settings.weight_steps_kg, defaultKgOptions, 'kg'),
     weightStepsLb: parseWeightSteps(settings.weight_steps_lb, defaultLbOptions, 'lb'),
     soundRestDone: Boolean(settings.sound_rest_done), vibrateRestDone: Boolean(settings.vibrate_rest_done),
+    notifyRestDone: settings.notify_rest_done === undefined ? true : Boolean(settings.notify_rest_done),
     countdown3s: Boolean(settings.countdown_3s), autoNextSet: Boolean(settings.auto_next_set),
     weeklyResetDay: Number(settings.weekly_reset_day ?? 0),
   });
@@ -7072,13 +7047,14 @@ function SettingsPage({ userId, boot, onChanged }) {
       JSON.stringify(weightStepsKg) !== JSON.stringify(init.weightStepsKg),
       JSON.stringify(weightStepsLb) !== JSON.stringify(init.weightStepsLb),
       soundRestDone !== init.soundRestDone, vibrateRestDone !== init.vibrateRestDone,
+      notifyRestDone !== init.notifyRestDone,
       countdown3s !== init.countdown3s, autoNextSet !== init.autoNextSet,
       avatarPreview !== (boot.activeUser.avatar || ''),
       weeklyResetDay !== init.weeklyResetDay,
     ].filter(Boolean).length;
   }, [name, password, timezone, locale, heightCm, defaultWeightUnit, gender, birthDate,
       clockFormat, restSeconds, defaultSets, defaultReps, progressiveOverload, soundRestDone,
-      vibrateRestDone, countdown3s, autoNextSet, avatarPreview, weightStepsKg, weightStepsLb,
+      vibrateRestDone, notifyRestDone, countdown3s, autoNextSet, avatarPreview, weightStepsKg, weightStepsLb,
       weeklyResetDay]);
   const timezoneChoices = useMemo(timezoneSelectOptions, []);
   const addUser = async () => {
@@ -7129,6 +7105,7 @@ function SettingsPage({ userId, boot, onChanged }) {
           progressiveOverload,
           soundRestDone,
           vibrateRestDone,
+          notifyRestDone,
           countdown3s,
           autoNextSet,
           notifyWorkout,
@@ -7249,6 +7226,7 @@ function SettingsPage({ userId, boot, onChanged }) {
         <p className="mb-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">{t('settings_timer_note_combined')}</p>
         <SwitchSetting label={t('settings_sound_rest_label')} desc={t('settings_sound_rest_label')} checked={soundRestDone} onChange={setSoundRestDone} />
         <SwitchSetting label={t('settings_vibrate_rest_label')} checked={vibrateRestDone} onChange={setVibrateRestDone} />
+        <SwitchSetting label={t('settings_notify_rest_done_label')} checked={notifyRestDone} onChange={setNotifyRestDone} />
         <SwitchSetting label={t('settings_countdown_label')} checked={countdown3s} onChange={setCountdown3s} />
         <SwitchSetting label={t('settings_auto_next_label')} checked={autoNextSet} onChange={setAutoNextSet} />
       </SettingsGroup>
