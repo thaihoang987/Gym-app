@@ -5733,12 +5733,56 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     });
   }, [exercise?.id, userId, workout.sessionId]);
   // startTimer: set thời điểm kết thúc theo thời gian thực
+  const restNotificationRef = React.useRef(null);
+
+  const closeRestNotification = React.useCallback(() => {
+    if (restNotificationRef.current) {
+      try { restNotificationRef.current.close(); } catch (e) {}
+      restNotificationRef.current = null;
+    }
+  }, []);
+
+  const showRestNotification = React.useCallback((seconds) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const body = seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`;
+    try {
+      restNotificationRef.current = new Notification(t('workout_timer_rest'), {
+        body,
+        tag: 'gym-rest-timer',
+        icon: '/pwa-192.png',
+        badge: '/pwa-192.png',
+        silent: true,
+      });
+      restNotificationRef.current.onclick = () => {
+        window.focus();
+        restNotificationRef.current?.close();
+      };
+    } catch (e) {}
+  }, [t]);
+
   const startTimer = React.useCallback((seconds) => {
     timerEndAt.current = Date.now() + seconds * 1000;
     setTimer(seconds);
     setTimerMinimized(false);
     setTimerSwipeDx(0);
-  }, []);
+    closeRestNotification();
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [closeRestNotification]);
+
+  // Hiển thị/đóng thông báo đếm giờ nghỉ khi chuyển nền/khoá màn hình
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (timer > 0) showRestNotification(timer);
+      } else {
+        closeRestNotification();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [timer, showRestNotification, closeRestNotification]);
 
   useEffect(() => {
     if (!timerEndAt.current) return;
@@ -5747,12 +5791,28 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const clamped = Math.max(0, remaining);
       setTimer(clamped);
       if (clamped === 0) timerEndAt.current = 0;
+      if (document.hidden && clamped > 0) showRestNotification(clamped);
     }, 500);
     return () => clearInterval(id);
-  }, [timerEndAt.current > 0 ? timerEndAt.current : 0]);
+  }, [timerEndAt.current > 0 ? timerEndAt.current : 0, showRestNotification]);
   useEffect(() => {
     if (previousTimer.current > 0 && timer === 0) {
       if (settings?.vibrate_rest_done && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+        closeRestNotification();
+        try {
+          const doneNotif = new Notification(t('workout_timer_done'), {
+            body: t('workout_timer_off'),
+            tag: 'gym-rest-timer',
+            icon: '/pwa-192.png',
+            badge: '/pwa-192.png',
+            vibrate: [180, 80, 180],
+          });
+          doneNotif.onclick = () => { window.focus(); doneNotif.close(); };
+        } catch (e) {}
+      } else {
+        closeRestNotification();
+      }
       if (settings?.sound_rest_done) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
@@ -5774,7 +5834,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       }
     }
     previousTimer.current = timer;
-  }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done, settings?.auto_next_set]);
+  }, [timer, settings?.sound_rest_done, settings?.vibrate_rest_done, settings?.auto_next_set, closeRestNotification, t]);
 
   if (!data) {
     // Sau 1s loading → thử fallback cache offline
