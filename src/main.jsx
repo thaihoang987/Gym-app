@@ -5638,6 +5638,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [manualWeight, setManualWeight] = useState('');
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
+  const [timerMinimized, setTimerMinimized] = useState(false);
+  const [timerSwipeDx, setTimerSwipeDx] = useState(0);
+  const timerSwipeStartX = React.useRef(0);
   const advanceAfterRestRef = React.useRef(null);
   const [swipeDx, setSwipeDx] = useState(0);
   const [slideDir, setSlideDir] = useState(null); // 'out-left' | 'out-right' | 'in-left' | 'in-right' | null
@@ -5733,6 +5736,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const startTimer = React.useCallback((seconds) => {
     timerEndAt.current = Date.now() + seconds * 1000;
     setTimer(seconds);
+    setTimerMinimized(false);
+    setTimerSwipeDx(0);
   }, []);
 
   useEffect(() => {
@@ -6346,17 +6351,39 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         );
       })()}
       {timer > 0 && (
-        <div className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''}`}>
-          <div className="timer-pop-label">
-            {settings?.countdown_3s && timer <= 3 ? t('workout_timer_prepare') : t('workout_timer_rest')}
-          </div>
-          <div className="timer-pop-time">
-            {timer >= 60 ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : `${timer}s`}
-          </div>
-          <div className="timer-pop-actions">
-            <button className="timer-pop-btn" onClick={() => startTimer(timer + 30)}>+30s</button>
-            <button className="timer-pop-dismiss" onClick={() => { timerEndAt.current = 0; setTimer(0); }}>{t('workout_timer_off')}</button>
-          </div>
+        <div
+          className={`timer-pop ${settings?.countdown_3s && timer <= 3 ? 'urgent' : ''} ${timerMinimized ? 'minimized' : ''}`}
+          style={timerSwipeDx ? { transform: `translateX(${Math.max(0, timerSwipeDx)}px)`, transition: 'none' } : undefined}
+          onTouchStart={(e) => { timerSwipeStartX.current = e.touches[0].clientX; setTimerSwipeDx(0); }}
+          onTouchMove={(e) => {
+            const dx = e.touches[0].clientX - timerSwipeStartX.current;
+            if (!timerMinimized && dx > 0) setTimerSwipeDx(dx);
+          }}
+          onTouchEnd={() => {
+            const dx = timerSwipeDx;
+            setTimerSwipeDx(0);
+            if (!timerMinimized && dx > 60) setTimerMinimized(true);
+          }}
+          onClick={() => { if (timerMinimized) setTimerMinimized(false); }}
+        >
+          {timerMinimized ? (
+            <div className="timer-pop-mini-time">
+              {timer >= 60 ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : `${timer}s`}
+            </div>
+          ) : (
+            <>
+              <div className="timer-pop-label">
+                {settings?.countdown_3s && timer <= 3 ? t('workout_timer_prepare') : t('workout_timer_rest')}
+              </div>
+              <div className="timer-pop-time">
+                {timer >= 60 ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : `${timer}s`}
+              </div>
+              <div className="timer-pop-actions">
+                <button className="timer-pop-btn" onClick={() => startTimer(timer + 30)}>+30s</button>
+                <button className="timer-pop-dismiss" onClick={() => { timerEndAt.current = 0; setTimer(0); }}>{t('workout_timer_off')}</button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </section>

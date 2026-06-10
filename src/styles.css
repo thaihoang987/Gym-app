@@ -878,16 +878,30 @@ button:disabled {
 .slide-in-from-left   { animation: slideInFromLeft  0.2s ease forwards; }
 
 .timer-pop {
-  @apply fixed left-4 right-4 z-[9998] rounded-2xl bg-[#1f2933] px-5 py-4 text-white shadow-xl;
+  @apply fixed right-4 z-[9998] rounded-2xl bg-[#1f2933] px-4 py-3 text-white shadow-xl;
   bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  width: 66%;
+  max-width: 18rem;
+  transition: transform 0.25s ease, width 0.25s ease, padding 0.25s ease, border-radius 0.25s ease;
 }
 .timer-pop.urgent { @apply bg-orange-600; }
+
+.timer-pop.minimized {
+  width: auto;
+  padding: 0.5rem 0.875rem;
+  border-radius: 9999px 0 0 9999px;
+  transform: translateX(calc(100% - 4.25rem));
+}
+
+.timer-pop-mini-time {
+  @apply text-2xl font-black tabular-nums leading-none;
+}
 
 .timer-pop-label {
   @apply text-sm font-semibold uppercase tracking-widest opacity-70;
 }
 .timer-pop-time {
-  @apply mt-1 text-6xl font-black tabular-nums leading-none;
+  @apply mt-1 text-4xl font-black tabular-nums leading-none;
 }
 .timer-pop-actions {
   @apply mt-3 flex gap-2;
