@@ -20,6 +20,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
+LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png"
+LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-app"
+LABEL org.opencontainers.image.description="Gym App - self-hosted workout tracker"
+LABEL org.opencontainers.image.licenses="MIT"
+
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
