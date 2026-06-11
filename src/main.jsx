@@ -587,7 +587,7 @@ async function flushOfflineQueue(userId) {
       } else if (entry.type === 'log') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
-        await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps }) });
+        await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps, isSuperset: Boolean(entry.isSuperset) }) });
       } else if (entry.type === 'complete') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
@@ -3430,7 +3430,7 @@ function ActivityCalendar({ calendar, history, settings }) {
     const key = localIsoDate(date);
     const name = row.routine_name || row.group_name || freeSessionName;
     const list = historyByDay.get(key) || [];
-    list.push({ ...row, activityName: name, color: stableColorForName(name) });
+    list.push({ ...row, activityName: row.isSuperset ? `⚡ ${name}` : name, color: stableColorForName(name) });
     historyByDay.set(key, list);
   }
   const cells = [];
@@ -3510,6 +3510,7 @@ function ActivityCalendar({ calendar, history, settings }) {
                   }}
                 />
                 <span className="text-sm font-bold">{row.duration_minutes} {t('min')}</span>
+                {row.isSuperset && <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">⚡ Superset</span>}
               </div>
             );
           })}
@@ -4086,7 +4087,10 @@ function HistoryList({ userId, history, onDeleted, settings }) {
             <div key={row.id} className="panel">
               <div className="flex items-center justify-between gap-3">
                 <button className="min-w-0 flex-1 text-left" onClick={() => toggleDetail(row.id)}>
-                  <p className="font-bold">{activityName}</p>
+                  <p className="font-bold">
+                    {activityName}
+                    {row.isSuperset && <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700 align-middle">⚡ Superset</span>}
+                  </p>
                   <p className="text-sm text-teal-900">
                     {formatDateTime(row.completed_at, settings)} · {row.exercises || 0} {t('bài')} · {row.sets} {t('set')} · {row.duration_minutes} {t('min')}
                   </p>
@@ -4185,6 +4189,8 @@ function workoutExerciseGroups(sessionData, t) {
     return [{
       id: sessionData.group.id || 'group',
       name: sessionData.group.name || (t ? t('free_groups') : 'Exercise Group'),
+      isSuperset: Boolean(sessionData.group.isSuperset),
+      supersetRounds: Math.max(1, Number(sessionData.group.supersetRounds || 1)),
       exercises: sessionData.group.exercises.map((exercise) => takeFlatExercise(exercise, sessionData.group.name))
     }];
   }
@@ -4193,9 +4199,12 @@ function workoutExerciseGroups(sessionData, t) {
 }
 
 function supersetContextForIndex(sessionData, index) {
-  if (!sessionData?.routine?.groups?.length) return null;
+  const groups = sessionData?.routine?.groups?.length
+    ? sessionData.routine.groups
+    : (sessionData?.group?.exercises?.length ? [sessionData.group] : []);
+  if (!groups.length) return null;
   let flatIndex = 0;
-  for (const group of sessionData.routine.groups) {
+  for (const group of groups) {
     const exercises = group.exercises || [];
     const startIndex = flatIndex;
     const endIndex = flatIndex + exercises.length - 1;
@@ -4263,17 +4272,28 @@ function SupersetPlayerPanel({ context, exercise, currentSet, weightUnit, settin
       <div className="superset-flow">
         <div className="current">
           <span>{t('superset_current')}</span>
-          <strong>{exercise.name}</strong>
-          <p>{targetWeight} × {currentSet?.reps || '-'} reps</p>
+          <div className="flex items-center gap-2">
+            <GifThumb exercise={exercise} className="h-16 w-16" rounded="rounded-lg" autoplay />
+            <div>
+              <strong>{exercise.name}</strong>
+              <p>{targetWeight} × {currentSet?.reps || '-'} reps</p>
+            </div>
+          </div>
         </div>
         <div>
           <span>{t('superset_next')}</span>
-          <strong>{nextLabel}</strong>
+          <div className="flex items-center gap-2">
+            {context.nextExercise && <GifThumb exercise={context.nextExercise} className="h-12 w-12" rounded="rounded-lg" autoplay />}
+            <strong>{nextLabel}</strong>
+          </div>
         </div>
         {thenLabel && (
           <div>
             <span>{t('superset_then')}</span>
-            <strong>{thenLabel}</strong>
+            <div className="flex items-center gap-2">
+              {context.thenExercise && <GifThumb exercise={context.thenExercise} className="h-12 w-12" rounded="rounded-lg" autoplay />}
+              <strong>{thenLabel}</strong>
+            </div>
           </div>
         )}
       </div>
@@ -5944,7 +5964,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
@@ -5952,12 +5972,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     let result;
     try {
-      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps }) });
+      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) }) });
       await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) });
       result = { id: tempId };
     }
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
@@ -5969,12 +5989,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           : item
       ))
     } : current);
-    if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
-
-    // Superset auto-advance: nếu đang trong superset và đây là set đầu tiên tick xong
-    // (tức là tất cả set của bài này đã done sau tick này)
+    // Superset auto-advance: nếu đang trong superset và đây là set cuối của bài
+    // (tức là tất cả set của bài này đã done sau tick này) → qua bài kế, không nghỉ
     const afterSets = sets.map((item) => item.setIndex === set.setIndex ? { ...item, done: true } : item);
     const allDoneForExercise = afterSets.every((s) => s.done);
+    const supersetMidStep = supersetContext && allDoneForExercise && !options.skipSupersetAdvance && !supersetContext.isLastExercise;
+    if (!options.skipTimer && !supersetMidStep) startTimer(Number(settings?.rest_seconds || 60));
+
     if (supersetContext && allDoneForExercise && !options.skipSupersetAdvance) {
       // Tick xong set cuối → chuyển bài kế trong superset (không nghỉ giữa bài)
       if (!supersetContext.isLastExercise) {

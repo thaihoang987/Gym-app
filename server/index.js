@@ -1623,6 +1623,7 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
       CAST((julianday(ws.completed_at) - julianday(ws.started_at)) * 86400 AS INTEGER) AS duration_seconds,
       r.name AS routine_name,
       cg.name AS group_name,
+      ws.used_superset AS is_superset,
       COUNT(wl.id) AS sets,
       COUNT(DISTINCT wl.exercise_id) AS exercises,
       (
@@ -1643,6 +1644,7 @@ function getRecentHistory(userId, limit = 20, offset = 0) {
     LIMIT ? OFFSET ?
   `, [userId, limit, offset]).map((row) => ({
     ...row,
+    isSuperset: Boolean(row.is_superset),
     imageUrl: assetUrl(row.image_path),
     duration_minutes: formatMinutes(row.duration_seconds)
   }));
@@ -1758,11 +1760,16 @@ app.get('/api/sessions/active', (req, res) => {
   if (!sessions.length) return res.json(null);
   const payload = sessions.map((session) => {
     const routine = session.routine_id ? getRoutine(session.routine_id, userId) : null;
-    const group = session.group_id ? {
-      id: session.group_id,
-      name: one('SELECT name FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId])?.name,
-      exercises: getGroupExercises(session.group_id)
-    } : null;
+    const group = session.group_id ? (() => {
+      const row = one('SELECT name, is_superset, superset_rounds FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId]);
+      return {
+        id: session.group_id,
+        name: row?.name,
+        isSuperset: Boolean(row?.is_superset),
+        supersetRounds: Math.max(1, Number(row?.superset_rounds || 1)),
+        exercises: getGroupExercises(session.group_id)
+      };
+    })() : null;
     const counts = all('SELECT exercise_id, COUNT(*) AS completed_sets FROM workout_logs WHERE session_id = ? AND user_id = ? GROUP BY exercise_id', [session.id, userId]);
     const countByExercise = new Map(counts.map((row) => [row.exercise_id, row.completed_sets]));
     const exercises = (routine?.exercises || group?.exercises || []).map((exercise) => ({ ...exercise, completedSets: countByExercise.get(exercise.id) || 0 }));
@@ -1776,8 +1783,14 @@ app.get('/api/sessions/:id', (req, res) => {
   const session = one('SELECT * FROM workout_sessions WHERE id = ? AND user_id = ?', [Number(req.params.id), userId]);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const routine = session.routine_id ? getRoutine(session.routine_id, userId) : null;
-  const groupRow = session.group_id ? one('SELECT id, name FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId]) : null;
-  const group = groupRow ? { id: groupRow.id, name: groupRow.name, exercises: getGroupExercises(session.group_id) } : null;
+  const groupRow = session.group_id ? one('SELECT id, name, is_superset, superset_rounds FROM custom_groups WHERE id = ? AND user_id = ?', [session.group_id, userId]) : null;
+  const group = groupRow ? {
+    id: groupRow.id,
+    name: groupRow.name,
+    isSuperset: Boolean(groupRow.is_superset),
+    supersetRounds: Math.max(1, Number(groupRow.superset_rounds || 1)),
+    exercises: getGroupExercises(session.group_id)
+  } : null;
   const counts = all('SELECT exercise_id, COUNT(*) AS completed_sets FROM workout_logs WHERE session_id = ? AND user_id = ? GROUP BY exercise_id', [session.id, userId]);
   const countByExercise = new Map(counts.map((row) => [row.exercise_id, row.completed_sets]));
   const exercises = (routine?.exercises || group?.exercises || []).map((exercise) => ({ ...exercise, completedSets: countByExercise.get(exercise.id) || 0 }));
@@ -1910,6 +1923,9 @@ app.post('/api/sessions/:id/logs', (req, res) => {
     INSERT INTO workout_logs (session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(sessionId, userId, req.body.exerciseId, setIndex, Number(req.body.weightKg), weightUnit, Number(req.body.reps));
+  if (req.body.isSuperset) {
+    db.prepare('UPDATE workout_sessions SET used_superset = 1 WHERE id = ? AND user_id = ?').run(sessionId, userId);
+  }
   res.status(201).json({ id: result.lastInsertRowid, setIndex });
 });
 

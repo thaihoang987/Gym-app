@@ -379,6 +379,9 @@ export function migrate() {
       db.exec(`ALTER TABLE user_settings ADD COLUMN ${column} ${definition}`);
     }
   }
+  if (!hasColumn('workout_sessions', 'used_superset')) {
+    db.exec('ALTER TABLE workout_sessions ADD COLUMN used_superset INTEGER NOT NULL DEFAULT 0');
+  }
   db.prepare('UPDATE user_settings SET rest_seconds = 60 WHERE rest_seconds = 90').run();
   db.prepare('UPDATE user_settings SET auto_next_set = 1 WHERE auto_next_set = 0').run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');
