@@ -6071,7 +6071,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     onClose();
   };
   const supersetContext = supersetContextForIndex(data, index);
-  const supersetCurrentSet = supersetContext ? sets.find((set) => !set.done) || sets[sets.length - 1] : null;
+  const supersetCurrentSet = supersetContext ? sets.find((set) => !set.done) : null;
   const autoAdvanceAfterDone = Number(settings?.auto_next_set ?? 1) !== 0;
   const skipSupersetStep = () => {
     if (!supersetContext) return;
@@ -6093,8 +6093,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     else complete();
   };
   const completeSupersetStep = async () => {
-    if (!supersetContext || !supersetCurrentSet || supersetCurrentSet.done) return;
-    await completeSet(supersetCurrentSet, { skipTimer: true });
+    if (!supersetContext) return;
+    // Chỉ ghi nhận nếu còn set chưa tick; nếu đã tick hết thủ công rồi thì không log thêm
+    if (supersetCurrentSet) {
+      await completeSet(supersetCurrentSet, { skipTimer: true });
+    }
     if (!supersetContext.isLastExercise) {
       if (autoAdvanceAfterDone) openExercise(index + 1);
       return;
