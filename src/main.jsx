@@ -5959,7 +5959,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     // Tick: bắt buộc theo thứ tự
     const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
-    if (prevUndone) return;
+    if (prevUndone && !options.bypassOrderCheck) return;
     const weightUnit = currentWeightUnit();
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
@@ -6094,9 +6094,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const completeSupersetStep = async () => {
     if (!supersetContext) return;
-    // Chỉ ghi nhận nếu còn set chưa tick; nếu đã tick hết thủ công rồi thì không log thêm
-    if (supersetCurrentSet) {
-      await completeSet(supersetCurrentSet, { skipTimer: true });
+    // Ghi nhận tất cả set còn chưa tick của bài này trước khi qua bài kế (nếu đã tick hết thủ công rồi thì không log thêm)
+    const pendingSets = sets.filter((s) => !s.done);
+    for (const set of pendingSets) {
+      await completeSet(set, { skipTimer: true, skipSupersetAdvance: true, bypassOrderCheck: true });
     }
     if (!supersetContext.isLastExercise) {
       if (autoAdvanceAfterDone) openExercise(index + 1);
