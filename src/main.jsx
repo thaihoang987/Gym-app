@@ -5585,14 +5585,26 @@ function WorkoutSummary({ summary, settings, onClose }) {
             {/* All exercises */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {(exercises || []).map((exercise) => {
-                const improved = exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight;
+                const volume = Math.round((exercise.volume || 0) * 10) / 10;
+                const previousVolume = Math.round((exercise.previousVolume || 0) * 10) / 10;
+                const isPR = exercise.maxWeight > exercise.previousMaxWeight;
+                const volDiff = volume - previousVolume;
+                const hasPrevious = previousVolume > 0;
+                const volArrow = !hasPrevious ? '' : volDiff > 0 ? '▲' : volDiff < 0 ? '▼' : '●';
+                const volColor = !hasPrevious ? 'rgba(255,255,255,0.85)' : volDiff > 0 ? '#86efac' : volDiff < 0 ? '#fca5a5' : 'rgba(255,255,255,0.85)';
                 return (
                   <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
+                    {exercise.imageUrl
+                      ? <img src={exercise.imageUrl} crossOrigin="anonymous" style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: '#fff', objectFit: 'contain' }} />
+                      : <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏋️</div>}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exercise.name}</div>
-                      <div style={{ fontSize: 11, opacity: 0.75 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg · vol {exercise.volume}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exercise.name}</div>
+                      <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
                     </div>
-                    {improved && <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', whiteSpace: 'nowrap' }}>▲ PR</div>}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: volColor, lineHeight: 1.5 }}>{volArrow} {volume} kg</div>
+                      {isPR && <div style={{ fontSize: 10, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', marginTop: 2, lineHeight: 1.5 }}>🏆 PR</div>}
+                    </div>
                   </div>
                 );
               })}

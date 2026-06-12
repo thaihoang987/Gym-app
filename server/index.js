@@ -1877,8 +1877,8 @@ app.get('/api/sessions/:id/detail', (req, res) => {
   }
 
   const exercises = Array.from(byExercise.values()).map((exercise) => {
-    const volume = exercise.sets.reduce((sum, set) => sum + Number(set.weightKg || 0) * Number(set.reps || 0), 0);
-    const previousVolume = exercise.previous.reduce((sum, set) => sum + Number(set.weightKg || 0) * Number(set.reps || 0), 0);
+    const volume = Math.round(exercise.sets.reduce((sum, set) => sum + Number(set.weightKg || 0) * Number(set.reps || 0), 0) * 100) / 100;
+    const previousVolume = Math.round(exercise.previous.reduce((sum, set) => sum + Number(set.weightKg || 0) * Number(set.reps || 0), 0) * 100) / 100;
     const maxWeight = Math.max(...exercise.sets.map((set) => Number(set.weightKg || 0)), 0);
     const previousMaxWeight = Math.max(...exercise.previous.map((set) => Number(set.weightKg || 0)), 0);
     return { ...exercise, volume, previousVolume, maxWeight, previousMaxWeight };
