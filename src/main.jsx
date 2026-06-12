@@ -5598,7 +5598,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
                       ? <img src={exercise.imageUrl} crossOrigin="anonymous" style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: '#fff', objectFit: 'contain' }} />
                       : <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏋️</div>}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exercise.name}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, paddingTop: 2 }}>{exercise.name}</div>
                       <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
