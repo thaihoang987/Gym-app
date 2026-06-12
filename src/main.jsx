@@ -4254,7 +4254,8 @@ function SupersetSetTicks({ sets, onToggle, dim }) {
           type="button"
           disabled={!onToggle}
           className={`superset-tick ${set.done ? 'is-done' : ''} ${dim ? 'is-dim' : ''}`}
-          onClick={onToggle ? () => onToggle(set) : undefined}
+          onClick={onToggle ? (e) => { e.stopPropagation(); onToggle(set); } : undefined}
+          onTouchEnd={onToggle ? (e) => { e.stopPropagation(); } : undefined}
         >
           {i + 1}
         </button>

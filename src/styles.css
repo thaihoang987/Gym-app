@@ -679,7 +679,8 @@ button:disabled {
   @apply border-white/30 bg-white/10 text-white;
 }
 
-.superset-tick.is-done {
+.superset-tick.is-done,
+.superset-flow > div.current .superset-tick.is-done {
   @apply border-emerald-500 bg-emerald-500 text-white;
 }
 
