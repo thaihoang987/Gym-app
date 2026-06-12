@@ -4244,12 +4244,34 @@ function supersetContextForIndex(sessionData, index) {
   return null;
 }
 
-function SupersetPlayerPanel({ context, exercise, currentSet, weightUnit, settings, onDone, onSkip, onBack, onEnd }) {
+function SupersetSetTicks({ sets, onToggle, dim }) {
+  if (!sets?.length) return null;
+  return (
+    <div className="superset-set-ticks">
+      {sets.map((set, i) => (
+        <button
+          key={set.setIndex ?? i}
+          type="button"
+          disabled={!onToggle}
+          className={`superset-tick ${set.done ? 'is-done' : ''} ${dim ? 'is-dim' : ''}`}
+          onClick={onToggle ? () => onToggle(set) : undefined}
+        >
+          {i + 1}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SupersetPlayerPanel({ context, exercise, sets, currentSet, weightUnit, settings, onDone, onSkip, onBack, onEnd, onToggleSet }) {
   const t = useLang();
   if (!context) return null;
   const targetWeight = currentSet
     ? (weightUnit === 'lb' ? `${Number(kgToLb(currentSet.weightKg).toFixed(1))} lb` : `${currentSet.weightKg} kg`)
     : '-';
+  const placeholderSetCount = Math.max(1, Number(settings?.default_sets || 3));
+  const nextSets = context.nextExercise ? Array.from({ length: placeholderSetCount }, (_, i) => ({ setIndex: i, done: false })) : null;
+  const thenSets = context.thenExercise ? Array.from({ length: placeholderSetCount }, (_, i) => ({ setIndex: i, done: false })) : null;
   const nextLabel = context.isLastExercise
     ? (context.isLastRound ? `🏆 ${t('superset_complete')}` : `🏁 ${t('superset_end_round')}`)
     : context.nextExercise?.name;
@@ -4272,27 +4294,30 @@ function SupersetPlayerPanel({ context, exercise, currentSet, weightUnit, settin
       <div className="superset-flow">
         <div className="current">
           <span>{t('superset_current')}</span>
-          <div className="flex items-center gap-2">
-            <GifThumb exercise={exercise} className="h-16 w-16" rounded="rounded-lg" autoplay />
-            <div>
-              <strong>{exercise.name}</strong>
+          <div className="flex items-start gap-2">
+            <GifThumb exercise={exercise} className="h-16 w-16 shrink-0" rounded="rounded-lg" autoplay />
+            <div className="min-w-0 flex-1">
+              <strong className="break-words">{exercise.name}</strong>
               <p>{targetWeight} × {currentSet?.reps || '-'} reps</p>
             </div>
+            <SupersetSetTicks sets={sets} onToggle={onToggleSet} />
           </div>
         </div>
         <div>
           <span>{t('superset_next')}</span>
-          <div className="flex items-center gap-2">
-            {context.nextExercise && <GifThumb exercise={context.nextExercise} className="h-12 w-12" rounded="rounded-lg" autoplay />}
-            <strong>{nextLabel}</strong>
+          <div className="flex items-start gap-2">
+            {context.nextExercise && <GifThumb exercise={context.nextExercise} className="h-12 w-12 shrink-0" rounded="rounded-lg" autoplay />}
+            <strong className="min-w-0 flex-1 break-words">{nextLabel}</strong>
+            {nextSets && <SupersetSetTicks sets={nextSets} dim />}
           </div>
         </div>
         {thenLabel && (
           <div>
             <span>{t('superset_then')}</span>
-            <div className="flex items-center gap-2">
-              {context.thenExercise && <GifThumb exercise={context.thenExercise} className="h-12 w-12" rounded="rounded-lg" autoplay />}
-              <strong>{thenLabel}</strong>
+            <div className="flex items-start gap-2">
+              {context.thenExercise && <GifThumb exercise={context.thenExercise} className="h-12 w-12 shrink-0" rounded="rounded-lg" autoplay />}
+              <strong className="min-w-0 flex-1 break-words">{thenLabel}</strong>
+              {thenSets && <SupersetSetTicks sets={thenSets} dim />}
             </div>
           </div>
         )}
@@ -6262,6 +6287,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <SupersetPlayerPanel
             context={supersetContext}
             exercise={exercise}
+            sets={sets}
             currentSet={supersetCurrentSet}
             weightUnit={currentWeightUnit()}
             settings={settings}
@@ -6269,6 +6295,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             onSkip={skipSupersetStep}
             onBack={backSupersetStep}
             onEnd={endSuperset}
+            onToggleSet={(set) => completeSet(set, { skipTimer: true })}
           />
           <div className="overflow-hidden rounded-xl bg-slate-50">
             {exerciseAutoMediaUrl(exercise) ? (

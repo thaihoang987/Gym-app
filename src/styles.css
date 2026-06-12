@@ -667,6 +667,26 @@ button:disabled {
   @apply mt-1 block text-base font-black leading-tight;
 }
 
+.superset-set-ticks {
+  @apply flex shrink-0 flex-col gap-1;
+}
+
+.superset-tick {
+  @apply flex h-6 w-6 items-center justify-center rounded-full border border-orange-300 bg-white text-[11px] font-black text-orange-700;
+}
+
+.superset-flow > div.current .superset-tick {
+  @apply border-white/30 bg-white/10 text-white;
+}
+
+.superset-tick.is-done {
+  @apply border-emerald-500 bg-emerald-500 text-white;
+}
+
+.superset-tick.is-dim {
+  @apply cursor-default border-dashed border-orange-200 bg-transparent text-orange-300 opacity-60;
+}
+
 .superset-flow p {
   @apply mt-1 text-sm font-bold text-emerald-200;
 }
