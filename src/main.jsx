@@ -4097,6 +4097,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
                 </button>
                 <div className="flex items-center gap-2">
                   <Dumbbell style={{ color: color.dot }} />
+                  <HistoryDownloadButton userId={userId} sessionId={row.id} sessionName={activityName} settings={settings} />
                   <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> {t('history_delete')}</button>
                 </div>
               </div>
@@ -5474,15 +5475,154 @@ function ScheduleRules({ rules, onDelete }) {
   );
 }
 
-function WorkoutSummary({ summary, settings, onClose }) {
-  const t = useLang();
-  const { detail, sessionName } = summary;
-  const { summary: s, exercises, session } = detail;
+function gradeFromDetail(detail, t) {
+  const s = detail?.summary;
   const totalVolume = s?.totalVolume || 0;
   const volumeDisplay = totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume;
   const grade = s?.improvedCount >= Math.ceil((s?.exerciseCount || 1) * 0.6) ? 'great' : s?.improvedCount > 0 ? 'ok' : 'start';
   const gradeText = { great: t('summary_great'), ok: t('summary_ok'), start: t('summary_start') }[grade];
   const gradeGradient = { great: 'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)', ok: 'linear-gradient(135deg,#f05a28,#f59e0b)', start: 'linear-gradient(135deg,#0ea5e9,#14b8a6)' }[grade];
+  return { volumeDisplay, gradeText, gradeGradient };
+}
+
+const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessionName, settings }, ref) {
+  const t = useLang();
+  const { summary: s, exercises, session } = detail;
+  const { volumeDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
+  return (
+    <div ref={ref} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
+      <div style={{ padding: 28, color: '#fff' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.75 }}>💪 Workout Summary</div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.75 }}>{formatDate(session?.completed_at || session?.started_at, settings, { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.2 }}>{sessionName}</div>
+          {session?.used_superset ? (
+            <div style={{ fontSize: 11, fontWeight: 800, lineHeight: 1.8, background: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>⚡ Superset</div>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 20 }}>{gradeText}</div>
+        {/* Stats */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          {[
+            { label: 'Duration', value: `${session?.duration_minutes}`, unit: 'min' },
+            { label: 'Exercises', value: s?.exerciseCount, unit: '' },
+            { label: 'Sets', value: s?.totalSets, unit: '' },
+            { label: 'Volume', value: volumeDisplay, unit: 'kg' },
+          ].map((stat) => (
+            <div key={stat.label} style={{ flex: 1, background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 6px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1 }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
+              <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* All exercises */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(exercises || []).map((exercise) => {
+            const volume = Math.round((exercise.volume || 0) * 10) / 10;
+            const previousVolume = Math.round((exercise.previousVolume || 0) * 10) / 10;
+            const isPR = exercise.maxWeight > exercise.previousMaxWeight;
+            const volDiff = volume - previousVolume;
+            const hasPrevious = previousVolume > 0;
+            const volArrow = !hasPrevious ? '' : volDiff > 0 ? '▲' : volDiff < 0 ? '▼' : '●';
+            const volColor = !hasPrevious ? 'rgba(255,255,255,0.85)' : volDiff > 0 ? '#86efac' : volDiff < 0 ? '#fca5a5' : 'rgba(255,255,255,0.85)';
+            return (
+              <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
+                {exercise.imageUrl
+                  ? <img src={exercise.imageUrl} crossOrigin="anonymous" style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: '#fff', objectFit: 'contain' }} />
+                  : <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏋️</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, paddingTop: 2 }}>{exercise.name}</div>
+                  <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: volColor, lineHeight: 1.5 }}>{volArrow} {volume} kg</div>
+                  {isPR && <div style={{ fontSize: 10, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', marginTop: 2, lineHeight: 1.5 }}>🏆 PR</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Footer */}
+        <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym App</div>
+      </div>
+    </div>
+  );
+});
+
+async function captureShareCard(node) {
+  const { default: html2canvas } = await import('html2canvas');
+  const canvas = await html2canvas(node, {
+    backgroundColor: null,
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    logging: false
+  });
+  return canvas;
+}
+
+function downloadCanvas(canvas, sessionName) {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `gym-${sessionName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
+  a.click();
+}
+
+function HistoryDownloadButton({ userId, sessionId, sessionName, settings }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const cardRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!detail) return;
+    let cancelled = false;
+    (async () => {
+      // Đợi 1 frame để card hidden render xong trước khi chụp
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (cancelled || !cardRef.current) return;
+      try {
+        const canvas = await captureShareCard(cardRef.current);
+        if (!cancelled) downloadCanvas(canvas, sessionName);
+      } finally {
+        if (!cancelled) { setDetail(null); setLoading(false); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [detail]);
+
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const data = await api(`/api/sessions/${sessionId}/detail?userId=${userId}`);
+      setDetail(data);
+    } catch {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button className="icon-btn" disabled={loading} onClick={handleClick} title="Download image">
+        {loading ? '...' : '⬇'}
+      </button>
+      {detail && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, width: 400, pointerEvents: 'none' }}>
+          <ShareCardImage ref={cardRef} detail={detail} sessionName={sessionName} settings={settings} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function WorkoutSummary({ summary, settings, onClose }) {
+  const t = useLang();
+  const { detail, sessionName } = summary;
+  const { summary: s, exercises, session } = detail;
+  const { volumeDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
   const shareCardRef = React.useRef(null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [shareImageUrl, setShareImageUrl] = useState(null);
@@ -5491,14 +5631,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
     if (!shareCardRef.current) return null;
     setGeneratingImage(true);
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(shareCardRef.current, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false
-      });
+      const canvas = await captureShareCard(shareCardRef.current);
       const url = canvas.toDataURL('image/png');
       setShareImageUrl(url);
       return { canvas, url };
@@ -5510,10 +5643,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
   const handleDownload = async () => {
     const result = shareImageUrl ? { url: shareImageUrl } : await generateShareImage();
     if (!result) return;
-    const a = document.createElement('a');
-    a.href = result.url;
-    a.download = `gym-${sessionName.replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().slice(0, 10)}.png`;
-    a.click();
+    downloadCanvas(result.canvas, sessionName);
   };
 
   const handleShare = async () => {
@@ -5554,65 +5684,7 @@ function WorkoutSummary({ summary, settings, onClose }) {
 
       {/* Hidden share card — fixed size 400×520px, captured for PNG */}
       <div style={{ position: 'fixed', left: '-9999px', top: 0, width: 400, pointerEvents: 'none' }}>
-        <div ref={shareCardRef} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
-          <div style={{ padding: 28, color: '#fff' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.75 }}>💪 Workout Summary</div>
-              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.75 }}>{formatDate(session?.completed_at || session?.started_at, settings, { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.2 }}>{sessionName}</div>
-              {session?.used_superset ? (
-                <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>⚡ Superset</div>
-              ) : null}
-            </div>
-            <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 20 }}>{gradeText}</div>
-            {/* Stats */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {[
-                { label: 'Duration', value: `${session?.duration_minutes}`, unit: 'min' },
-                { label: 'Exercises', value: s?.exerciseCount, unit: '' },
-                { label: 'Sets', value: s?.totalSets, unit: '' },
-                { label: 'Volume', value: volumeDisplay, unit: 'kg' },
-              ].map((stat) => (
-                <div key={stat.label} style={{ flex: 1, background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 6px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1 }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
-                  <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{stat.label}</div>
-                </div>
-              ))}
-            </div>
-            {/* All exercises */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {(exercises || []).map((exercise) => {
-                const volume = Math.round((exercise.volume || 0) * 10) / 10;
-                const previousVolume = Math.round((exercise.previousVolume || 0) * 10) / 10;
-                const isPR = exercise.maxWeight > exercise.previousMaxWeight;
-                const volDiff = volume - previousVolume;
-                const hasPrevious = previousVolume > 0;
-                const volArrow = !hasPrevious ? '' : volDiff > 0 ? '▲' : volDiff < 0 ? '▼' : '●';
-                const volColor = !hasPrevious ? 'rgba(255,255,255,0.85)' : volDiff > 0 ? '#86efac' : volDiff < 0 ? '#fca5a5' : 'rgba(255,255,255,0.85)';
-                return (
-                  <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
-                    {exercise.imageUrl
-                      ? <img src={exercise.imageUrl} crossOrigin="anonymous" style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: '#fff', objectFit: 'contain' }} />
-                      : <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏋️</div>}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, paddingTop: 2 }}>{exercise.name}</div>
-                      <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: volColor, lineHeight: 1.5 }}>{volArrow} {volume} kg</div>
-                      {isPR && <div style={{ fontSize: 10, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', marginTop: 2, lineHeight: 1.5 }}>🏆 PR</div>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Footer */}
-            <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym App</div>
-          </div>
-        </div>
+        <ShareCardImage ref={shareCardRef} detail={detail} sessionName={sessionName} settings={settings} />
       </div>
 
       {/* Header gradient card — displayed in app */}
