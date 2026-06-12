@@ -22,6 +22,7 @@ import {
   Check,
   ChevronRight,
   Dumbbell,
+  Eye,
   GripVertical,
   Home,
   Library,
@@ -3136,6 +3137,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
   const [offset, setOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null); // { key, label, dayHistory }
   const [sessionDetails, setSessionDetails] = useState({}); // sessionId -> detail
+  const [viewSummary, setViewSummary] = useState(null);
 
   // Lock body scroll khi popup mở
   useEffect(() => {
@@ -3256,6 +3258,14 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
                         <p className="font-black text-slate-900">{sessionName}</p>
                         <p className="text-xs text-slate-500">{row.sets || 0} {t('set')} · {row.duration_minutes || 0} {t('min')}</p>
                       </div>
+                      <button
+                        className="icon-btn shrink-0"
+                        disabled={!detail}
+                        onClick={() => setViewSummary({ detail, sessionName })}
+                        title={t('summary_title')}
+                      >
+                        <Eye size={16} />
+                      </button>
                     </div>
                     {detail ? (
                       <div className="p-3 space-y-3">
@@ -3334,6 +3344,7 @@ function CurrentWeekPlan({ suggestion, history, routines, rules, userId, setting
           </div>
         </div>
       )}
+      {viewSummary && <SummaryModal summary={viewSummary} settings={settings} onClose={() => setViewSummary(null)} />}
 
       <div className="week-plan-grid">
         {scheduleItems.map((item) => {
@@ -3621,6 +3632,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null);
   const [sessionDetails, setSessionDetails] = useState({});
+  const [viewSummary, setViewSummary] = useState(null);
 
   useEffect(() => {
     if (selectedDay) { document.body.style.overflow = 'hidden'; }
@@ -3767,6 +3779,14 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
                         <p className="font-black text-slate-900">{sessionName}</p>
                         <p className="text-xs text-slate-500">{row.sets || 0} {t('set')} · {row.duration_minutes || 0} {t('min')}</p>
                       </div>
+                      <button
+                        className="icon-btn shrink-0"
+                        disabled={!detail}
+                        onClick={() => setViewSummary({ detail, sessionName })}
+                        title={t('summary_title')}
+                      >
+                        <Eye size={16} />
+                      </button>
                     </div>
                     {detail ? (
                       <div className="p-3 space-y-3">
@@ -3844,6 +3864,7 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
           </div>
         </div>
       )}
+      {viewSummary && <SummaryModal summary={viewSummary} settings={settings} onClose={() => setViewSummary(null)} />}
 
       <div className="week-plan-grid">
         {scheduleItems.map((item) => {
@@ -4016,6 +4037,19 @@ function HistoryList({ userId, history, onDeleted, settings }) {
   const [loadedHistory, setLoadedHistory] = useState(history.slice(0, 20));
   const [hasMore, setHasMore] = useState(history.length >= 20);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewSummary, setViewSummary] = useState(null);
+  const [loadingSummaryId, setLoadingSummaryId] = useState(null);
+
+  const openSummary = async (row, sessionName) => {
+    if (loadingSummaryId) return;
+    setLoadingSummaryId(row.id);
+    try {
+      const data = await api(`/api/sessions/${row.id}/detail?userId=${userId}`);
+      setViewSummary({ detail: data, sessionName });
+    } finally {
+      setLoadingSummaryId(null);
+    }
+  };
 
   // Unique routine/group names for filter
   const filterOptions = useMemo(() => {
@@ -4097,7 +4131,9 @@ function HistoryList({ userId, history, onDeleted, settings }) {
                 </button>
                 <div className="flex items-center gap-2">
                   <Dumbbell style={{ color: color.dot }} />
-                  <HistoryDownloadButton userId={userId} sessionId={row.id} sessionName={activityName} settings={settings} />
+                  <button className="icon-btn" disabled={loadingSummaryId === row.id} onClick={() => openSummary(row, activityName)} title={t('summary_title')}>
+                    <Eye size={16} />
+                  </button>
                   <button className="small-danger" onClick={() => removeSession(row.id)}><Trash2 size={16} /> {t('history_delete')}</button>
                 </div>
               </div>
@@ -4111,6 +4147,7 @@ function HistoryList({ userId, history, onDeleted, settings }) {
           </button>
         )}
       </div>
+      {viewSummary && <SummaryModal summary={viewSummary} settings={settings} onClose={() => setViewSummary(null)} />}
     </div>
   );
 }
@@ -5576,53 +5613,6 @@ function downloadCanvas(canvas, sessionName) {
   a.click();
 }
 
-function HistoryDownloadButton({ userId, sessionId, sessionName, settings }) {
-  const [detail, setDetail] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const cardRef = React.useRef(null);
-
-  useEffect(() => {
-    if (!detail) return;
-    let cancelled = false;
-    (async () => {
-      // Đợi 1 frame để card hidden render xong trước khi chụp
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (cancelled || !cardRef.current) return;
-      try {
-        const canvas = await captureShareCard(cardRef.current);
-        if (!cancelled) downloadCanvas(canvas, sessionName);
-      } finally {
-        if (!cancelled) { setDetail(null); setLoading(false); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [detail]);
-
-  const handleClick = async () => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const data = await api(`/api/sessions/${sessionId}/detail?userId=${userId}`);
-      setDetail(data);
-    } catch {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <button className="icon-btn" disabled={loading} onClick={handleClick} title="Download image">
-        {loading ? '...' : '⬇'}
-      </button>
-      {detail && (
-        <div style={{ position: 'fixed', left: '-9999px', top: 0, width: 400, pointerEvents: 'none' }}>
-          <ShareCardImage ref={cardRef} detail={detail} sessionName={sessionName} settings={settings} />
-        </div>
-      )}
-    </>
-  );
-}
-
 function WorkoutSummary({ summary, settings, onClose }) {
   const t = useLang();
   const { detail, sessionName } = summary;
@@ -5761,6 +5751,16 @@ function WorkoutSummary({ summary, settings, onClose }) {
         <button className="primary flex-1" onClick={onClose}>{t('summary_close')}</button>
       </div>
     </section>
+  );
+}
+
+function SummaryModal({ summary, settings, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ paddingBottom: 'calc(1rem + 4.5rem + env(safe-area-inset-bottom))' }} onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-y-auto p-4" style={{ maxHeight: 'calc(85vh - 4.5rem)' }} onClick={(e) => e.stopPropagation()}>
+        <WorkoutSummary summary={summary} settings={settings} onClose={onClose} />
+      </div>
+    </div>
   );
 }
 
