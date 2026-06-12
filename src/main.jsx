@@ -5557,8 +5557,16 @@ function WorkoutSummary({ summary, settings, onClose }) {
         <div ref={shareCardRef} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
           <div style={{ padding: 28, color: '#fff' }}>
             {/* Header */}
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.75, marginBottom: 6 }}>💪 Workout Summary</div>
-            <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.2, marginBottom: 4 }}>{sessionName}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.75 }}>💪 Workout Summary</div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.75 }}>{formatDate(session?.completed_at || session?.started_at, settings, { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.2 }}>{sessionName}</div>
+              {session?.used_superset ? (
+                <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>⚡ Superset</div>
+              ) : null}
+            </div>
             <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 20 }}>{gradeText}</div>
             {/* Stats */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -5574,23 +5582,20 @@ function WorkoutSummary({ summary, settings, onClose }) {
                 </div>
               ))}
             </div>
-            {/* Top exercises — max 5 */}
+            {/* All exercises */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {(exercises || []).slice(0, 5).map((exercise) => {
+              {(exercises || []).map((exercise) => {
                 const improved = exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight;
                 return (
                   <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>{exercise.name}</div>
-                      <div style={{ fontSize: 11, opacity: 0.75 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exercise.name}</div>
+                      <div style={{ fontSize: 11, opacity: 0.75 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg · vol {exercise.volume}</div>
                     </div>
-                    {improved && <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px' }}>▲ PR</div>}
+                    {improved && <div style={{ fontSize: 11, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', whiteSpace: 'nowrap' }}>▲ PR</div>}
                   </div>
                 );
               })}
-              {(exercises || []).length > 5 && (
-                <div style={{ textAlign: 'center', fontSize: 12, opacity: 0.7, padding: '4px 0' }}>+{exercises.length - 5} more exercises</div>
-              )}
             </div>
             {/* Footer */}
             <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym App</div>
@@ -5600,11 +5605,17 @@ function WorkoutSummary({ summary, settings, onClose }) {
 
       {/* Header gradient card — displayed in app */}
       <div className="rounded-2xl p-6 text-white" style={{ background: gradeGradient }}>
-        <div className="mb-2 flex items-center gap-2">
-          <Trophy size={22} />
-          <span className="text-sm font-bold uppercase tracking-wide opacity-80">{t('summary_title')}</span>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Trophy size={22} />
+            <span className="text-sm font-bold uppercase tracking-wide opacity-80">{t('summary_title')}</span>
+          </div>
+          <span className="text-xs font-bold opacity-80">{formatDate(session?.completed_at || session?.started_at, settings, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
         </div>
-        <h2 className="text-2xl font-black leading-tight">{sessionName}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-black leading-tight">{sessionName}</h2>
+          {session?.used_superset ? <span className="rounded-full bg-white/25 px-2 py-0.5 text-xs font-black">⚡ Superset</span> : null}
+        </div>
         <p className="mt-1 text-sm opacity-80">{gradeText}</p>
 
         {/* Stats row */}
