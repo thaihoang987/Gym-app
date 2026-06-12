@@ -2614,6 +2614,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   const routineData = { routines, rules };
   const [activeSession, setActiveSession] = useState(null);
   const [clock, setClock] = useState(new Date());
+  const [showDonateTest, setShowDonateTest] = useState(false);
 
   const loadAll = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
@@ -2695,6 +2696,8 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
         userId={userId}
       />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
+      <button className="ghost-btn w-full" onClick={() => setShowDonateTest(true)}>☕ Test donate popup</button>
+      {showDonateTest && <DonatePopup onClose={() => setShowDonateTest(false)} />}
     </section>
   );
 }
@@ -5613,7 +5616,7 @@ function downloadCanvas(canvas, sessionName) {
   a.click();
 }
 
-function WorkoutSummary({ summary, settings, onClose }) {
+function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
   const t = useLang();
   const { detail, sessionName } = summary;
   const { summary: s, exercises, session } = detail;
@@ -5621,6 +5624,14 @@ function WorkoutSummary({ summary, settings, onClose }) {
   const shareCardRef = React.useRef(null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [shareImageUrl, setShareImageUrl] = useState(null);
+  const [showDonate, setShowDonate] = useState(false);
+
+  useEffect(() => {
+    if (checkDonate && userId && shouldShowDonatePrompt(userId)) {
+      setShowDonate(true);
+      markDonatePromptShown(userId);
+    }
+  }, []);
 
   const generateShareImage = async () => {
     if (!shareCardRef.current) return null;
@@ -5750,7 +5761,45 @@ function WorkoutSummary({ summary, settings, onClose }) {
         </button>
         <button className="primary flex-1" onClick={onClose}>{t('summary_close')}</button>
       </div>
+      {showDonate && <DonatePopup onClose={() => setShowDonate(false)} />}
     </section>
+  );
+}
+
+const DONATE_PROMPT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function shouldShowDonatePrompt(userId) {
+  const key = `gymDonatePromptLast:${userId}`;
+  const last = Number(localStorage.getItem(key) || 0);
+  return Date.now() - last >= DONATE_PROMPT_INTERVAL_MS;
+}
+
+function markDonatePromptShown(userId) {
+  localStorage.setItem(`gymDonatePromptLast:${userId}`, String(Date.now()));
+}
+
+function DonatePopup({ onClose }) {
+  const t = useLang();
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl" style={{ background: 'linear-gradient(135deg,#1e3a5f,#064e3b)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-6 text-center">
+          <p className="text-lg font-black text-white">☕ {t('donate_title')}</p>
+          <p className="mt-2 text-sm text-emerald-200/80">{t('donate_desc')}</p>
+          <div className="mt-5 flex gap-3">
+            <a href="https://ko-fi.com/leonbell" target="_blank" rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15 py-2.5 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95">
+              ☕ Ko-fi
+            </a>
+            <a href="https://paypal.me/leonbell95" target="_blank" rel="noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15 py-2.5 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25 active:scale-95">
+              💳 PayPal
+            </a>
+          </div>
+          <button className="mt-4 text-sm font-bold text-emerald-200/70" onClick={onClose}>{t('close')}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -6244,7 +6293,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const exerciseGroups = workoutExerciseGroups(data);
 
   // Hiển thị summary card sau khi hoàn thành
-  if (summary) return <WorkoutSummary summary={summary} settings={settings} onClose={onClose} />;
+  if (summary) return <WorkoutSummary summary={summary} settings={settings} onClose={onClose} userId={userId} checkDonate />;
 
   return (
     <section className="space-y-4 text-black">
