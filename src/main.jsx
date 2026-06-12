@@ -5478,17 +5478,22 @@ function ScheduleRules({ rules, onDelete }) {
 function gradeFromDetail(detail, t) {
   const s = detail?.summary;
   const totalVolume = s?.totalVolume || 0;
+  const previousTotalVolume = s?.previousTotalVolume || 0;
   const volumeDisplay = totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume;
+  const volumeDiff = totalVolume - previousTotalVolume;
+  const hasPreviousVolume = previousTotalVolume > 0;
+  const volumeArrow = !hasPreviousVolume ? '' : volumeDiff > 0 ? '▲' : volumeDiff < 0 ? '▼' : '●';
+  const volumeColor = !hasPreviousVolume ? '#fff' : volumeDiff > 0 ? '#86efac' : volumeDiff < 0 ? '#f87171' : '#fff';
   const grade = s?.improvedCount >= Math.ceil((s?.exerciseCount || 1) * 0.6) ? 'great' : s?.improvedCount > 0 ? 'ok' : 'start';
   const gradeText = { great: t('summary_great'), ok: t('summary_ok'), start: t('summary_start') }[grade];
   const gradeGradient = { great: 'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)', ok: 'linear-gradient(135deg,#f05a28,#f59e0b)', start: 'linear-gradient(135deg,#0ea5e9,#14b8a6)' }[grade];
-  return { volumeDisplay, gradeText, gradeGradient };
+  return { volumeDisplay, volumeArrow, volumeColor, gradeText, gradeGradient };
 }
 
 const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessionName, settings }, ref) {
   const t = useLang();
   const { summary: s, exercises, session } = detail;
-  const { volumeDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
+  const { volumeDisplay, volumeArrow, volumeColor, gradeText, gradeGradient } = gradeFromDetail(detail, t);
   return (
     <div ref={ref} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
       <div style={{ padding: 28, color: '#fff' }}>
@@ -5510,10 +5515,10 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
             { label: 'Duration', value: `${session?.duration_minutes}`, unit: 'min' },
             { label: 'Exercises', value: s?.exerciseCount, unit: '' },
             { label: 'Sets', value: s?.totalSets, unit: '' },
-            { label: 'Volume', value: volumeDisplay, unit: 'kg' },
+            { label: 'Volume', value: `${volumeArrow ? `${volumeArrow} ` : ''}${volumeDisplay}`, unit: 'kg', color: volumeColor },
           ].map((stat) => (
             <div key={stat.label} style={{ flex: 1, background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 6px', textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1 }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
+              <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: stat.color || '#fff' }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
               <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{stat.label}</div>
             </div>
           ))}
@@ -5527,7 +5532,7 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
             const volDiff = volume - previousVolume;
             const hasPrevious = previousVolume > 0;
             const volArrow = !hasPrevious ? '' : volDiff > 0 ? '▲' : volDiff < 0 ? '▼' : '●';
-            const volColor = !hasPrevious ? 'rgba(255,255,255,0.85)' : volDiff > 0 ? '#86efac' : volDiff < 0 ? '#fca5a5' : 'rgba(255,255,255,0.85)';
+            const volColor = !hasPrevious ? 'rgba(255,255,255,0.85)' : volDiff > 0 ? '#86efac' : volDiff < 0 ? '#f87171' : 'rgba(255,255,255,0.85)';
             return (
               <div key={exercise.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 10px' }}>
                 {exercise.imageUrl

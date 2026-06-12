@@ -1886,6 +1886,7 @@ app.get('/api/sessions/:id/detail', (req, res) => {
 
   const totalSets = exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
   const totalVolume = exercises.reduce((sum, exercise) => sum + exercise.volume, 0);
+  const previousTotalVolume = exercises.reduce((sum, exercise) => sum + exercise.previousVolume, 0);
   const improvedCount = exercises.filter((exercise) => exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight).length;
   res.json({
     session: { ...session, duration_minutes: formatMinutes(session.duration_seconds) },
@@ -1893,6 +1894,7 @@ app.get('/api/sessions/:id/detail', (req, res) => {
     summary: {
       totalSets,
       totalVolume,
+      previousTotalVolume,
       improvedCount,
       exerciseCount: exercises.length,
       effectiveness: exercises.length ? Math.round((improvedCount / exercises.length) * 100) : 0
