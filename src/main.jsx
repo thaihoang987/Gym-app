@@ -5596,7 +5596,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualWeight(payload.manualWeightKg ?? '');
-      setManualUnit(defaultWeightUnit === 'lb' ? 'lb' : 'kg');
+      setManualUnit(payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg'));
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
       const current = payload.current || [];
@@ -5779,8 +5779,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
     setDefaultWeightKg(payload.defaultWeightKg ?? null);
     setWeightMode(payload.weightMode || 'KG');
-    setManualUnit(defaultWeightUnit === 'lb' ? 'lb' : 'kg');
-    setManualWeight(payload.manualWeightKg == null ? '' : displayWeight(payload.manualWeightKg, defaultWeightUnit));
+    const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
+    setManualUnit(unit);
+    setManualWeight(payload.manualWeightKg == null ? '' : displayWeight(payload.manualWeightKg, unit));
     const current = payload.current || [];
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
     const total = Math.max(target, doneSets.length || 1);
@@ -5935,6 +5936,15 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setManualWeight(value);
     const next = value === '' ? null : (manualUnit === 'lb' ? lbToKg(value) : Number(value));
     await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: next });
+  };
+  const updateManualUnit = async (unit) => {
+    setManualWeight((current) => {
+      if (current === '') return current;
+      const kg = manualUnit === 'lb' ? lbToKg(current) : Number(current);
+      return displayWeight(kg, unit);
+    });
+    setManualUnit(unit);
+    await saveWeightPreference({ manualUnit: unit });
   };
   const exitWorkout = async () => {
     const hasAnySet = data.exercises?.some((item) => {
@@ -6194,21 +6204,19 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 );
               })()}
             </div>
-            <div className="flex flex-col items-stretch gap-2">
-              <div className="flex flex-wrap justify-end gap-2">
-                <div className="weight-mode-controls">
-                  <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
-                  <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
-                  <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
-                </div>
-                <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <div className="weight-mode-controls">
+                <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
+                <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
+                <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
               </div>
               {weightMode === 'MANUAL' && (
                 <div className="weight-mode-controls manual-unit-controls">
-                  <button className={`unit-btn ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>Kg</button>
-                  <button className={`unit-btn ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>Lb</button>
+                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => updateManualUnit('kg')}>Kg</button>
+                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => updateManualUnit('lb')}>Lb</button>
                 </div>
               )}
+              <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
             </div>
           </div>
           <ExerciseInstructions exercise={exercise} settings={settings} />

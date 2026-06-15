@@ -1175,12 +1175,8 @@ button:disabled {
   @apply rounded-none border-0 border-r border-slate-200 last:border-r-0;
 }
 
-.manual-unit-controls {
-  @apply w-full grid grid-cols-2;
-}
-
-.manual-unit-controls .unit-btn {
-  @apply h-9;
+.weight-mode-controls .unit-btn-sm {
+  @apply h-12 w-10 px-1 text-xs;
 }
 
 .weight-equivalent {
