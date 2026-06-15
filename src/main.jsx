@@ -6278,8 +6278,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                         />
                         <div className="weight-equivalent">
                           {manualUnit === 'lb'
-                            ? `≈ ${Number(set.manualKg ?? set.weightKg ?? 0).toFixed(1)} kg`
-                            : `≈ ${Number(set.manualLb ?? kgToLb(set.weightKg || 0)).toFixed(1)} lb`}
+                            ? `≈ ${Number(set.weightKg || 0).toFixed(1)} kg`
+                            : `≈ ${Number(kgToLb(set.weightKg || 0).toFixed(1))} lb`}
                         </div>
                       </div>
                     ) : weightMode === 'LB' ? (
