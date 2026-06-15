@@ -510,6 +510,17 @@ function addToOfflineQueue(userId, entry) {
       return !['addGroupExercise', 'removeGroupExercise', 'reorderGroupExercises'].includes(item.type);
     });
   }
+  if (entry.type === 'manualSetUpdate') {
+    const key = `${entry.exerciseId}:${entry.setIndex}`;
+    const previous = q.filter((item) => item.type === 'manualSetUpdate' && `${item.exerciseId}:${item.setIndex}` === key);
+    q = q.filter((item) => !(item.type === 'manualSetUpdate' && `${item.exerciseId}:${item.setIndex}` === key));
+    entry = { ...entry, patch: Object.assign({}, ...previous.map((item) => item.patch || {}), entry.patch || {}) };
+  }
+  if (entry.type === 'exercisePreferenceUpdate') {
+    const previous = q.filter((item) => item.type === 'exercisePreferenceUpdate' && item.exerciseId === entry.exerciseId);
+    q = q.filter((item) => !(item.type === 'exercisePreferenceUpdate' && item.exerciseId === entry.exerciseId));
+    entry = { ...entry, patch: Object.assign({}, ...previous.map((item) => item.patch || {}), entry.patch || {}) };
+  }
   if (entry.type === 'reorderGroups') {
     q = q.filter((item) => item.type !== 'reorderGroups');
   }
@@ -574,6 +585,10 @@ async function flushOfflineQueue(userId) {
         if (!String(entry.ruleId).startsWith('offline_')) {
           await api(`/api/schedule-rules/${entry.ruleId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
         }
+      } else if (entry.type === 'manualSetUpdate') {
+        await api(`/api/exercises/${entry.exerciseId}/manual-set`, { method: 'PUT', offlineQueue: false, body: JSON.stringify({ userId, setIndex: entry.setIndex, ...(entry.patch || {}) }) });
+      } else if (entry.type === 'exercisePreferenceUpdate') {
+        await api(`/api/exercises/${entry.exerciseId}/preferences`, { method: 'PUT', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.patch || {}) }) });
       } else if (entry.type === 'settingsUpdate') {
         await api('/api/settings', { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.body || {}) }) });
       } else if (entry.type === 'resetWeekly') {
@@ -668,7 +683,9 @@ function pendingOfflineState(userId) {
   const completedSessionIds = new Set(queue.filter((entry) => entry.type === 'complete').map((entry) => Number(entry.sessionId)));
   const createdSessions = queue.filter((entry) => entry.type === 'createSession' && !deletedSessionIds.has(Number(entry.sessionId)));
   const logs = queue.filter((entry) => entry.type === 'log' && !deletedSessionIds.has(Number(entry.sessionId)));
-  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, updatedGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups, reorderedRoutines, assignedScheduleRules, deletedScheduleRuleIds };
+  const manualSetUpdates = queue.filter((entry) => entry.type === 'manualSetUpdate');
+  const preferenceUpdates = queue.filter((entry) => entry.type === 'exercisePreferenceUpdate');
+  return { queue, logs, createdSessions, deletedSessionIds, completedSessionIds, createdGroups, updatedGroups, deletedGroupIds, deletedExerciseIds, addGroupExercises, removeGroupExercises, reorderedGroupExercises, reorderedGroups, reorderedRoutines, assignedScheduleRules, deletedScheduleRuleIds, manualSetUpdates, preferenceUpdates };
 }
 
 function readApiCache(path) {
@@ -927,8 +944,8 @@ function applyOfflineQueueToCachedApi(path, data) {
   const userId = userIdFromApiPath(path);
   if (path.includes('/api/groups')) return applyOfflineGroupMutations(userId, Array.isArray(data) ? data : []);
   if (path.includes('/api/routines')) return applyOfflineScheduleMutations(userId, data || { routines: [], rules: [] });
-  const { logs: pendingLogs, createdSessions, deletedSessionIds, completedSessionIds } = pendingOfflineState(userId);
-  if (!pendingLogs.length && !createdSessions.length && !deletedSessionIds.size && !completedSessionIds.size) return data;
+  const { logs: pendingLogs, createdSessions, deletedSessionIds, completedSessionIds, manualSetUpdates, preferenceUpdates } = pendingOfflineState(userId);
+  if (!pendingLogs.length && !createdSessions.length && !deletedSessionIds.size && !completedSessionIds.size && !manualSetUpdates.length && !preferenceUpdates.length) return data;
 
   const sessionExerciseSetsMatch = path.match(/\/api\/sessions\/(\d+)\/exercises\/([^/?]+)\/sets/);
   if (sessionExerciseSetsMatch) {
@@ -951,8 +968,33 @@ function applyOfflineQueueToCachedApi(path, data) {
         completed_at: entry.queuedAt || new Date().toISOString(),
         offline: true
       }));
-    if (!queued.length) return baseData;
-    return { ...baseData, current: [...current, ...queued] };
+    let result = queued.length ? { ...baseData, current: [...current, ...queued] } : baseData;
+
+    const exercisePrefUpdates = preferenceUpdates.filter((entry) => String(entry.exerciseId) === String(exerciseId));
+    if (exercisePrefUpdates.length) {
+      const mergedPatch = Object.assign({}, ...exercisePrefUpdates.map((entry) => entry.patch || {}));
+      result = {
+        ...result,
+        weightMode: mergedPatch.weightMode ?? result.weightMode,
+        manualWeightKg: mergedPatch.manualWeightKg ?? result.manualWeightKg,
+        manualWeightLb: mergedPatch.manualWeightLb ?? result.manualWeightLb,
+        manualUnit: mergedPatch.manualUnit ?? result.manualUnit
+      };
+    }
+
+    const exerciseManualUpdates = manualSetUpdates.filter((entry) => String(entry.exerciseId) === String(exerciseId));
+    if (exerciseManualUpdates.length) {
+      const manualSetMap = new Map((result.manualSets || []).map((row) => [row.setIndex, { ...row }]));
+      for (const entry of exerciseManualUpdates) {
+        const existing = manualSetMap.get(entry.setIndex) || { setIndex: entry.setIndex, manualWeightKg: null, manualWeightLb: null };
+        if (entry.patch.manualWeightKg !== undefined) existing.manualWeightKg = entry.patch.manualWeightKg;
+        if (entry.patch.manualWeightLb !== undefined) existing.manualWeightLb = entry.patch.manualWeightLb;
+        manualSetMap.set(entry.setIndex, existing);
+      }
+      result = { ...result, manualSets: Array.from(manualSetMap.values()) };
+    }
+
+    return result;
   }
 
   const sessionMatch = path.match(/\/api\/sessions\/(\d+)(?:\?|$)/);
@@ -1791,6 +1833,26 @@ async function api(path, options = {}) {
         exercises: []
       });
       return { id: groupId, offline: true };
+    }
+    const manualSetMatch = path.match(/^\/api\/exercises\/([^/]+)\/manual-set/);
+    if (offlineQueue && method === 'PUT' && manualSetMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const exerciseId = decodeURIComponent(manualSetMatch[1]);
+      const { userId: bodyUserId, setIndex, ...patch } = body;
+      addToOfflineQueue(bodyUserId || userIdFromApiPath(path), { type: 'manualSetUpdate', exerciseId, setIndex, patch });
+      return { ok: true, offline: true, setIndex, ...patch };
+    }
+    const preferencesMatch = path.match(/^\/api\/exercises\/([^/]+)\/preferences/);
+    if (offlineQueue && method === 'PUT' && preferencesMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const exerciseId = decodeURIComponent(preferencesMatch[1]);
+      const { userId: bodyUserId, ...patch } = body;
+      addToOfflineQueue(bodyUserId || userIdFromApiPath(path), { type: 'exercisePreferenceUpdate', exerciseId, patch });
+      return { ok: true, offline: true };
     }
     if (offlineQueue && method === 'POST' && path.startsWith('/api/weekly/reset')) {
       if (!browserOffline && await checkServerAvailable(1000)) throw err;
@@ -6290,9 +6352,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                           step="0.1"
                           disabled={set.done}
                           style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-                          value={manualUnit === 'lb' ? (set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1))) : (set.manualKg ?? set.weightKg)}
+                          value={(() => {
+                            const current = manualUnit === 'lb' ? (set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1))) : (set.manualKg ?? set.weightKg);
+                            return current === 0 ? '' : current;
+                          })()}
                           onChange={(event) => {
-                            const value = Number(event.target.value || 0);
+                            const value = event.target.value === '' ? 0 : Number(event.target.value);
                             if (manualUnit === 'lb') {
                               updateSet(set.setIndex, { manualLb: value, weightKg: lbToKg(value) });
                             } else {
