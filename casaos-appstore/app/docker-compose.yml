@@ -1,0 +1,61 @@
+name: gym-app
+
+services:
+  gym-app:
+    image: ghcr.io/thaihoang987/gym-app:0.3.82
+    container_name: gym-app
+    restart: unless-stopped
+    network_mode: bridge
+    ports:
+      - target: 3001
+        published: "3001"
+        protocol: tcp
+    environment:
+      PUID: $PUID
+      PGID: $PGID
+      TZ: $TZ
+      PORT: "3001"
+      ADMIN_PASSWORD: admin123
+      NODE_ENV: production
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_US: Timezone used by the container.
+        - container: ADMIN_PASSWORD
+          description:
+            en_US: Password for the default admin account on first run. Change this before exposing the app, or change it inside the app after login. Only applies when the database is created for the first time.
+      ports:
+        - container: "3001"
+          description:
+            en_US: Web UI port.
+      volumes:
+        - container: /app/data
+          description:
+            en_US: Database, uploads, and logs storage. Back this up regularly.
+
+x-casaos:
+  architectures:
+    - amd64
+  main: gym-app
+  author: thaihoang987
+  category: Productivity
+  developer: thaihoang987
+  icon: "https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png"
+  index: /
+  port_map: "3001"
+  tagline:
+    en_US: Self-hosted family workout tracker
+  title:
+    en_US: Gym App
+  description:
+    en_US: Gym App is a self-hosted, local-first workout tracker for personal or family use. It includes an exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. The bundled exercise media is from a third-party dataset for personal, educational, and non-commercial use.
+  tips:
+    en_US: |
+      Default login: admin / admin123 (change `ADMIN_PASSWORD` before first run, or change the password inside the app after login).
+
+      Open the app at `http://<your-ip>:3001` after install.
