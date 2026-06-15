@@ -256,6 +256,18 @@ export function migrate() {
       logged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS exercise_set_manual (
+      user_id INTEGER NOT NULL,
+      exercise_id TEXT NOT NULL,
+      set_index INTEGER NOT NULL,
+      manual_weight_kg REAL,
+      manual_weight_lb REAL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, exercise_id, set_index),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+    );
   `);
 
   if (!hasColumn('users', 'username')) {

@@ -2013,6 +2013,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     ORDER BY wl.set_index
   `, [userId, exerciseId, sessionId, sessionId]);
   const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
+  const manualSetRows = all('SELECT set_index, manual_weight_kg, manual_weight_lb FROM exercise_set_manual WHERE user_id = ? AND exercise_id = ? ORDER BY set_index', [userId, exerciseId]);
+  const manualSets = manualSetRows.map((row) => ({ setIndex: row.set_index, manualWeightKg: row.manual_weight_kg ?? null, manualWeightLb: row.manual_weight_lb ?? null }));
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
   // All-time PR: max weight đã từng log cho bài này
   const prRow = one(`
@@ -2034,8 +2036,27 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     weightMode: preference?.weight_mode || 'KG',
     manualWeightKg: preference?.manual_weight_kg ?? null,
     manualWeightLb: preference?.manual_weight_lb ?? null,
-    manualUnit: preference?.manual_unit || 'kg'
+    manualUnit: preference?.manual_unit || 'kg',
+    manualSets
   });
+});
+
+app.put('/api/exercises/:id/manual-set', (req, res) => {
+  const userId = getUserId(req);
+  const setIndex = Math.max(1, Math.min(50, Number(req.body.setIndex || 1)));
+  const manualWeightKg = req.body.manualWeightKg === null || req.body.manualWeightKg === undefined || req.body.manualWeightKg === ''
+    ? null : Number(req.body.manualWeightKg);
+  const manualWeightLb = req.body.manualWeightLb === null || req.body.manualWeightLb === undefined || req.body.manualWeightLb === ''
+    ? null : Number(req.body.manualWeightLb);
+  db.prepare(`
+    INSERT INTO exercise_set_manual (user_id, exercise_id, set_index, manual_weight_kg, manual_weight_lb, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, exercise_id, set_index) DO UPDATE SET
+      manual_weight_kg = COALESCE(excluded.manual_weight_kg, exercise_set_manual.manual_weight_kg),
+      manual_weight_lb = COALESCE(excluded.manual_weight_lb, exercise_set_manual.manual_weight_lb),
+      updated_at = CURRENT_TIMESTAMP
+  `).run(userId, req.params.id, setIndex, manualWeightKg, manualWeightLb);
+  res.json({ ok: true, setIndex, manualWeightKg, manualWeightLb });
 });
 
 app.put('/api/exercises/:id/note', (req, res) => {

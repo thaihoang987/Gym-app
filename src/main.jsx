@@ -5598,11 +5598,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
       const current = payload.current || [];
+      const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
       const buildDraftSet = (setIndex) => {
         const previous = payload.previous?.[setIndex - 1];
         const lastCurrent = current[current.length - 1];
-        const preferredManualKg = payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null;
-        const preferredManualLb = payload.weightMode === 'MANUAL' && payload.manualWeightLb !== null ? Number(payload.manualWeightLb) : null;
+        const perSet = manualSetMap.get(setIndex);
+        const preferredManualKg = perSet?.manualWeightKg ?? (payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null);
+        const preferredManualLb = perSet?.manualWeightLb ?? (payload.weightMode === 'MANUAL' && payload.manualWeightLb !== null ? Number(payload.manualWeightLb) : null);
         const defaultReps = payload.defaultReps ?? 12;
         const defaultWeightKg = payload.defaultWeightKg ?? null;
         const overloadStepKg = defaultWeightUnit === 'lb' ? lbToKg(5) : 2.5;
@@ -5786,19 +5788,24 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
     setManualUnit(unit);
     const current = payload.current || [];
+    const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, done: true }));
     const total = Math.max(target, doneSets.length || 1);
     const lastDone = doneSets[doneSets.length - 1];
-    const draftManualKg = lastDone?.weightKg ?? (payload.manualWeightKg ?? payload.defaultWeightKg ?? 20);
-    const draftManualLb = payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
-    const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => ({
-      setIndex: doneSets.length + offset + 1,
-      weightKg: unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg,
-      manualKg: draftManualKg,
-      manualLb: draftManualLb,
-      reps: payload.defaultReps ?? settings?.default_reps ?? 12,
-      done: false
-    }));
+    const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => {
+      const setIndex = doneSets.length + offset + 1;
+      const perSet = manualSetMap.get(setIndex);
+      const draftManualKg = perSet?.manualWeightKg ?? lastDone?.weightKg ?? (payload.manualWeightKg ?? payload.defaultWeightKg ?? 20);
+      const draftManualLb = perSet?.manualWeightLb ?? payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
+      return {
+        setIndex,
+        weightKg: unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg,
+        manualKg: draftManualKg,
+        manualLb: draftManualLb,
+        reps: payload.defaultReps ?? settings?.default_reps ?? 12,
+        done: false
+      };
+    });
     setSets([...doneSets, ...drafts]);
     setData((currentData) => currentData ? {
       ...currentData,
@@ -5944,11 +5951,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     await saveWeightPreference({ weightMode: mode });
   };
-  const updateManualWeight = async (value) => {
+  const saveManualSet = async (setIndex, patch) => {
+    await api(`/api/exercises/${exercise.id}/manual-set`, { method: 'PUT', body: JSON.stringify({ userId, setIndex, ...patch }) });
+  };
+  const updateManualWeight = async (setIndex, value) => {
+    const num = value === '' ? null : Number(value);
     if (manualUnit === 'lb') {
-      await saveWeightPreference({ weightMode: 'MANUAL', manualWeightLb: value === '' ? null : Number(value) });
+      await Promise.all([
+        saveManualSet(setIndex, { manualWeightLb: num }),
+        saveWeightPreference({ weightMode: 'MANUAL', manualWeightLb: num })
+      ]);
     } else {
-      await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: value === '' ? null : Number(value) });
+      await Promise.all([
+        saveManualSet(setIndex, { manualWeightKg: num }),
+        saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: num })
+      ]);
     }
   };
   const updateManualUnit = async (unit) => {
@@ -6274,7 +6291,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                               updateSet(set.setIndex, { manualKg: value, weightKg: value });
                             }
                           }}
-                          onBlur={(event) => updateManualWeight(event.target.value)}
+                          onBlur={(event) => updateManualWeight(set.setIndex, event.target.value)}
                         />
                         <div className="weight-equivalent">
                           {manualUnit === 'lb'
