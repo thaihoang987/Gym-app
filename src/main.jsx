@@ -5468,6 +5468,14 @@ function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
 const DONATE_PROMPT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function shouldShowDonatePrompt(userId) {
+  const firstSeenKey = `gymFirstSeenAt:${userId}`;
+  let firstSeen = Number(localStorage.getItem(firstSeenKey) || 0);
+  if (!firstSeen) {
+    firstSeen = Date.now();
+    localStorage.setItem(firstSeenKey, String(firstSeen));
+    return false;
+  }
+  if (Date.now() - firstSeen < DONATE_PROMPT_INTERVAL_MS) return false;
   const key = `gymDonatePromptLast:${userId}`;
   const last = Number(localStorage.getItem(key) || 0);
   return Date.now() - last >= DONATE_PROMPT_INTERVAL_MS;
