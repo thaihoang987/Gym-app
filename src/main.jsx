@@ -4243,8 +4243,8 @@ function ExerciseLibrary({ userId, settings }) {
 
   const addToGroup = async (groupId, exerciseId) => {
     await api(`/api/groups/${groupId}/exercises`, { method: 'POST', body: JSON.stringify({ userId, exerciseId }) });
-    // groups từ gymStore tự cập nhật, không cần setGroups
-    const updated = readStore(Number(userId)).groups || [];
+    // GET lại để đồng bộ gymStore (POST không tự cập nhật groups trong store)
+    const updated = await api(`/api/groups?userId=${userId}`).catch(() => readStore(Number(userId)).groups || []);
     const exercise = updated.flatMap((g) => g.exercises).find((e) => e.id === exerciseId);
     if (exercise && 'caches' in window) {
       const cache = await caches.open(MEDIA_CACHE);
