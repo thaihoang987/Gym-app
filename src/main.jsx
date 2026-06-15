@@ -5530,6 +5530,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [targetSets, setTargetSets] = useState(3);
   const [weightMode, setWeightMode] = useState('KG');
   const [manualWeight, setManualWeight] = useState('');
+  const [manualUnit, setManualUnit] = useState('kg');
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
   const [timerMinimized, setTimerMinimized] = useState(false);
@@ -5556,7 +5557,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
   const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
   const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
-  const manualUnitLabel = defaultWeightUnit === 'lb' ? 'Lb' : 'Kg';
+  const manualUnitLabel = manualUnit === 'lb' ? 'Lb' : 'Kg';
 
   useEffect(() => {
     api(`/api/sessions/${workout.sessionId}?userId=${userId}`)
@@ -5595,6 +5596,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualWeight(payload.manualWeightKg ?? '');
+      setManualUnit(defaultWeightUnit === 'lb' ? 'lb' : 'kg');
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
       const current = payload.current || [];
@@ -5777,6 +5779,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
     setDefaultWeightKg(payload.defaultWeightKg ?? null);
     setWeightMode(payload.weightMode || 'KG');
+    setManualUnit(defaultWeightUnit === 'lb' ? 'lb' : 'kg');
     setManualWeight(payload.manualWeightKg == null ? '' : displayWeight(payload.manualWeightKg, defaultWeightUnit));
     const current = payload.current || [];
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
@@ -5923,14 +5926,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const changeWeightMode = async (mode) => {
     setWeightMode(mode);
     if (mode === 'MANUAL' && manualWeight !== '' && Number.isFinite(Number(manualWeight))) {
-      const manualKg = defaultWeightUnit === 'lb' ? lbToKg(manualWeight) : Number(manualWeight);
+      const manualKg = manualUnit === 'lb' ? lbToKg(manualWeight) : Number(manualWeight);
       setSets((old) => old.map((set) => set.done ? set : { ...set, weightKg: manualKg }));
     }
     await saveWeightPreference({ weightMode: mode });
   };
   const updateManualWeight = async (value) => {
     setManualWeight(value);
-    const next = value === '' ? null : (defaultWeightUnit === 'lb' ? lbToKg(value) : Number(value));
+    const next = value === '' ? null : (manualUnit === 'lb' ? lbToKg(value) : Number(value));
     await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: next });
   };
   const exitWorkout = async () => {
@@ -6194,6 +6197,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             <div className="flex flex-wrap justify-end gap-2">
               <div className="weight-mode-controls">
               <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
+                {weightMode === 'MANUAL' && (
+                  <>
+                    <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>kg</button>
+                    <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>lb</button>
+                  </>
+                )}
                 <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
                 <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
               </div>
@@ -6229,20 +6238,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                         step="0.1"
                         disabled={set.done}
                         style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-                        value={defaultWeightUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
+                        value={manualUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
                         onChange={(event) => {
                           const value = Number(event.target.value || 0);
-                          updateSet(set.setIndex, { weightKg: defaultWeightUnit === 'lb' ? lbToKg(value) : value });
+                          updateSet(set.setIndex, { weightKg: manualUnit === 'lb' ? lbToKg(value) : value });
                         }}
                         onBlur={(event) => updateManualWeight(event.target.value)}
                       />
                     ) : weightMode === 'LB' ? (
                       <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
                         <WheelPicker value={nearestOption(kgToLb(set.weightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+                        <div className="weight-equivalent">≈ {Number(set.weightKg || 0).toFixed(1)} kg</div>
                       </div>
                     ) : (
                       <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
                         <WheelPicker value={nearestOption(set.weightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+                        <div className="weight-equivalent">≈ {Number(kgToLb(set.weightKg || 0).toFixed(1))} lb</div>
                       </div>
                     )}
                     <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
