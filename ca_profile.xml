@@ -1,0 +1,10 @@
+<CommunityApplications>
+  <Profile>
+    Gym App is a self-hosted, local-first workout tracker for personal or family use. It includes a 1,300+ exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. For support, open an issue on the GitHub repository.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png</Icon>
+  <WebPage>https://github.com/thaihoang987/Gym-app</WebPage>
+  <Forum>https://github.com/thaihoang987/Gym-app/issues</Forum>
+  <DonateLink>https://ko-fi.com/leonbell</DonateLink>
+  <DonateText>Support development</DonateText>
+</CommunityApplications>
