@@ -6242,19 +6242,26 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                     </strong>
                     <span className="set-previous">{previous ? `${previous.weight_unit === 'lb' ? Number(kgToLb(previous.weight_kg).toFixed(1)) + 'lb' : previous.weight_kg + 'kg'} × ${previous.reps}` : '-'}</span>
                     {weightMode === 'MANUAL' ? (
-                      <input
-                        className="manual-weight-input"
-                        type="number"
-                        step="0.1"
-                        disabled={set.done}
-                        style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-                        value={manualUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
-                        onChange={(event) => {
-                          const value = Number(event.target.value || 0);
-                          updateSet(set.setIndex, { weightKg: manualUnit === 'lb' ? lbToKg(value) : value });
-                        }}
-                        onBlur={(event) => updateManualWeight(event.target.value)}
-                      />
+                      <div>
+                        <input
+                          className="manual-weight-input"
+                          type="number"
+                          step="0.1"
+                          disabled={set.done}
+                          style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+                          value={manualUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
+                          onChange={(event) => {
+                            const value = Number(event.target.value || 0);
+                            updateSet(set.setIndex, { weightKg: manualUnit === 'lb' ? lbToKg(value) : value });
+                          }}
+                          onBlur={(event) => updateManualWeight(event.target.value)}
+                        />
+                        <div className="weight-equivalent">
+                          {manualUnit === 'lb'
+                            ? `≈ ${Number(set.weightKg || 0).toFixed(1)} kg`
+                            : `≈ ${Number(kgToLb(set.weightKg || 0).toFixed(1))} lb`}
+                        </div>
+                      </div>
                     ) : weightMode === 'LB' ? (
                       <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
                         <WheelPicker value={nearestOption(kgToLb(set.weightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
