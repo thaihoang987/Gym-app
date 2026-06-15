@@ -2614,7 +2614,6 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   const routineData = { routines, rules };
   const [activeSession, setActiveSession] = useState(null);
   const [clock, setClock] = useState(new Date());
-  const [showDonateTest, setShowDonateTest] = useState(false);
 
   const loadAll = React.useCallback(async () => {
     await syncPendingBeforeCatalogLoad(userId);
@@ -2695,8 +2694,6 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
         userId={userId}
       />
       <HistoryList userId={userId} history={data?.recentHistory || []} onDeleted={removeHistoryItem} settings={settings} />
-      <button className="ghost-btn w-full" onClick={() => setShowDonateTest(true)}>☕ Test donate popup</button>
-      {showDonateTest && <DonatePopup onClose={() => setShowDonateTest(false)} />}
     </section>
   );
 }
