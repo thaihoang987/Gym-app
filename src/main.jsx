@@ -6194,7 +6194,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 );
               })()}
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-stretch gap-2">
               <div className="flex flex-wrap justify-end gap-2">
                 <div className="weight-mode-controls">
                   <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
@@ -6205,8 +6205,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               </div>
               {weightMode === 'MANUAL' && (
                 <div className="weight-mode-controls manual-unit-controls">
-                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>kg</button>
-                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>lb</button>
+                  <button className={`unit-btn ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>Kg</button>
+                  <button className={`unit-btn ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>Lb</button>
                 </div>
               )}
             </div>
