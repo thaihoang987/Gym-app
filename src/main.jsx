@@ -6268,6 +6268,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                     )}
                     <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
                       <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
+                      <div className="weight-equivalent">
+                        Vol: {Number((((weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))) * Number(set.reps || 0)).toFixed(1)))}
+                      </div>
                     </div>
                     <button
                       className={`set-check ${set.done ? 'done' : ''}`}
