@@ -6194,19 +6194,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 );
               })()}
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <div className="weight-mode-controls">
-              <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
-                {weightMode === 'MANUAL' && (
-                  <>
-                    <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>kg</button>
-                    <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>lb</button>
-                  </>
-                )}
-                <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
-                <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                <div className="weight-mode-controls">
+                  <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
+                  <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
+                  <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
+                </div>
+                <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
               </div>
-              <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
+              {weightMode === 'MANUAL' && (
+                <div className="weight-mode-controls manual-unit-controls">
+                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => setManualUnit('kg')}>kg</button>
+                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => setManualUnit('lb')}>lb</button>
+                </div>
+              )}
             </div>
           </div>
           <ExerciseInstructions exercise={exercise} settings={settings} />
