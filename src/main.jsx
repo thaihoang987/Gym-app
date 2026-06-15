@@ -6700,7 +6700,7 @@ function Analytics({ userId, settings }) {
     day: formatDate(row.logged_at, settings),
     time: formatTime(row.logged_at, settings),
     label: formatDateTime(row.logged_at, settings, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
-    bmi: settings.height_cm ? Number((Number(row.weight) / ((Number(settings.height_cm) / 100) ** 2)).toFixed(1)) : null
+    bmi: settings.height_cm ? Number((((row.unit === 'lb' ? lbToKg(row.weight) : Number(row.weight)) / ((Number(settings.height_cm) / 100) ** 2))).toFixed(1)) : null
   }));
   const chartDomain = chartRangeDomain(rangeKey);
   const rangedWeightRows = filterByRange(weightRows, 'logged_at', rangeKey);
