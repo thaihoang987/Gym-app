@@ -5529,7 +5529,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [note, setNote] = useState('');
   const [targetSets, setTargetSets] = useState(3);
   const [weightMode, setWeightMode] = useState('KG');
-  const [manualWeight, setManualWeight] = useState('');
   const [manualUnit, setManualUnit] = useState('kg');
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
@@ -5595,7 +5594,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setAllTimePR(Number(payload.allTimePR || 0));
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
-      setManualWeight(payload.manualWeightKg ?? '');
       setManualUnit(payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg'));
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
@@ -5603,22 +5601,28 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const buildDraftSet = (setIndex) => {
         const previous = payload.previous?.[setIndex - 1];
         const lastCurrent = current[current.length - 1];
-        const preferredManual = payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null;
+        const preferredManualKg = payload.weightMode === 'MANUAL' && payload.manualWeightKg !== null ? Number(payload.manualWeightKg) : null;
+        const preferredManualLb = payload.weightMode === 'MANUAL' && payload.manualWeightLb !== null ? Number(payload.manualWeightLb) : null;
         const defaultReps = payload.defaultReps ?? 12;
         const defaultWeightKg = payload.defaultWeightKg ?? null;
         const overloadStepKg = defaultWeightUnit === 'lb' ? lbToKg(5) : 2.5;
         const suggestedPreviousWeight = settings?.progressive_overload && previous?.reps >= defaultReps
           ? Number((Number(previous.weight_kg || 0) + overloadStepKg).toFixed(2))
           : previous?.weight_kg;
+        const baseWeightKg = preferredManualKg ?? defaultWeightKg ?? suggestedPreviousWeight ?? lastCurrent?.weight_kg ?? 20;
+        const manualKg = preferredManualKg ?? baseWeightKg;
+        const manualLb = preferredManualLb ?? Number(kgToLb(baseWeightKg).toFixed(1));
         return {
           setIndex,
-          weightKg: preferredManual ?? defaultWeightKg ?? suggestedPreviousWeight ?? lastCurrent?.weight_kg ?? 20,
+          weightKg: payload.weightMode === 'MANUAL' && payload.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg,
+          manualKg,
+          manualLb,
           reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
           done: false
         };
       };
       if (current.length) {
-        const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
+        const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, done: true }));
         const total = Math.max(target, doneSets.length);
         const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => buildDraftSet(doneSets.length + offset + 1));
         setSets([...doneSets, ...drafts]);
@@ -5764,7 +5768,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps }) });
     }
   };
-  const currentWeightUnit = () => weightMode === 'LB' || (weightMode === 'MANUAL' && defaultWeightUnit === 'lb') ? 'lb' : 'kg';
+  const currentWeightUnit = () => weightMode === 'LB' || (weightMode === 'MANUAL' && manualUnit === 'lb') ? 'lb' : 'kg';
   const saveTargetSets = async (count) => {
     const nextCount = Math.max(1, Math.min(20, count));
     setTargetSets(nextCount);
@@ -5781,14 +5785,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setWeightMode(payload.weightMode || 'KG');
     const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
     setManualUnit(unit);
-    setManualWeight(payload.manualWeightKg == null ? '' : displayWeight(payload.manualWeightKg, unit));
     const current = payload.current || [];
-    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, reps: row.reps, done: true }));
+    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, done: true }));
     const total = Math.max(target, doneSets.length || 1);
     const lastDone = doneSets[doneSets.length - 1];
+    const draftManualKg = lastDone?.weightKg ?? (payload.manualWeightKg ?? payload.defaultWeightKg ?? 20);
+    const draftManualLb = payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
     const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => ({
       setIndex: doneSets.length + offset + 1,
-      weightKg: lastDone?.weightKg ?? payload.defaultWeightKg ?? 20,
+      weightKg: unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg,
+      manualKg: draftManualKg,
+      manualLb: draftManualLb,
       reps: payload.defaultReps ?? settings?.default_reps ?? 12,
       done: false
     }));
@@ -5801,9 +5808,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     } : currentData);
   };
   const addSet = async () => {
-    const lastSet = sets[sets.length - 1] || { weightKg: 20, reps: 8 };
+    const lastSet = sets[sets.length - 1] || { weightKg: 20, manualKg: 20, manualLb: Number(kgToLb(20).toFixed(1)), reps: 8 };
     const nextCount = sets.length + 1;
-    setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, reps: lastSet.reps, done: false }]);
+    setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, manualKg: lastSet.manualKg ?? lastSet.weightKg, manualLb: lastSet.manualLb ?? Number(kgToLb(lastSet.weightKg).toFixed(1)), reps: lastSet.reps, done: false }]);
     await saveTargetSets(nextCount);
   };
   const removeDraftSet = async (setIndex) => {
@@ -5926,24 +5933,33 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const changeWeightMode = async (mode) => {
     setWeightMode(mode);
-    if (mode === 'MANUAL' && manualWeight !== '' && Number.isFinite(Number(manualWeight))) {
-      const manualKg = manualUnit === 'lb' ? lbToKg(manualWeight) : Number(manualWeight);
-      setSets((old) => old.map((set) => set.done ? set : { ...set, weightKg: manualKg }));
+    if (mode === 'MANUAL') {
+      setSets((old) => old.map((set) => {
+        if (set.done) return set;
+        const manualKg = set.manualKg ?? set.weightKg;
+        const manualLb = set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1));
+        const weightKg = manualUnit === 'lb' ? lbToKg(manualLb) : manualKg;
+        return { ...set, manualKg, manualLb, weightKg };
+      }));
     }
     await saveWeightPreference({ weightMode: mode });
   };
   const updateManualWeight = async (value) => {
-    setManualWeight(value);
-    const next = value === '' ? null : (manualUnit === 'lb' ? lbToKg(value) : Number(value));
-    await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: next });
+    if (manualUnit === 'lb') {
+      await saveWeightPreference({ weightMode: 'MANUAL', manualWeightLb: value === '' ? null : Number(value) });
+    } else {
+      await saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: value === '' ? null : Number(value) });
+    }
   };
   const updateManualUnit = async (unit) => {
-    setManualWeight((current) => {
-      if (current === '') return current;
-      const kg = manualUnit === 'lb' ? lbToKg(current) : Number(current);
-      return displayWeight(kg, unit);
-    });
     setManualUnit(unit);
+    setSets((old) => old.map((set) => {
+      if (set.done) return set;
+      const manualKg = set.manualKg ?? set.weightKg;
+      const manualLb = set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1));
+      const weightKg = unit === 'lb' ? lbToKg(manualLb) : manualKg;
+      return { ...set, weightKg };
+    }));
     await saveWeightPreference({ manualUnit: unit });
   };
   const exitWorkout = async () => {
@@ -6223,7 +6239,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
 
           <div className="set-table">
             <div className="set-table-header">
-              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{weightMode === 'LB' ? 'Lb' : 'Kg'}</span><span>{t('analytics_reps')}</span><span /><span />
+              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg'}</span><span>{t('analytics_reps')}</span><span /><span />
             </div>
             <div className="space-y-2">
               {sets.map((set) => {
@@ -6249,17 +6265,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                           step="0.1"
                           disabled={set.done}
                           style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-                          value={manualUnit === 'lb' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg ?? manualWeight}
+                          value={manualUnit === 'lb' ? (set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1))) : (set.manualKg ?? set.weightKg)}
                           onChange={(event) => {
                             const value = Number(event.target.value || 0);
-                            updateSet(set.setIndex, { weightKg: manualUnit === 'lb' ? lbToKg(value) : value });
+                            if (manualUnit === 'lb') {
+                              updateSet(set.setIndex, { manualLb: value, weightKg: lbToKg(value) });
+                            } else {
+                              updateSet(set.setIndex, { manualKg: value, weightKg: value });
+                            }
                           }}
                           onBlur={(event) => updateManualWeight(event.target.value)}
                         />
                         <div className="weight-equivalent">
                           {manualUnit === 'lb'
-                            ? `≈ ${Number(set.weightKg || 0).toFixed(1)} kg`
-                            : `≈ ${Number(kgToLb(set.weightKg || 0).toFixed(1))} lb`}
+                            ? `≈ ${Number(set.manualKg ?? set.weightKg ?? 0).toFixed(1)} kg`
+                            : `≈ ${Number(set.manualLb ?? kgToLb(set.weightKg || 0)).toFixed(1)} lb`}
                         </div>
                       </div>
                     ) : weightMode === 'LB' ? (

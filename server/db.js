@@ -308,6 +308,9 @@ export function migrate() {
   if (!hasColumn('exercise_notes', 'manual_unit')) {
     db.exec("ALTER TABLE exercise_notes ADD COLUMN manual_unit TEXT NOT NULL DEFAULT 'kg'");
   }
+  if (!hasColumn('exercise_notes', 'manual_weight_lb')) {
+    db.exec('ALTER TABLE exercise_notes ADD COLUMN manual_weight_lb REAL');
+  }
   if (!hasColumn('exercise_notes', 'default_reps')) {
     db.exec('ALTER TABLE exercise_notes ADD COLUMN default_reps INTEGER');
   }

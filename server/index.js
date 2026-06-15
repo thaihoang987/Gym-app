@@ -2012,7 +2012,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       )
     ORDER BY wl.set_index
   `, [userId, exerciseId, sessionId, sessionId]);
-  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
+  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
   // All-time PR: max weight đã từng log cho bài này
   const prRow = one(`
@@ -2033,6 +2033,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     defaultWeightKg: preference?.default_weight_kg ?? null,
     weightMode: preference?.weight_mode || 'KG',
     manualWeightKg: preference?.manual_weight_kg ?? null,
+    manualWeightLb: preference?.manual_weight_lb ?? null,
     manualUnit: preference?.manual_unit || 'kg'
   });
 });
@@ -2057,13 +2058,16 @@ app.put('/api/exercises/:id/note', (req, res) => {
 
 app.put('/api/exercises/:id/preferences', (req, res) => {
   const userId = getUserId(req);
-  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
+  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
   const targetSets = req.body.targetSets === undefined ? Number(previous.target_sets || 3) : Math.max(1, Math.min(20, Number(req.body.targetSets || 3)));
   const requestedMode = String(req.body.weightMode || previous.weight_mode || 'KG').toUpperCase();
   const weightMode = ['KG', 'LB', 'MANUAL'].includes(requestedMode) ? requestedMode : 'KG';
   const manualWeightKg = req.body.manualWeightKg === undefined
     ? previous.manual_weight_kg ?? null
     : (req.body.manualWeightKg === null || req.body.manualWeightKg === '' ? null : Number(req.body.manualWeightKg));
+  const manualWeightLb = req.body.manualWeightLb === undefined
+    ? previous.manual_weight_lb ?? null
+    : (req.body.manualWeightLb === null || req.body.manualWeightLb === '' ? null : Number(req.body.manualWeightLb));
   const requestedUnit = String(req.body.manualUnit || previous.manual_unit || 'kg').toLowerCase();
   const manualUnit = ['kg', 'lb'].includes(requestedUnit) ? requestedUnit : 'kg';
   const defaultReps = req.body.defaultReps === undefined
@@ -2073,18 +2077,19 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
     ? (previous.default_weight_kg ?? null)
     : (req.body.defaultWeightKg === null || req.body.defaultWeightKg === '' ? null : Number(req.body.defaultWeightKg));
   db.prepare(`
-    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_unit, default_reps, default_weight_kg, updated_at)
-    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, updated_at)
+    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id, exercise_id) DO UPDATE SET
       target_sets = excluded.target_sets,
       weight_mode = excluded.weight_mode,
       manual_weight_kg = excluded.manual_weight_kg,
+      manual_weight_lb = excluded.manual_weight_lb,
       manual_unit = excluded.manual_unit,
       default_reps = excluded.default_reps,
       default_weight_kg = excluded.default_weight_kg,
       updated_at = CURRENT_TIMESTAMP
-  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualUnit, defaultReps, defaultWeightKg);
-  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualUnit, defaultReps, defaultWeightKg });
+  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg);
+  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg });
 });
 
 app.get('/api/exercises/:id/last-log', (req, res) => {
