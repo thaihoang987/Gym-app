@@ -2513,7 +2513,7 @@ function App() {
 }
 
 function Login({ onLogin }) {
-  const savedLocale = (() => { try { const u = JSON.parse(localStorage.getItem('familyGymUser') || 'null'); return u?.locale || fallbackDisplay.locale; } catch { return fallbackDisplay.locale; } })();
+  const savedLocale = localStorage.getItem('familyGymLocale') || (() => { try { const u = JSON.parse(localStorage.getItem('familyGymUser') || sessionStorage.getItem('familyGymUser') || 'null'); return u?.locale || fallbackDisplay.locale; } catch { return fallbackDisplay.locale; } })();
   const t = createT(savedLocale);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -7162,6 +7162,7 @@ function SettingsPage({ userId, boot, onChanged }) {
       });
       const userStorage = localStorage.getItem('familyGymUser') ? localStorage : sessionStorage;
       userStorage.setItem('familyGymUser', JSON.stringify({ ...updated, locale }));
+      localStorage.setItem('familyGymLocale', locale);
       location.reload();
     } catch (error) {
       setSettingsError(error.message || 'Không lưu được cài đặt');
