@@ -2555,7 +2555,7 @@ function Login({ onLogin }) {
       if (!networkLikeError) {
         clearOfflineAuth(username);
       }
-      setError(err.message);
+      setError(err.status === 401 ? t('login_wrong_credentials') : err.message);
     }
   };
 
