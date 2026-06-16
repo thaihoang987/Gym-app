@@ -7160,7 +7160,8 @@ function SettingsPage({ userId, boot, onChanged }) {
           notifyProgressPhotoFrequency
         })
       });
-      localStorage.setItem('familyGymUser', JSON.stringify(updated));
+      const userStorage = localStorage.getItem('familyGymUser') ? localStorage : sessionStorage;
+      userStorage.setItem('familyGymUser', JSON.stringify({ ...updated, locale }));
       location.reload();
     } catch (error) {
       setSettingsError(error.message || 'Không lưu được cài đặt');
