@@ -2353,6 +2353,7 @@ function App() {
         const nextUser = { ...user, ...data.activeUser };
         const userStorage = localStorage.getItem('familyGymUser') ? localStorage : sessionStorage;
         userStorage.setItem('familyGymUser', JSON.stringify(nextUser));
+        if (data.settings?.locale) localStorage.setItem('familyGymLocale', data.settings.locale);
         if (JSON.stringify(nextUser) !== JSON.stringify(user)) setUser(nextUser);
         localStorage.setItem(BOOT_CACHE_KEY(user.id), JSON.stringify(data));
       })
