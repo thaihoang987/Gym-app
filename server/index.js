@@ -2468,8 +2468,15 @@ app.get('/api/export/excel', async (req, res) => {
   res.send(buf);
 });
 
-app.use(express.static(path.join(rootDir, 'dist')));
+app.use(express.static(path.join(rootDir, 'dist'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 app.get(/.*/, (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(rootDir, 'dist', 'index.html'));
 });
 
