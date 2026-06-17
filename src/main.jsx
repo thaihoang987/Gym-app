@@ -1358,7 +1358,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.5'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.6'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5679,13 +5679,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [swipeDx, setSwipeDx] = useState(0);
   const [slideDir, setSlideDir] = useState(null); // 'out-left' | 'out-right' | 'in-left' | 'in-right' | null
   const swipeStartX = React.useRef(0);
+  const swipeDisabledForTouch = React.useRef(false);
   const swipeContainerRef = React.useRef(null);
+  const isSwipeControlTarget = (target) => Boolean(target?.closest?.('button, input, select, textarea, a, [data-no-swipe], .weight-mode-controls, .wheel-picker, .wheel-column, .set-row'));
 
   // Gắn touchmove với passive:false để preventDefault hoạt động
   useEffect(() => {
     const el = swipeContainerRef.current;
     if (!el) return;
     const handleMove = (e) => {
+      if (swipeDisabledForTouch.current || isSwipeControlTarget(e.target)) return;
       const dx = e.touches[0].clientX - swipeStartX.current;
       if (Math.abs(dx) > 10) e.preventDefault();
     };
@@ -6394,14 +6397,24 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               slideDir === 'in-right' ? 'slide-in-from-right' :
               slideDir === 'in-left' ? 'slide-in-from-left' : ''
             }`}
-            onTouchStart={(e) => { setSwipeDx(0); swipeStartX.current = e.touches[0].clientX; }}
+            onTouchStart={(e) => {
+              setSwipeDx(0);
+              swipeStartX.current = e.touches[0].clientX;
+              swipeDisabledForTouch.current = isSwipeControlTarget(e.target);
+            }}
             onTouchMove={(e) => {
+              if (swipeDisabledForTouch.current || isSwipeControlTarget(e.target)) return;
               const dx = e.touches[0].clientX - swipeStartX.current;
               if (!canPrev && dx > 0) return;
               if (!canNext && dx < 0) return;
               setSwipeDx(dx);
             }}
             onTouchEnd={() => {
+              if (swipeDisabledForTouch.current) {
+                swipeDisabledForTouch.current = false;
+                setSwipeDx(0);
+                return;
+              }
               const dx = swipeDx;
               setSwipeDx(0);
               if (dx < -THRESHOLD && canNext) openExercise(index + 1);
