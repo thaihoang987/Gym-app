@@ -1358,7 +1358,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.7'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.8'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6509,8 +6509,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 <div className={`manual-mode-card ${weightMode === 'MANUAL' ? 'active' : ''}`}>
                   <button type="button" className="unit-btn manual-mode-main" onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')}</button>
                   <div className="manual-unit-inline">
-                    <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
-                    <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lb</button>
+                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
+                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lb</button>
                   </div>
                 </div>
                 <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>lb</button>
