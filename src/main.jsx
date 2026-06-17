@@ -1358,7 +1358,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.3'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.4'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6467,15 +6467,27 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               })()}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <div className="weight-mode-controls">
-                <button className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
-                <button className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
-                <button className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
+              <div
+                className="weight-mode-controls"
+                onPointerDown={(event) => event.stopPropagation()}
+                onTouchStart={(event) => event.stopPropagation()}
+                onTouchMove={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button type="button" className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
+                <button type="button" className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
+                <button type="button" className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
               </div>
               {weightMode === 'MANUAL' && (
-                <div className="weight-mode-controls manual-unit-controls">
-                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => updateManualUnit('kg')}>Kg</button>
-                  <button className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => updateManualUnit('lb')}>Lb</button>
+                <div
+                  className="weight-mode-controls manual-unit-controls"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onTouchStart={(event) => event.stopPropagation()}
+                  onTouchMove={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => updateManualUnit('kg')}>Kg</button>
+                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => updateManualUnit('lb')}>Lb</button>
                 </div>
               )}
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
