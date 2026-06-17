@@ -1204,12 +1204,44 @@ button:disabled {
   @apply flex overflow-hidden rounded-md border border-slate-200 bg-white;
 }
 
+.weight-mode-controls-split {
+  @apply flex-wrap gap-2 overflow-visible border-0 bg-transparent;
+}
+
 .weight-mode-controls .unit-btn {
   @apply rounded-none border-0 border-r border-slate-200 last:border-r-0;
 }
 
 .weight-mode-controls .unit-btn-sm {
   @apply h-12 w-10 px-1 text-xs;
+}
+
+.manual-mode-card {
+  @apply flex overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm;
+}
+
+.manual-mode-card.active {
+  @apply border-[#f05a28] ring-2 ring-orange-100;
+}
+
+.manual-mode-main {
+  @apply min-w-[86px] rounded-none border-0 border-r border-slate-200 px-3;
+}
+
+.manual-mode-card.active .manual-mode-main {
+  @apply bg-[#f05a28] text-white;
+}
+
+.manual-unit-inline {
+  @apply flex;
+}
+
+.manual-unit-inline .unit-btn {
+  @apply rounded-none border-0 border-r border-slate-200 last:border-r-0;
+}
+
+.weight-mode-standalone {
+  @apply rounded-md border border-slate-200 bg-white;
 }
 
 .weight-equivalent {
