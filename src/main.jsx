@@ -1358,7 +1358,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.2'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.3'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5908,7 +5908,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (patch.reps !== undefined) preferencePatch.defaultReps = patch.reps;
     if (patch.weightKg !== undefined) preferencePatch.defaultWeightKg = patch.weightKg;
     if (Object.keys(preferencePatch).length) {
-      await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, ...preferencePatch }) });
+      await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema, ...preferencePatch }) });
     }
     if (updatedSet?.done && updatedSet.id) {
       await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps, metrics: updatedSet.metrics || {} }) });
@@ -5987,13 +5987,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const changeLogTemplate = async (template) => {
     const nextTemplate = normalizeTemplate(template);
     setLogTemplate(nextTemplate);
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate: nextTemplate, metricSchema }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate: nextTemplate, metricSchema }) });
   };
   const addMetricToExercise = async (metricKey) => {
     if (!metricKey) return;
     const nextSchema = [...new Set([...metricSchema, metricKey])];
     setMetricSchema(nextSchema);
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate, metricSchema: nextSchema }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema }) });
   };
   const removeMetricFromExercise = async (metricKey) => {
     const nextSchema = metricSchema.filter((key) => key !== metricKey);
@@ -6003,7 +6003,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       delete nextMetrics[metricKey];
       return { ...set, metrics: nextMetrics };
     }));
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate, metricSchema: nextSchema }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema }) });
   };
   const completeSet = async (set, options = {}) => {
     // Untick: chỉ cho phép untick set done cuối cùng (ngược thứ tự)
@@ -6112,7 +6112,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
   };
   const saveWeightPreference = async (patch) => {
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, ...patch }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema, ...patch }) });
   };
   const changeWeightMode = async (mode) => {
     const nextTemplate = templateHasWeight(logTemplate) ? logTemplate : 'custom';
@@ -6157,7 +6157,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const weightKg = unit === 'lb' ? lbToKg(manualLb) : manualKg;
       return { ...set, weightKg };
     }));
-    await saveWeightPreference({ manualUnit: unit });
+    await saveWeightPreference({ manualUnit: unit, weightMode, logTemplate, metricSchema });
   };
   const exitWorkout = async () => {
     const hasAnySet = data.exercises?.some((item) => {
@@ -6217,7 +6217,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const exerciseGroups = workoutExerciseGroups(data);
   const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
-  const showWeightColumn = templateHasWeight(logTemplate);
+  const showWeightColumn = templateHasWeight(logTemplate) || ['KG', 'LB', 'MANUAL'].includes(weightMode);
   const showRepsColumn = templateHasReps(logTemplate);
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
   const renderMetricControl = (set, key) => {
