@@ -1104,6 +1104,8 @@ const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
+const templateHasWeight = (template) => ['strength', 'carry', 'timed', 'custom'].includes(normalizeTemplate(template));
+const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
 const formatDuration = (seconds) => {
   const total = Number(seconds || 0);
   if (!total) return '';
@@ -6113,7 +6115,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, ...patch }) });
   };
   const changeWeightMode = async (mode) => {
+    const nextTemplate = templateHasWeight(logTemplate) ? logTemplate : 'custom';
     setWeightMode(mode);
+    if (nextTemplate !== logTemplate) setLogTemplate(nextTemplate);
     if (mode === 'MANUAL') {
       setSets((old) => old.map((set) => {
         if (set.done) return set;
@@ -6123,22 +6127,24 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         return { ...set, manualKg, manualLb, weightKg };
       }));
     }
-    await saveWeightPreference({ weightMode: mode });
+    await saveWeightPreference({ weightMode: mode, logTemplate: nextTemplate, metricSchema });
   };
   const saveManualSet = async (setIndex, patch) => {
     await api(`/api/exercises/${exercise.id}/manual-set`, { method: 'PUT', body: JSON.stringify({ userId, setIndex, ...patch }) });
   };
   const updateManualWeight = async (setIndex, value) => {
     const num = value === '' ? null : Number(value);
+    const nextTemplate = templateHasWeight(logTemplate) ? logTemplate : 'custom';
+    if (nextTemplate !== logTemplate) setLogTemplate(nextTemplate);
     if (manualUnit === 'lb') {
       await Promise.all([
         saveManualSet(setIndex, { manualWeightLb: num }),
-        saveWeightPreference({ weightMode: 'MANUAL', manualWeightLb: num })
+        saveWeightPreference({ weightMode: 'MANUAL', manualWeightLb: num, logTemplate: nextTemplate, metricSchema })
       ]);
     } else {
       await Promise.all([
         saveManualSet(setIndex, { manualWeightKg: num }),
-        saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: num })
+        saveWeightPreference({ weightMode: 'MANUAL', manualWeightKg: num, logTemplate: nextTemplate, metricSchema })
       ]);
     }
   };
@@ -6211,8 +6217,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const exerciseGroups = workoutExerciseGroups(data);
   const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
-  const showWeightColumn = ['strength', 'carry', 'timed', 'custom'].includes(logTemplate);
-  const showRepsColumn = ['strength', 'bodyweight', 'custom'].includes(logTemplate);
+  const showWeightColumn = templateHasWeight(logTemplate);
+  const showRepsColumn = templateHasReps(logTemplate);
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
   const renderMetricControl = (set, key) => {
     const def = metricDef(key);
