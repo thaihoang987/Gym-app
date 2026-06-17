@@ -132,9 +132,10 @@ For a full Unraid/server backup, also keep the appdata folder:
 
 ## Docker image registry
 
-This repo includes a GitHub Actions workflow that builds and pushes a Docker image to GitHub Container Registry on every push to `main`:
+This repo includes a GitHub Actions workflow that builds and pushes Docker images to GitHub Container Registry:
 
-- Image: `ghcr.io/thaihoang987/gym-app:latest`
+- Stable image: `ghcr.io/thaihoang987/gym-app:latest` from `main`
+- Beta image: `ghcr.io/thaihoang987/gym-app:beta` from `beta/log-template-metrics`
 - SHA tags: `ghcr.io/thaihoang987/gym-app:sha-<commit>`
 - Release tags: `ghcr.io/thaihoang987/gym-app:0.3.47` when pushing Git tags like `v0.3.47`
 - Workflow: `.github/workflows/docker.yml`
@@ -143,6 +144,12 @@ If the package is public, Unraid users can run the image directly with:
 
 ```text
 ghcr.io/thaihoang987/gym-app:latest
+```
+
+For beta testing on Unraid, use:
+
+```text
+ghcr.io/thaihoang987/gym-app:beta
 ```
 
 If the package is private, open the package page on GitHub and set visibility to public, or log in to GHCR from Unraid before pulling.
