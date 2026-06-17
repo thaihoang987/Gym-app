@@ -5681,6 +5681,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const swipeStartX = React.useRef(0);
   const swipeDisabledForTouch = React.useRef(false);
   const swipeContainerRef = React.useRef(null);
+  const weightModePointerAt = React.useRef(0);
+  const manualUnitPointerAt = React.useRef(0);
   const isSwipeControlTarget = (target) => Boolean(target?.closest?.('button, input, select, textarea, a, [data-no-swipe], .weight-mode-controls, .wheel-picker, .wheel-column, .set-row'));
 
   // Gắn touchmove với passive:false để preventDefault hoạt động
@@ -6117,7 +6119,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const saveWeightPreference = async (patch) => {
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema, ...patch }) });
   };
-  const changeWeightMode = async (mode) => {
+  const changeWeightMode = (mode) => {
     const nextTemplate = templateHasWeight(logTemplate) ? logTemplate : 'custom';
     setWeightMode(mode);
     if (nextTemplate !== logTemplate) setLogTemplate(nextTemplate);
@@ -6130,7 +6132,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         return { ...set, manualKg, manualLb, weightKg };
       }));
     }
-    await saveWeightPreference({ weightMode: mode, logTemplate: nextTemplate, metricSchema });
+    void saveWeightPreference({ weightMode: mode, logTemplate: nextTemplate, metricSchema }).catch((error) => console.warn('Save weight mode failed', error));
   };
   const saveManualSet = async (setIndex, patch) => {
     await api(`/api/exercises/${exercise.id}/manual-set`, { method: 'PUT', body: JSON.stringify({ userId, setIndex, ...patch }) });
@@ -6151,7 +6153,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       ]);
     }
   };
-  const updateManualUnit = async (unit) => {
+  const updateManualUnit = (unit) => {
     setManualUnit(unit);
     setSets((old) => old.map((set) => {
       if (set.done) return set;
@@ -6160,7 +6162,29 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const weightKg = unit === 'lb' ? lbToKg(manualLb) : manualKg;
       return { ...set, weightKg };
     }));
-    await saveWeightPreference({ manualUnit: unit, weightMode: 'MANUAL', logTemplate, metricSchema });
+    void saveWeightPreference({ manualUnit: unit, weightMode: 'MANUAL', logTemplate, metricSchema }).catch((error) => console.warn('Save manual unit failed', error));
+  };
+  const tapWeightMode = (event, mode) => {
+    event.preventDefault();
+    event.stopPropagation();
+    weightModePointerAt.current = Date.now();
+    changeWeightMode(mode);
+  };
+  const clickWeightMode = (event, mode) => {
+    event.stopPropagation();
+    if (Date.now() - weightModePointerAt.current < 500) return;
+    changeWeightMode(mode);
+  };
+  const tapManualUnit = (event, unit) => {
+    event.preventDefault();
+    event.stopPropagation();
+    manualUnitPointerAt.current = Date.now();
+    updateManualUnit(unit);
+  };
+  const clickManualUnit = (event, unit) => {
+    event.stopPropagation();
+    if (Date.now() - manualUnitPointerAt.current < 500) return;
+    updateManualUnit(unit);
   };
   const exitWorkout = async () => {
     const hasAnySet = data.exercises?.some((item) => {
@@ -6481,14 +6505,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <div className="weight-mode-controls">
-                <button type="button" className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onClick={() => changeWeightMode('MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
-                <button type="button" className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onClick={() => changeWeightMode('LB')}>lb</button>
-                <button type="button" className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onClick={() => changeWeightMode('KG')}>kg</button>
+                <button type="button" className={`unit-btn ${weightMode === 'MANUAL' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')} ({manualUnitLabel})</button>
+                <button type="button" className={`unit-btn ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>lb</button>
+                <button type="button" className={`unit-btn ${weightMode === 'KG' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'KG')} onClick={(event) => clickWeightMode(event, 'KG')}>kg</button>
               </div>
               {weightMode === 'MANUAL' && (
                 <div className="weight-mode-controls manual-unit-controls">
-                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onClick={() => updateManualUnit('kg')}>Kg</button>
-                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onClick={() => updateManualUnit('lb')}>Lb</button>
+                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
+                  <button type="button" className={`unit-btn unit-btn-sm ${manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lb</button>
                 </div>
               )}
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
