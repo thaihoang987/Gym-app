@@ -227,6 +227,7 @@ export function migrate() {
       weight_kg REAL NOT NULL DEFAULT 0,
       weight_unit TEXT NOT NULL DEFAULT 'kg',
       reps INTEGER NOT NULL DEFAULT 0,
+      metrics_json TEXT NOT NULL DEFAULT '{}',
       completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -242,6 +243,8 @@ export function migrate() {
       manual_weight_kg REAL,
       default_reps INTEGER,
       default_weight_kg REAL,
+      log_template TEXT NOT NULL DEFAULT 'strength',
+      metric_schema_json TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, exercise_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -311,6 +314,9 @@ export function migrate() {
   if (!hasColumn('workout_logs', 'weight_unit')) {
     db.exec("ALTER TABLE workout_logs ADD COLUMN weight_unit TEXT NOT NULL DEFAULT 'kg'");
   }
+  if (!hasColumn('workout_logs', 'metrics_json')) {
+    db.exec("ALTER TABLE workout_logs ADD COLUMN metrics_json TEXT NOT NULL DEFAULT '{}'");
+  }
   if (!hasColumn('exercise_notes', 'weight_mode')) {
     db.exec("ALTER TABLE exercise_notes ADD COLUMN weight_mode TEXT NOT NULL DEFAULT 'KG'");
   }
@@ -328,6 +334,12 @@ export function migrate() {
   }
   if (!hasColumn('exercise_notes', 'default_weight_kg')) {
     db.exec('ALTER TABLE exercise_notes ADD COLUMN default_weight_kg REAL');
+  }
+  if (!hasColumn('exercise_notes', 'log_template')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN log_template TEXT NOT NULL DEFAULT 'strength'");
+  }
+  if (!hasColumn('exercise_notes', 'metric_schema_json')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN metric_schema_json TEXT NOT NULL DEFAULT '[]'");
   }
   const exerciseColumns = [
     ['custom_user_id', 'INTEGER'],

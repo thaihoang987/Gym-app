@@ -107,6 +107,53 @@ function requireBody(fields, body) {
   }
 }
 
+const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom']);
+const METRIC_KEYS = new Set(['duration_seconds', 'distance', 'distance_unit', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'side', 'rpe', 'rounds', 'custom']);
+
+function safeJsonParse(value, fallback) {
+  try {
+    if (value === null || value === undefined || value === '') return fallback;
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeLogTemplate(value, fallback = 'strength') {
+  const template = String(value || fallback || 'strength').toLowerCase();
+  return LOG_TEMPLATES.has(template) ? template : 'strength';
+}
+
+function normalizeMetricSchema(value) {
+  const source = Array.isArray(value) ? value : safeJsonParse(value, []);
+  return Array.isArray(source)
+    ? [...new Set(source.map((item) => String(item || '').trim()).filter((item) => item && (METRIC_KEYS.has(item) || item.startsWith('custom:'))))].slice(0, 12)
+    : [];
+}
+
+function normalizeMetrics(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : safeJsonParse(value, {});
+  const metrics = {};
+  for (const [key, raw] of Object.entries(source || {})) {
+    const cleanKey = String(key || '').trim();
+    if (!cleanKey || (!METRIC_KEYS.has(cleanKey) && !cleanKey.startsWith('custom:'))) continue;
+    if (raw === '' || raw === null || raw === undefined) continue;
+    if (['distance_unit', 'side', 'custom'].includes(cleanKey) || cleanKey.startsWith('custom:')) {
+      metrics[cleanKey] = String(raw).slice(0, 80);
+    } else {
+      const numeric = Number(raw);
+      if (Number.isFinite(numeric)) metrics[cleanKey] = numeric;
+    }
+  }
+  return metrics;
+}
+
+function logRow(row) {
+  if (!row) return row;
+  const metrics = normalizeMetrics(row.metrics_json || row.metrics || {});
+  return { ...row, metrics, metrics_json: JSON.stringify(metrics) };
+}
+
 function saveUploadedDataUrl(dataUrl, prefix) {
   if (!dataUrl) return null;
   if (typeof dataUrl === 'string' && dataUrl.startsWith('/uploads/')) return dataUrl;
@@ -495,10 +542,10 @@ function importExcelRows(userId, rows) {
         db.prepare('INSERT OR REPLACE INTO workout_sessions (id, user_id, routine_id, group_id, schedule_mode, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, userId, data.routine_id, data.group_id, data.schedule_mode, data.status, data.started_at, data.completed_at);
         bump(type);
       } else if (type === 'Set tập') {
-        db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, data.session_id, userId, data.exercise_id, data.set_index, data.weight_kg, data.weight_unit || 'kg', data.reps, data.completed_at);
+        db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, data.session_id, userId, data.exercise_id, data.set_index, data.weight_kg, data.weight_unit || 'kg', data.reps, JSON.stringify(normalizeMetrics(data.metrics_json || data.metrics || {})), data.completed_at);
         bump(type);
       } else if (type === 'Ghi chú bài tập') {
-        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, data.updated_at);
+        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, normalizeLogTemplate(data.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(data.metric_schema_json || data.metricSchema || [])), data.updated_at);
         bump(type);
       } else if (type === 'Cân nặng cơ thể') {
         db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(data.id, userId, data.weight, data.unit || 'kg', data.logged_at);
@@ -1917,14 +1964,15 @@ app.delete('/api/sessions/:id', (req, res) => {
 
 app.post('/api/sessions/:id/logs', (req, res) => {
   const userId = getUserId(req);
-  requireBody(['exerciseId', 'weightKg', 'reps'], req.body);
+  requireBody(['exerciseId'], req.body);
   const sessionId = Number(req.params.id);
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : 'kg';
+  const metrics = normalizeMetrics(req.body.metrics || {});
   const setIndex = one('SELECT COALESCE(MAX(set_index), 0) + 1 AS next_set FROM workout_logs WHERE session_id = ? AND exercise_id = ?', [sessionId, req.body.exerciseId]).next_set;
   const result = db.prepare(`
-    INSERT INTO workout_logs (session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(sessionId, userId, req.body.exerciseId, setIndex, Number(req.body.weightKg), weightUnit, Number(req.body.reps));
+    INSERT INTO workout_logs (session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(sessionId, userId, req.body.exerciseId, setIndex, Number(req.body.weightKg || 0), weightUnit, Number(req.body.reps || 0), JSON.stringify(metrics));
   if (req.body.isSuperset) {
     db.prepare('UPDATE workout_sessions SET used_superset = 1 WHERE id = ? AND user_id = ?').run(sessionId, userId);
   }
@@ -1974,12 +2022,20 @@ app.delete('/api/logs/:id', (req, res) => {
 
 app.patch('/api/logs/:id', (req, res) => {
   const userId = getUserId(req);
-  requireBody(['weightKg', 'reps'], req.body);
   const logId = Number(req.params.id);
   const log = one('SELECT * FROM workout_logs WHERE id = ? AND user_id = ?', [logId, userId]);
   if (!log) return res.status(404).json({ error: 'Không tìm thấy set' });
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : log.weight_unit || 'kg';
-  db.prepare('UPDATE workout_logs SET weight_kg = ?, weight_unit = ?, reps = ? WHERE id = ? AND user_id = ?').run(Number(req.body.weightKg), weightUnit, Number(req.body.reps), logId, userId);
+  const metrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
+  db.prepare('UPDATE workout_logs SET weight_kg = ?, weight_unit = ?, reps = ?, metrics_json = ? WHERE id = ? AND user_id = ?')
+    .run(
+      req.body.weightKg === undefined ? Number(log.weight_kg || 0) : Number(req.body.weightKg || 0),
+      weightUnit,
+      req.body.reps === undefined ? Number(log.reps || 0) : Number(req.body.reps || 0),
+      JSON.stringify(metrics),
+      logId,
+      userId
+    );
   res.json({ ok: true });
 });
 
@@ -1988,13 +2044,13 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   const sessionId = Number(req.params.id);
   const exerciseId = req.params.exerciseId;
   const current = all(`
-    SELECT id, set_index, weight_kg, weight_unit, reps, completed_at
+    SELECT id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at
     FROM workout_logs
     WHERE user_id = ? AND session_id = ? AND exercise_id = ?
     ORDER BY set_index
   `, [userId, sessionId, exerciseId]);
   const previous = all(`
-    SELECT wl.set_index, wl.weight_kg, wl.weight_unit, wl.reps, wl.completed_at
+    SELECT wl.set_index, wl.weight_kg, wl.weight_unit, wl.reps, wl.metrics_json, wl.completed_at
     FROM workout_logs wl
     JOIN workout_sessions ws ON ws.id = wl.session_id
     WHERE wl.user_id = ?
@@ -2012,7 +2068,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       )
     ORDER BY wl.set_index
   `, [userId, exerciseId, sessionId, sessionId]);
-  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
+  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
   const manualSetRows = all('SELECT set_index, manual_weight_kg, manual_weight_lb FROM exercise_set_manual WHERE user_id = ? AND exercise_id = ? ORDER BY set_index', [userId, exerciseId]);
   const manualSets = manualSetRows.map((row) => ({ setIndex: row.set_index, manualWeightKg: row.manual_weight_kg ?? null, manualWeightLb: row.manual_weight_lb ?? null }));
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
@@ -2026,8 +2082,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   const allTimePR = Number(prRow?.all_time_max || 0);
 
   res.json({
-    current,
-    previous,
+    current: current.map(logRow),
+    previous: previous.map(logRow),
     allTimePR,
     note: preference?.note || '',
     targetSets: preference?.target_sets || settings.default_sets || 3,
@@ -2037,6 +2093,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     manualWeightKg: preference?.manual_weight_kg ?? null,
     manualWeightLb: preference?.manual_weight_lb ?? null,
     manualUnit: preference?.manual_unit || 'kg',
+    logTemplate: normalizeLogTemplate(preference?.log_template || 'strength'),
+    metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]'),
     manualSets
   });
 });
@@ -2079,7 +2137,7 @@ app.put('/api/exercises/:id/note', (req, res) => {
 
 app.put('/api/exercises/:id/preferences', (req, res) => {
   const userId = getUserId(req);
-  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
+  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
   const targetSets = req.body.targetSets === undefined ? Number(previous.target_sets || 3) : Math.max(1, Math.min(20, Number(req.body.targetSets || 3)));
   const requestedMode = String(req.body.weightMode || previous.weight_mode || 'KG').toUpperCase();
   const weightMode = ['KG', 'LB', 'MANUAL'].includes(requestedMode) ? requestedMode : 'KG';
@@ -2097,9 +2155,15 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
   const defaultWeightKg = req.body.defaultWeightKg === undefined
     ? (previous.default_weight_kg ?? null)
     : (req.body.defaultWeightKg === null || req.body.defaultWeightKg === '' ? null : Number(req.body.defaultWeightKg));
+  const logTemplate = req.body.logTemplate === undefined
+    ? normalizeLogTemplate(previous.log_template || 'strength')
+    : normalizeLogTemplate(req.body.logTemplate);
+  const metricSchema = req.body.metricSchema === undefined
+    ? normalizeMetricSchema(previous.metric_schema_json || '[]')
+    : normalizeMetricSchema(req.body.metricSchema || []);
   db.prepare(`
-    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, updated_at)
-    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json, updated_at)
+    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id, exercise_id) DO UPDATE SET
       target_sets = excluded.target_sets,
       weight_mode = excluded.weight_mode,
@@ -2108,9 +2172,11 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
       manual_unit = excluded.manual_unit,
       default_reps = excluded.default_reps,
       default_weight_kg = excluded.default_weight_kg,
+      log_template = excluded.log_template,
+      metric_schema_json = excluded.metric_schema_json,
       updated_at = CURRENT_TIMESTAMP
-  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg);
-  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg });
+  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, JSON.stringify(metricSchema));
+  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, metricSchema });
 });
 
 app.get('/api/exercises/:id/last-log', (req, res) => {
@@ -2288,10 +2354,10 @@ function importBackupData(userId, backup) {
       db.prepare('INSERT OR IGNORE INTO workout_sessions (id, user_id, routine_id, group_id, schedule_mode, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(session.id, userId, session.routine_id, session.group_id, session.schedule_mode, session.status, session.started_at, session.completed_at);
     }
     for (const log of data.logs || []) {
-      db.prepare('INSERT OR IGNORE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, log.completed_at);
+      db.prepare('INSERT OR IGNORE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, JSON.stringify(normalizeMetrics(log.metrics_json || log.metrics || {})), log.completed_at);
     }
     for (const note of data.exerciseNotes || []) {
-      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, note.updated_at);
+      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, normalizeLogTemplate(note.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(note.metric_schema_json || note.metricSchema || [])), note.updated_at);
     }
     for (const weight of data.bodyWeights || []) {
       db.prepare('INSERT OR IGNORE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);

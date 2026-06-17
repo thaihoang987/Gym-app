@@ -603,7 +603,7 @@ async function flushOfflineQueue(userId) {
       } else if (entry.type === 'log') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
-        await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps, isSuperset: Boolean(entry.isSuperset) }) });
+        await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps, metrics: entry.metrics || {}, isSuperset: Boolean(entry.isSuperset) }) });
       } else if (entry.type === 'complete') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
@@ -965,6 +965,8 @@ function applyOfflineQueueToCachedApi(path, data) {
         weight_kg: entry.weightKg,
         weight_unit: entry.weightUnit || 'kg',
         reps: entry.reps,
+        metrics: entry.metrics || {},
+        metrics_json: JSON.stringify(entry.metrics || {}),
         completed_at: entry.queuedAt || new Date().toISOString(),
         offline: true
       }));
@@ -978,7 +980,9 @@ function applyOfflineQueueToCachedApi(path, data) {
         weightMode: mergedPatch.weightMode ?? result.weightMode,
         manualWeightKg: mergedPatch.manualWeightKg ?? result.manualWeightKg,
         manualWeightLb: mergedPatch.manualWeightLb ?? result.manualWeightLb,
-        manualUnit: mergedPatch.manualUnit ?? result.manualUnit
+        manualUnit: mergedPatch.manualUnit ?? result.manualUnit,
+        logTemplate: mergedPatch.logTemplate ?? result.logTemplate,
+        metricSchema: mergedPatch.metricSchema ?? result.metricSchema
       };
     }
 
@@ -1068,6 +1072,28 @@ const defaultLbOptions = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 12
 const kgOptions = defaultKgOptions;
 const lbOptions = defaultLbOptions;
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
+const timeOptions = Array.from({ length: 241 }, (_, index) => index * 5);
+const distanceOptions = Array.from({ length: 401 }, (_, index) => Number((index * 0.05).toFixed(2)));
+const LOG_TEMPLATE_DEFS = {
+  strength: { label: 'Strength', defaults: [] },
+  bodyweight: { label: 'Bodyweight', defaults: [] },
+  timed: { label: 'Timed', defaults: ['duration_seconds'] },
+  distance: { label: 'Distance', defaults: ['distance', 'duration_seconds'] },
+  carry: { label: 'Carry', defaults: ['distance', 'duration_seconds'] },
+  mobility: { label: 'Mobility', defaults: ['duration_seconds', 'side'] },
+  custom: { label: 'Custom', defaults: [] }
+};
+const OPTIONAL_METRIC_DEFS = [
+  { key: 'duration_seconds', label: 'Time', unit: 'sec', type: 'time' },
+  { key: 'distance', label: 'Distance', unit: 'km', type: 'distance' },
+  { key: 'steps', label: 'Steps', unit: 'steps', type: 'number' },
+  { key: 'calories', label: 'Calories', unit: 'kcal', type: 'number' },
+  { key: 'heart_rate', label: 'Heart rate', unit: 'bpm', type: 'number' },
+  { key: 'incline', label: 'Incline', unit: '%', type: 'number' },
+  { key: 'resistance', label: 'Resistance', unit: 'level', type: 'number' },
+  { key: 'rpe', label: 'RPE', unit: '/10', type: 'number' },
+  { key: 'side', label: 'Side', unit: '', type: 'side' }
+];
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
 const getCustomTargetOptions = (t) => t('custom_targets');
 const customEquipmentOptions = ['body weight', 'dumbbell', 'barbell', 'machine', 'cable', 'band', 'kettlebell', 'other'];
@@ -1075,6 +1101,43 @@ const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
 const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
+const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
+const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
+const formatDuration = (seconds) => {
+  const total = Number(seconds || 0);
+  if (!total) return '';
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return minutes ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
+};
+const formatMetricValue = (key, value, settings = {}) => {
+  if (value === undefined || value === null || value === '') return '';
+  if (key === 'duration_seconds') return formatDuration(value);
+  if (key === 'distance') return `${Number(value)} ${settings.distance_unit || 'km'}`;
+  if (key === 'heart_rate') return `${Number(value)} bpm`;
+  if (key === 'calories') return `${Number(value)} kcal`;
+  if (key === 'incline') return `${Number(value)}%`;
+  if (key === 'rpe') return `${Number(value)}/10`;
+  if (key === 'steps') return `${Number(value)} steps`;
+  return String(value);
+};
+const describeSetByTemplate = (set, template, settings = {}) => {
+  const metrics = set?.metrics || {};
+  const weightValue = set?.weightKg ?? set?.weight_kg ?? 0;
+  const weightText = Number(weightValue || 0) > 0 ? `${Number(weightValue).toFixed(1).replace(/\.0$/, '')}kg` : '';
+  const repsText = Number(set?.reps || 0) > 0 ? `${set.reps} reps` : '';
+  const timeText = formatMetricValue('duration_seconds', metrics.duration_seconds, settings);
+  const distanceText = formatMetricValue('distance', metrics.distance, settings);
+  const sideText = metrics.side ? String(metrics.side) : '';
+  if (template === 'distance') return [distanceText, timeText].filter(Boolean).join(' · ') || repsText || '-';
+  if (template === 'timed') return [timeText, weightText].filter(Boolean).join(' · ') || '-';
+  if (template === 'mobility') return [timeText, sideText].filter(Boolean).join(' · ') || '-';
+  if (template === 'carry') return [weightText, distanceText || timeText].filter(Boolean).join(' · ') || '-';
+  if (template === 'bodyweight') return repsText || timeText || '-';
+  const extras = [distanceText, timeText].filter(Boolean).join(' · ');
+  return [weightText || 'BW', repsText, extras].filter(Boolean).join(' × ').replace(' ×  · ', ' · ') || '-';
+};
 function normalizeWeightSteps(values, fallback, unit = 'kg') {
   const max = unit === 'lb' ? 1000 : 500;
   const step = unit === 'lb' ? 0.5 : 0.25;
@@ -1293,7 +1356,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.3.51'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.1'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5601,6 +5664,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [targetSets, setTargetSets] = useState(3);
   const [weightMode, setWeightMode] = useState('KG');
   const [manualUnit, setManualUnit] = useState('kg');
+  const [logTemplate, setLogTemplate] = useState('strength');
+  const [metricSchema, setMetricSchema] = useState([]);
+  const [, setDefaultReps] = useState(settings?.default_reps || 12);
+  const [, setDefaultWeightKg] = useState(null);
   const [timer, setTimer] = useState(0);
   const timerEndAt = React.useRef(0); // timestamp khi timer hết
   const [timerMinimized, setTimerMinimized] = useState(false);
@@ -5666,6 +5733,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualUnit(payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg'));
+      const nextTemplate = normalizeTemplate(payload.logTemplate || 'strength');
+      setLogTemplate(nextTemplate);
+      setMetricSchema(Array.isArray(payload.metricSchema) ? payload.metricSchema : []);
       const target = Math.max(1, Number(payload.targetSets || 3));
       setTargetSets(target);
       const current = payload.current || [];
@@ -5691,11 +5761,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           manualKg,
           manualLb,
           reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
+          metrics: { ...(previous?.metrics || {}), ...(lastCurrent?.metrics || {}) },
           done: false
         };
       };
       if (current.length) {
-        const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, done: true }));
+        const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
         const total = Math.max(target, doneSets.length);
         const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => buildDraftSet(doneSets.length + offset + 1));
         setSets([...doneSets, ...drafts]);
@@ -5838,7 +5909,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, ...preferencePatch }) });
     }
     if (updatedSet?.done && updatedSet.id) {
-      await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps }) });
+      await api(`/api/logs/${updatedSet.id}`, { method: 'PATCH', body: JSON.stringify({ userId, weightKg: updatedSet.weightKg, weightUnit: currentWeightUnit(), reps: updatedSet.reps, metrics: updatedSet.metrics || {} }) });
     }
   };
   const currentWeightUnit = () => weightMode === 'LB' || (weightMode === 'MANUAL' && manualUnit === 'lb') ? 'lb' : 'kg';
@@ -5856,11 +5927,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
     setDefaultWeightKg(payload.defaultWeightKg ?? null);
     setWeightMode(payload.weightMode || 'KG');
+    setLogTemplate(normalizeTemplate(payload.logTemplate || 'strength'));
+    setMetricSchema(Array.isArray(payload.metricSchema) ? payload.metricSchema : []);
     const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
     setManualUnit(unit);
     const current = payload.current || [];
     const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
-    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, done: true }));
+    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
     const total = Math.max(target, doneSets.length || 1);
     const lastDone = doneSets[doneSets.length - 1];
     const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => {
@@ -5874,6 +5947,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         manualKg: draftManualKg,
         manualLb: draftManualLb,
         reps: payload.defaultReps ?? settings?.default_reps ?? 12,
+        metrics: lastDone?.metrics || {},
         done: false
       };
     });
@@ -5886,9 +5960,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     } : currentData);
   };
   const addSet = async () => {
-    const lastSet = sets[sets.length - 1] || { weightKg: 20, manualKg: 20, manualLb: Number(kgToLb(20).toFixed(1)), reps: 8 };
+    const lastSet = sets[sets.length - 1] || { weightKg: 20, manualKg: 20, manualLb: Number(kgToLb(20).toFixed(1)), reps: 8, metrics: {} };
     const nextCount = sets.length + 1;
-    setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, manualKg: lastSet.manualKg ?? lastSet.weightKg, manualLb: lastSet.manualLb ?? Number(kgToLb(lastSet.weightKg).toFixed(1)), reps: lastSet.reps, done: false }]);
+    setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, manualKg: lastSet.manualKg ?? lastSet.weightKg, manualLb: lastSet.manualLb ?? Number(kgToLb(lastSet.weightKg).toFixed(1)), reps: lastSet.reps, metrics: { ...(lastSet.metrics || {}) }, done: false }]);
     await saveTargetSets(nextCount);
   };
   const removeDraftSet = async (setIndex) => {
@@ -5899,6 +5973,35 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       .map((set, index) => ({ ...set, setIndex: index + 1 }));
     setSets(nextSets);
     await saveTargetSets(nextSets.length);
+  };
+  const updateSetMetric = (setIndex, key, value) => {
+    updateSet(setIndex, {
+      metrics: {
+        ...(sets.find((set) => set.setIndex === setIndex)?.metrics || {}),
+        [key]: value
+      }
+    });
+  };
+  const changeLogTemplate = async (template) => {
+    const nextTemplate = normalizeTemplate(template);
+    setLogTemplate(nextTemplate);
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate: nextTemplate, metricSchema }) });
+  };
+  const addMetricToExercise = async (metricKey) => {
+    if (!metricKey) return;
+    const nextSchema = [...new Set([...metricSchema, metricKey])];
+    setMetricSchema(nextSchema);
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate, metricSchema: nextSchema }) });
+  };
+  const removeMetricFromExercise = async (metricKey) => {
+    const nextSchema = metricSchema.filter((key) => key !== metricKey);
+    setMetricSchema(nextSchema);
+    setSets((old) => old.map((set) => {
+      const nextMetrics = { ...(set.metrics || {}) };
+      delete nextMetrics[metricKey];
+      return { ...set, metrics: nextMetrics };
+    }));
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, logTemplate, metricSchema: nextSchema }) });
   };
   const completeSet = async (set, options = {}) => {
     // Untick: chỉ cho phép untick set done cuối cùng (ngược thứ tự)
@@ -5927,7 +6030,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
@@ -5935,12 +6038,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     let result;
     try {
-      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) }) });
-      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode });
+      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) }) });
+      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode, logTemplate, metricSchema });
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       result = { id: tempId };
     }
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
@@ -6107,6 +6210,55 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (index > 0) openExercise(index - 1);
   };
   const exerciseGroups = workoutExerciseGroups(data);
+  const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
+  const showWeightColumn = ['strength', 'carry', 'timed', 'custom'].includes(logTemplate);
+  const showRepsColumn = ['strength', 'bodyweight', 'custom'].includes(logTemplate);
+  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
+  const renderMetricControl = (set, key) => {
+    const def = metricDef(key);
+    const disabledStyle = set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined;
+    const value = set.metrics?.[key] ?? '';
+    if (def.type === 'side') {
+      return (
+        <select className="metric-input" value={value || 'both'} disabled={set.done} onChange={(e) => updateSetMetric(set.setIndex, key, e.target.value)}>
+          <option value="both">both</option>
+          <option value="left">left</option>
+          <option value="right">right</option>
+        </select>
+      );
+    }
+    if (def.type === 'time') {
+      return (
+        <div style={disabledStyle}>
+          <WheelPicker value={nearestOption(Number(value || 0), timeOptions)} options={timeOptions} suffix="s" onChange={(next) => updateSetMetric(set.setIndex, key, next)} />
+        </div>
+      );
+    }
+    if (def.type === 'distance') {
+      return (
+        <input
+          className="metric-input"
+          type="number"
+          step="0.01"
+          disabled={set.done}
+          value={value}
+          placeholder={settings?.distance_unit || 'km'}
+          onChange={(event) => updateSetMetric(set.setIndex, key, event.target.value === '' ? '' : Number(event.target.value))}
+        />
+      );
+    }
+    return (
+      <input
+        className="metric-input"
+        type="number"
+        step={key === 'rpe' ? '0.5' : '1'}
+        disabled={set.done}
+        value={value}
+        placeholder={def.unit}
+        onChange={(event) => updateSetMetric(set.setIndex, key, event.target.value === '' ? '' : Number(event.target.value))}
+      />
+    );
+  };
 
   // Hiển thị summary card sau khi hoàn thành
   if (summary) return <WorkoutSummary summary={summary} settings={settings} onClose={onClose} userId={userId} checkDonate />;
@@ -6325,9 +6477,35 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           </div>
           <ExerciseInstructions exercise={exercise} settings={settings} />
 
+          <div className="log-template-panel">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase text-slate-400">Log template</p>
+                <p className="text-sm font-semibold text-slate-600">Choose what this exercise mainly tracks. Saved per exercise.</p>
+              </div>
+              <select className="metric-input max-w-[220px]" value={logTemplate} onChange={(event) => changeLogTemplate(event.target.value)}>
+                {Object.entries(LOG_TEMPLATE_DEFS).map(([key, def]) => <option key={key} value={key}>{def.label}</option>)}
+              </select>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {activeMetricKeys.map((key) => (
+                <span key={key} className="metric-chip">
+                  {metricDef(key).label}
+                  {metricSchema.includes(key) && <button type="button" onClick={() => removeMetricFromExercise(key)}>×</button>}
+                </span>
+              ))}
+              {metricChoices.length > 0 && (
+                <select className="metric-add-select" value="" onChange={(event) => { addMetricToExercise(event.target.value); event.target.value = ''; }}>
+                  <option value="">+ Add metric</option>
+                  {metricChoices.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                </select>
+              )}
+            </div>
+          </div>
+
           <div className="set-table">
             <div className="set-table-header">
-              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg'}</span><span>{t('analytics_reps')}</span><span /><span />
+              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{showWeightColumn ? (weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg') : '-'}</span><span>{showRepsColumn ? t('analytics_reps') : '-'}</span><span /><span />
             </div>
             <div className="space-y-2">
               {sets.map((set) => {
@@ -6340,12 +6518,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 // PR: set đã done và weight vượt all-time max
                 const isPR = set.done && allTimePR > 0 && Number(set.weightKg || 0) > allTimePR;
                 return (
-                  <div key={set.setIndex} className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
+                  <React.Fragment key={set.setIndex}>
+                  <div className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
                     <strong className="set-number">
                       {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
                     </strong>
-                    <span className="set-previous">{previous ? `${previous.weight_unit === 'lb' ? Number(kgToLb(previous.weight_kg).toFixed(1)) + 'lb' : previous.weight_kg + 'kg'} × ${previous.reps}` : '-'}</span>
-                    {weightMode === 'MANUAL' ? (
+                    <span className="set-previous">{previous ? describeSetByTemplate(previous, logTemplate, settings) : '-'}</span>
+                    {showWeightColumn ? (weightMode === 'MANUAL' ? (
                       <div>
                         <input
                           className="manual-weight-input"
@@ -6383,13 +6562,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                         <WheelPicker value={nearestOption(set.weightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
                         <div className="weight-equivalent">≈ {Number(kgToLb(set.weightKg || 0).toFixed(1))} lb</div>
                       </div>
-                    )}
-                    <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+                    )) : <span className="set-muted">-</span>}
+                    {showRepsColumn ? <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
                       <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
                       <div className="weight-equivalent">
                         Vol: {Number((((weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))) * Number(set.reps || 0)).toFixed(1)))}
                       </div>
-                    </div>
+                    </div> : <span className="set-muted">-</span>}
                     <button
                       className={`set-check ${set.done ? 'done' : ''}`}
                       style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
@@ -6407,6 +6586,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  {activeMetricKeys.length > 0 && (
+                    <div className={`set-metric-row ${set.done ? 'done' : ''}`}>
+                      {activeMetricKeys.map((key) => {
+                        const def = metricDef(key);
+                        return (
+                          <label key={key} className="set-metric-field">
+                            <span>{def.label}{def.unit ? ` (${key === 'distance' ? settings?.distance_unit || def.unit : def.unit})` : ''}</span>
+                            {renderMetricControl(set, key)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </div>

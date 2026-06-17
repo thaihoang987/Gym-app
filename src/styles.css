@@ -946,6 +946,23 @@ button:disabled {
   @apply overflow-hidden rounded-xl border border-slate-200 bg-white p-2;
 }
 
+.log-template-panel {
+  @apply rounded-xl border border-emerald-100 bg-emerald-50/60 p-3;
+}
+
+.metric-chip {
+  @apply inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-black text-emerald-800 ring-1 ring-emerald-200;
+}
+
+.metric-chip button {
+  @apply grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-emerald-800;
+}
+
+.metric-add-select,
+.metric-input {
+  @apply rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-orange-500;
+}
+
 @media (min-width: 768px) {
   .set-table {
     max-width: 880px;
@@ -975,6 +992,22 @@ button:disabled {
 
 .set-table-row.done {
   @apply bg-green-100;
+}
+
+.set-metric-row {
+  @apply ml-12 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2 sm:grid-cols-2 lg:grid-cols-3;
+}
+
+.set-metric-row.done {
+  @apply bg-green-50;
+}
+
+.set-metric-field {
+  @apply grid gap-1 text-xs font-black uppercase text-slate-400;
+}
+
+.set-muted {
+  @apply text-center text-sm font-bold text-slate-300;
 }
 
 .set-number {
