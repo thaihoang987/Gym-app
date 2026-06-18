@@ -1097,15 +1097,43 @@ const OPTIONAL_METRIC_DEFS = [
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
 const getCustomTargetOptions = (t) => t('custom_targets');
 const customEquipmentOptions = ['body weight', 'dumbbell', 'barbell', 'machine', 'cable', 'band', 'kettlebell', 'other'];
+const KM_PER_MILE = 1.609344;
 const kgToLb = (kg) => Number(kg || 0) * 2.2046226218;
 const lbToKg = (lb) => Number((Number(lb || 0) / 2.2046226218).toFixed(2));
+const kmToMile = (km) => Number(km || 0) / KM_PER_MILE;
+const mileToKm = (mile) => Number(mile || 0) * KM_PER_MILE;
 const nearestOption = (value, options) => options.reduce((best, option) => Math.abs(option - value) < Math.abs(best - value) ? option : best, options[0]);
-const displayWeight = (kg, unit) => unit === 'lb' ? Number(kgToLb(kg).toFixed(1)) : Number(kg || 0);
+const roundDisplayWeight = (value) => {
+  const rounded = Number(Number(value || 0).toFixed(1));
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+};
+const formatMetricNumber = (value, decimals = 2) => {
+  const rounded = Number(Number(value || 0).toFixed(decimals));
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+};
+const displayWeight = (kg, unit) => Number(unit === 'lb' ? roundDisplayWeight(kgToLb(kg)) : roundDisplayWeight(kg));
+const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit}`;
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
 const templateHasWeight = (template) => ['strength', 'carry', 'timed', 'custom'].includes(normalizeTemplate(template));
 const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
+const templatePrimaryColumns = (template) => {
+  switch (normalizeTemplate(template)) {
+    case 'timed':
+      return [{ kind: 'metric', key: 'duration_seconds' }, null];
+    case 'distance':
+      return [{ kind: 'metric', key: 'distance' }, { kind: 'metric', key: 'duration_seconds' }];
+    case 'carry':
+      return [{ kind: 'weight' }, { kind: 'metric', key: 'distance' }];
+    case 'mobility':
+      return [{ kind: 'metric', key: 'duration_seconds' }, { kind: 'metric', key: 'side' }];
+    case 'bodyweight':
+      return [null, { kind: 'reps' }];
+    default:
+      return [{ kind: 'weight' }, { kind: 'reps' }];
+  }
+};
 const formatDuration = (seconds) => {
   const total = Number(seconds || 0);
   if (!total) return '';
@@ -1124,13 +1152,28 @@ const formatMetricValue = (key, value, settings = {}) => {
   if (key === 'steps') return `${Number(value)} steps`;
   return String(value);
 };
+const formatDurationMetric = (metrics = {}) => {
+  const seconds = Number(metrics.duration_seconds || 0);
+  if (!seconds) return '';
+  if (metrics.duration_unit === 'min') return `${formatMetricNumber(seconds / 60, 1)} min`;
+  return `${formatMetricNumber(seconds, 0)} sec`;
+};
+const formatDistanceMetric = (metrics = {}, settings = {}) => {
+  const distanceKm = Number(metrics.distance || 0);
+  if (!distanceKm) return '';
+  const unit = metrics.distance_unit || settings.distance_unit || 'km';
+  return unit === 'mile'
+    ? `${formatMetricNumber(kmToMile(distanceKm), 2)} mile`
+    : `${formatMetricNumber(distanceKm, 2)} km`;
+};
 const describeSetByTemplate = (set, template, settings = {}) => {
   const metrics = set?.metrics || {};
   const weightValue = set?.weightKg ?? set?.weight_kg ?? 0;
-  const weightText = Number(weightValue || 0) > 0 ? `${Number(weightValue).toFixed(1).replace(/\.0$/, '')}kg` : '';
+  const weightUnit = set?.weight_unit || set?.weightUnit || 'kg';
+  const weightText = Number(weightValue || 0) > 0 ? formatWeight(weightValue, weightUnit).replace(' ', '') : '';
   const repsText = Number(set?.reps || 0) > 0 ? `${set.reps} reps` : '';
-  const timeText = formatMetricValue('duration_seconds', metrics.duration_seconds, settings);
-  const distanceText = formatMetricValue('distance', metrics.distance, settings);
+  const timeText = formatDurationMetric(metrics);
+  const distanceText = formatDistanceMetric(metrics, settings);
   const sideText = metrics.side ? String(metrics.side) : '';
   if (template === 'distance') return [distanceText, timeText].filter(Boolean).join(' · ') || repsText || '-';
   if (template === 'timed') return [timeText, weightText].filter(Boolean).join(' · ') || '-';
@@ -5989,6 +6032,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       }
     });
   };
+  const updateSetMetrics = (setIndex, patch) => {
+    updateSet(setIndex, {
+      metrics: {
+        ...(sets.find((set) => set.setIndex === setIndex)?.metrics || {}),
+        ...patch
+      }
+    });
+  };
+  const updateDraftMetricUnit = (unitKey, unit) => {
+    setSets((old) => old.map((set) => (
+      set.done
+        ? set
+        : { ...set, metrics: { ...(set.metrics || {}), [unitKey]: unit } }
+    )));
+  };
   const changeLogTemplate = async (template) => {
     const nextTemplate = normalizeTemplate(template);
     setLogTemplate(nextTemplate);
@@ -6006,6 +6064,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setSets((old) => old.map((set) => {
       const nextMetrics = { ...(set.metrics || {}) };
       delete nextMetrics[metricKey];
+      if (metricKey === 'duration_seconds') delete nextMetrics.duration_unit;
+      if (metricKey === 'distance') delete nextMetrics.distance_unit;
       return { ...set, metrics: nextMetrics };
     }));
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema }) });
@@ -6245,9 +6305,18 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const exerciseGroups = workoutExerciseGroups(data);
   const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
-  const showWeightColumn = templateHasWeight(logTemplate) || ['KG', 'LB', 'MANUAL'].includes(weightMode);
-  const showRepsColumn = templateHasReps(logTemplate);
+  const primaryColumns = templatePrimaryColumns(logTemplate);
+  const primaryMetricKeys = primaryColumns.filter((column) => column?.kind === 'metric').map((column) => column.key);
+  const rowMetricKeys = activeMetricKeys.filter((key) => !primaryMetricKeys.includes(key));
+  const exerciseWeightUnit = currentWeightUnit();
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
+  const columnLabel = (column) => {
+    if (!column) return '-';
+    if (column.kind === 'weight') return weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
+    if (column.kind === 'reps') return t('analytics_reps');
+    const def = metricDef(column.key);
+    return def.label;
+  };
   const renderMetricControl = (set, key) => {
     const def = metricDef(key);
     const disabledStyle = set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined;
@@ -6262,23 +6331,67 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'time') {
+      const unit = value === '' ? (set.metrics?.duration_unit || 'sec') : (set.metrics?.duration_unit || 'sec');
+      const displayValue = value === '' ? '' : (unit === 'min' ? formatMetricNumber(Number(value) / 60, 1) : formatMetricNumber(value, 0));
       return (
-        <div style={disabledStyle}>
-          <WheelPicker value={nearestOption(Number(value || 0), timeOptions)} options={timeOptions} suffix="s" onChange={(next) => updateSetMetric(set.setIndex, key, next)} />
+        <div className="metric-unit-control" style={disabledStyle}>
+          <input
+            className="metric-input"
+            type="number"
+            step={unit === 'min' ? '0.1' : '1'}
+            disabled={set.done}
+            value={displayValue}
+            placeholder={unit}
+            onChange={(event) => {
+              const raw = event.target.value;
+              updateSetMetrics(set.setIndex, {
+                duration_seconds: raw === '' ? '' : (unit === 'min' ? Number(raw) * 60 : Number(raw)),
+                duration_unit: unit
+              });
+            }}
+          />
+          <select
+            className="metric-unit-select"
+            value={unit}
+            disabled={set.done}
+            onChange={(event) => updateDraftMetricUnit('duration_unit', event.target.value)}
+          >
+            <option value="sec">sec</option>
+            <option value="min">min</option>
+          </select>
         </div>
       );
     }
     if (def.type === 'distance') {
+      const unit = set.metrics?.distance_unit || settings?.distance_unit || 'km';
+      const displayValue = value === '' ? '' : (unit === 'mile' ? formatMetricNumber(kmToMile(value), 2) : formatMetricNumber(value, 2));
       return (
-        <input
-          className="metric-input"
-          type="number"
-          step="0.01"
-          disabled={set.done}
-          value={value}
-          placeholder={settings?.distance_unit || 'km'}
-          onChange={(event) => updateSetMetric(set.setIndex, key, event.target.value === '' ? '' : Number(event.target.value))}
-        />
+        <div className="metric-unit-control">
+          <input
+            className="metric-input"
+            type="number"
+            step="0.01"
+            disabled={set.done}
+            value={displayValue}
+            placeholder={unit}
+            onChange={(event) => {
+              const raw = event.target.value;
+              updateSetMetrics(set.setIndex, {
+                distance: raw === '' ? '' : (unit === 'mile' ? mileToKm(Number(raw)) : Number(raw)),
+                distance_unit: unit
+              });
+            }}
+          />
+          <select
+            className="metric-unit-select"
+            value={unit}
+            disabled={set.done}
+            onChange={(event) => updateDraftMetricUnit('distance_unit', event.target.value)}
+          >
+            <option value="km">km</option>
+            <option value="mile">mile</option>
+          </select>
+        </div>
       );
     }
     return (
@@ -6292,6 +6405,61 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         onChange={(event) => updateSetMetric(set.setIndex, key, event.target.value === '' ? '' : Number(event.target.value))}
       />
     );
+  };
+  const renderWeightControl = (set) => (
+    weightMode === 'MANUAL' ? (
+      <div>
+        <input
+          className="manual-weight-input"
+          type="number"
+          step="0.1"
+          disabled={set.done}
+          style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          value={(() => {
+            const current = manualUnit === 'lb' ? (set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1))) : (set.manualKg ?? set.weightKg);
+            return current === 0 ? '' : current;
+          })()}
+          onChange={(event) => {
+            const value = event.target.value === '' ? 0 : Number(event.target.value);
+            if (manualUnit === 'lb') {
+              updateSet(set.setIndex, { manualLb: value, weightKg: lbToKg(value) });
+            } else {
+              updateSet(set.setIndex, { manualKg: value, weightKg: value });
+            }
+          }}
+          onBlur={(event) => updateManualWeight(set.setIndex, event.target.value)}
+        />
+        <div className="weight-equivalent">
+          {manualUnit === 'lb'
+            ? `≈ ${formatWeight(set.weightKg || 0, 'kg')}`
+            : `≈ ${formatWeight(set.weightKg || 0, 'lb')}`}
+        </div>
+      </div>
+    ) : weightMode === 'LB' ? (
+      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+        <WheelPicker value={nearestOption(kgToLb(set.weightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
+        <div className="weight-equivalent">≈ {formatWeight(set.weightKg || 0, 'kg')}</div>
+      </div>
+    ) : (
+      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+        <WheelPicker value={nearestOption(set.weightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
+        <div className="weight-equivalent">≈ {formatWeight(set.weightKg || 0, 'lb')}</div>
+      </div>
+    )
+  );
+  const renderRepsControl = (set) => (
+    <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+      <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
+      <div className="weight-equivalent">
+        Vol: {Number((((weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))) * Number(set.reps || 0)).toFixed(1)))}
+      </div>
+    </div>
+  );
+  const renderPrimaryColumn = (set, column) => {
+    if (!column) return <span className="set-muted">-</span>;
+    if (column.kind === 'weight') return renderWeightControl(set);
+    if (column.kind === 'reps') return renderRepsControl(set);
+    return renderMetricControl(set, column.key);
   };
 
   // Hiển thị summary card sau khi hoàn thành
@@ -6490,16 +6658,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               {(() => {
                 const bestDone = [...sets].filter((s) => s.done && Number(s.weightKg||0) > 0 && Number(s.reps||0) > 0)
                   .sort((a,b) => Number(b.weightKg)*Number(b.reps) - Number(a.weightKg)*Number(a.reps))[0];
-                const e1rm = bestDone ? Math.round(Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30)) : null;
+                const e1rmKg = bestDone ? Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30) : null;
                 return (
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${previousSets[0].weight_unit === 'lb' ? Number(kgToLb(previousSets[0].weight_kg).toFixed(1)) + ' lb' : previousSets[0].weight_kg + ' kg'} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
-                    {e1rm && (
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${allTimePR > 0 && e1rm > allTimePR ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {allTimePR > 0 && e1rm > allTimePR ? '🏆 ' : ''}~1RM {e1rm} kg
+                    <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${formatWeight(previousSets[0].weight_kg, previousSets[0].weight_unit || 'kg')} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
+                    {e1rmKg && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${allTimePR > 0 && e1rmKg > allTimePR ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {allTimePR > 0 && e1rmKg > allTimePR ? '🏆 ' : ''}~1RM {formatWeight(e1rmKg, exerciseWeightUnit)}
                       </span>
                     )}
-                    {allTimePR > 0 && <span className="text-xs text-slate-400">PR {allTimePR}kg</span>}
+                    {allTimePR > 0 && <span className="text-xs text-slate-400">PR {formatWeight(allTimePR, exerciseWeightUnit)}</span>}
                   </div>
                 );
               })()}
@@ -6520,6 +6688,71 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             </div>
           </div>
           <ExerciseInstructions exercise={exercise} settings={settings} />
+
+          <div className="set-table">
+            <div className="set-table-header">
+              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{columnLabel(primaryColumns[0])}</span><span>{columnLabel(primaryColumns[1])}</span><span /><span />
+            </div>
+            <div className="space-y-2">
+              {sets.map((set) => {
+                const previous = previousSets[set.setIndex - 1];
+                const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
+                const lockedUndone = !set.done && Boolean(prevUndone);
+                const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
+                const lockedDone = set.done && set.setIndex !== lastDoneIndex;
+                const locked = lockedUndone || lockedDone;
+                // PR: set đã done và weight vượt all-time max
+                const isPR = set.done && allTimePR > 0 && Number(set.weightKg || 0) > allTimePR;
+                return (
+                  <React.Fragment key={set.setIndex}>
+                  <div className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
+                    <strong className="set-number">
+                      {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
+                    </strong>
+                    <span className="set-previous">{previous ? describeSetByTemplate(previous, logTemplate, settings) : '-'}</span>
+                    {renderPrimaryColumn(set, primaryColumns[0])}
+                    {renderPrimaryColumn(set, primaryColumns[1])}
+                    <button
+                      className={`set-check ${set.done ? 'done' : ''}`}
+                      style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                      title={lockedUndone ? `Hoàn thành Set ${prevUndone.setIndex} trước` : lockedDone ? 'Bỏ Set sau trước' : undefined}
+                      onClick={() => completeSet(set)}
+                    >
+                      {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
+                    </button>
+                    <button
+                      className="tiny-btn"
+                      disabled={set.done || sets.length <= 1}
+                      style={set.done ? { opacity: 0.22, cursor: 'not-allowed', filter: 'grayscale(1)' } : undefined}
+                      onClick={() => removeDraftSet(set.setIndex)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  {rowMetricKeys.length > 0 && (
+                    <div className={`set-metric-row ${set.done ? 'done' : ''}`}>
+                      {rowMetricKeys.map((key) => {
+                        const def = metricDef(key);
+                        return (
+                          <label key={key} className="set-metric-field">
+                            <span>{def.label}{def.unit && !['duration_seconds', 'distance'].includes(key) ? ` (${def.unit})` : ''}</span>
+                            {renderMetricControl(set, key)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            <button className="add-set-btn" onClick={addSet}>{t('workout_add_set')}</button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <label className="label">{t('workout_note_label')}</label>
+            <textarea className="input min-h-24" value={note} onChange={(e) => saveNote(e.target.value)} placeholder={t('workout_note_placeholder')} />
+          </div>
 
           <div className="log-template-panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -6545,114 +6778,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 </select>
               )}
             </div>
-          </div>
-
-          <div className="set-table">
-            <div className="set-table-header">
-              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{showWeightColumn ? (weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg') : '-'}</span><span>{showRepsColumn ? t('analytics_reps') : '-'}</span><span /><span />
-            </div>
-            <div className="space-y-2">
-              {sets.map((set) => {
-                const previous = previousSets[set.setIndex - 1];
-                const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
-                const lockedUndone = !set.done && Boolean(prevUndone);
-                const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
-                const lockedDone = set.done && set.setIndex !== lastDoneIndex;
-                const locked = lockedUndone || lockedDone;
-                // PR: set đã done và weight vượt all-time max
-                const isPR = set.done && allTimePR > 0 && Number(set.weightKg || 0) > allTimePR;
-                return (
-                  <React.Fragment key={set.setIndex}>
-                  <div className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
-                    <strong className="set-number">
-                      {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
-                    </strong>
-                    <span className="set-previous">{previous ? describeSetByTemplate(previous, logTemplate, settings) : '-'}</span>
-                    {showWeightColumn ? (weightMode === 'MANUAL' ? (
-                      <div>
-                        <input
-                          className="manual-weight-input"
-                          type="number"
-                          step="0.1"
-                          disabled={set.done}
-                          style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-                          value={(() => {
-                            const current = manualUnit === 'lb' ? (set.manualLb ?? Number(kgToLb(set.weightKg).toFixed(1))) : (set.manualKg ?? set.weightKg);
-                            return current === 0 ? '' : current;
-                          })()}
-                          onChange={(event) => {
-                            const value = event.target.value === '' ? 0 : Number(event.target.value);
-                            if (manualUnit === 'lb') {
-                              updateSet(set.setIndex, { manualLb: value, weightKg: lbToKg(value) });
-                            } else {
-                              updateSet(set.setIndex, { manualKg: value, weightKg: value });
-                            }
-                          }}
-                          onBlur={(event) => updateManualWeight(set.setIndex, event.target.value)}
-                        />
-                        <div className="weight-equivalent">
-                          {manualUnit === 'lb'
-                            ? `≈ ${Number(set.weightKg || 0).toFixed(1)} kg`
-                            : `≈ ${Number(kgToLb(set.weightKg || 0).toFixed(1))} lb`}
-                        </div>
-                      </div>
-                    ) : weightMode === 'LB' ? (
-                      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
-                        <WheelPicker value={nearestOption(kgToLb(set.weightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateSet(set.setIndex, { weightKg: lbToKg(value) })} />
-                        <div className="weight-equivalent">≈ {Number(set.weightKg || 0).toFixed(1)} kg</div>
-                      </div>
-                    ) : (
-                      <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
-                        <WheelPicker value={nearestOption(set.weightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateSet(set.setIndex, { weightKg: value })} />
-                        <div className="weight-equivalent">≈ {Number(kgToLb(set.weightKg || 0).toFixed(1))} lb</div>
-                      </div>
-                    )) : <span className="set-muted">-</span>}
-                    {showRepsColumn ? <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
-                      <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
-                      <div className="weight-equivalent">
-                        Vol: {Number((((weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))) * Number(set.reps || 0)).toFixed(1)))}
-                      </div>
-                    </div> : <span className="set-muted">-</span>}
-                    <button
-                      className={`set-check ${set.done ? 'done' : ''}`}
-                      style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
-                      title={lockedUndone ? `Hoàn thành Set ${prevUndone.setIndex} trước` : lockedDone ? 'Bỏ Set sau trước' : undefined}
-                      onClick={() => completeSet(set)}
-                    >
-                      {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
-                    </button>
-                    <button
-                      className="tiny-btn"
-                      disabled={set.done || sets.length <= 1}
-                      style={set.done ? { opacity: 0.22, cursor: 'not-allowed', filter: 'grayscale(1)' } : undefined}
-                      onClick={() => removeDraftSet(set.setIndex)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                  {activeMetricKeys.length > 0 && (
-                    <div className={`set-metric-row ${set.done ? 'done' : ''}`}>
-                      {activeMetricKeys.map((key) => {
-                        const def = metricDef(key);
-                        return (
-                          <label key={key} className="set-metric-field">
-                            <span>{def.label}{def.unit ? ` (${key === 'distance' ? settings?.distance_unit || def.unit : def.unit})` : ''}</span>
-                            {renderMetricControl(set, key)}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-            <button className="add-set-btn" onClick={addSet}>{t('workout_add_set')}</button>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <label className="label">{t('workout_note_label')}</label>
-            <textarea className="input min-h-24" value={note} onChange={(e) => saveNote(e.target.value)} placeholder={t('workout_note_placeholder')} />
           </div>
 
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
