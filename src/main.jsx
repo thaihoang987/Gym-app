@@ -1078,7 +1078,7 @@ const LOG_TEMPLATE_DEFS = {
   strength: { label: 'Strength', defaults: [] },
   bodyweight: { label: 'Bodyweight', defaults: [] },
   timed: { label: 'Timed', defaults: ['duration_seconds'] },
-  distance: { label: 'Distance', defaults: ['distance', 'duration_seconds'] },
+  distance: { label: 'Distance', defaults: ['distance'] },
   carry: { label: 'Carry', defaults: ['distance', 'duration_seconds'] },
   mobility: { label: 'Mobility', defaults: ['duration_seconds', 'side'] },
   custom: { label: 'Custom', defaults: [] }
@@ -1112,24 +1112,24 @@ const formatMetricNumber = (value, decimals = 2) => {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 };
 const displayWeight = (kg, unit) => Number(unit === 'lb' ? roundDisplayWeight(kgToLb(kg)) : roundDisplayWeight(kg));
-const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit}`;
+const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit === 'lb' ? 'Lbs' : 'kg'}`;
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
-const templateHasWeight = (template) => ['strength', 'carry', 'timed', 'custom'].includes(normalizeTemplate(template));
+const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
 const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
 const templatePrimaryColumns = (template) => {
   switch (normalizeTemplate(template)) {
     case 'timed':
       return [{ kind: 'metric', key: 'duration_seconds' }, null];
     case 'distance':
-      return [{ kind: 'metric', key: 'distance' }, { kind: 'metric', key: 'duration_seconds' }];
+      return [{ kind: 'metric', key: 'distance' }, null];
     case 'carry':
       return [{ kind: 'weight' }, { kind: 'metric', key: 'distance' }];
     case 'mobility':
       return [{ kind: 'metric', key: 'duration_seconds' }, { kind: 'metric', key: 'side' }];
     case 'bodyweight':
-      return [null, { kind: 'reps' }];
+      return [{ kind: 'reps' }, { kind: 'bodyweight' }];
     default:
       return [{ kind: 'weight' }, { kind: 'reps' }];
   }
@@ -1401,7 +1401,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.11'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.12'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5711,6 +5711,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [manualUnit, setManualUnit] = useState('kg');
   const [logTemplate, setLogTemplate] = useState('strength');
   const [metricSchema, setMetricSchema] = useState([]);
+  const [latestBodyWeight, setLatestBodyWeight] = useState(null);
   const [metricUnits, setMetricUnits] = useState(() => ({
     duration_unit: 'sec',
     distance_unit: settings?.distance_unit || 'km'
@@ -5749,6 +5750,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
   const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
   const manualUnitLabel = manualUnit === 'lb' ? 'Lbs' : 'Kg';
+  const latestBodyWeightKg = latestBodyWeight
+    ? (latestBodyWeight.unit === 'lb' ? lbToKg(latestBodyWeight.weight) : Number(latestBodyWeight.weight || 0))
+    : 0;
+  const latestBodyWeightUnit = latestBodyWeight?.unit || settings?.default_weight_unit || 'kg';
   const updateMetricUnit = (unitKey, unit) => {
     setMetricUnits((current) => ({ ...current, [unitKey]: unit }));
     setSets((old) => old.map((set) => (
@@ -5769,6 +5774,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       })
       .catch(() => setData(findOfflineSessionPayload(userId, workout.sessionId)));
   }, [workout.sessionId, userId]);
+
+  useEffect(() => {
+    api(`/api/body-weight/recent?userId=${userId}`)
+      .then((rows) => setLatestBodyWeight(Array.isArray(rows) ? rows[0] || null : null))
+      .catch(() => setLatestBodyWeight(null));
+  }, [userId]);
 
   // Live sync: reload session data khi máy khác cập nhật
   useLiveSync(userId, () => {
@@ -5975,6 +5986,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
   };
   const currentWeightUnit = () => weightMode === 'LB' || (weightMode === 'MANUAL' && manualUnit === 'lb') ? 'lb' : 'kg';
+  const currentLogWeightUnit = () => normalizeTemplate(logTemplate) === 'bodyweight' ? latestBodyWeightUnit : currentWeightUnit();
+  const currentLogWeightKg = (set) => normalizeTemplate(logTemplate) === 'bodyweight' ? latestBodyWeightKg : set.weightKg;
   const saveTargetSets = async (count) => {
     const nextCount = Math.max(1, Math.min(20, count));
     setTargetSets(nextCount);
@@ -5995,7 +6008,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setManualUnit(unit);
     const current = payload.current || [];
     const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
-    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
+    const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, weightUnit: row.weight_unit || 'kg', manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
     const lastMetricSource = [...doneSets].reverse().find((set) => set.metrics?.duration_unit || set.metrics?.distance_unit)?.metrics || {};
     setMetricUnits({
       duration_unit: lastMetricSource.duration_unit || 'sec',
@@ -6107,27 +6120,28 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     // Tick: bắt buộc theo thứ tự
     const prevUndone = sets.find((s) => !s.done && s.setIndex < set.setIndex);
     if (prevUndone) return;
-    const weightUnit = currentWeightUnit();
+    const weightUnit = currentLogWeightUnit();
+    const logWeightKg = currentLogWeightKg(set);
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
-      setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, done: true } : item));
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, weightKg: logWeightKg, weightUnit, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
       return;
     }
     let result;
     try {
-      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) }) });
-      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: set.weightKg, weightMode, logTemplate, metricSchema });
+      result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) }) });
+      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: logWeightKg, weightMode, logTemplate, metricSchema });
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: set.weightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       result = { id: tempId };
     }
-    setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, done: true } : item));
+    setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, weightKg: logWeightKg, weightUnit, done: true } : item));
     setData((current) => current ? {
       ...current,
       exercises: current.exercises.map((item) => (
@@ -6326,10 +6340,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
   const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
   const hasDistanceMetric = activeMetricKeys.includes('distance');
+  const templateLabel = LOG_TEMPLATE_DEFS[normalizeTemplate(logTemplate)].label;
+  const templateInputLabel = normalizeTemplate(logTemplate) === 'timed' ? 'Time' : templateLabel;
   const columnLabel = (column) => {
     if (!column) return '-';
     if (column.kind === 'weight') return weightMode === 'LB' ? 'Lbs' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
     if (column.kind === 'reps') return t('analytics_reps');
+    if (column.kind === 'bodyweight') return `Body weight (${latestBodyWeightUnit === 'lb' ? 'Lbs' : 'Kg'})`;
     const def = metricDef(column.key);
     if (column.key === 'duration_seconds') return `${def.label} (${metricUnits.duration_unit || 'sec'})`;
     if (column.key === 'distance') return `${def.label} (${metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
@@ -6451,14 +6468,27 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     <div style={set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
       <WheelPicker value={set.reps} options={repOptions} onChange={(value) => updateSet(set.setIndex, { reps: value })} />
       <div className="weight-equivalent">
-        Vol: {Number((((weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))) * Number(set.reps || 0)).toFixed(1)))}
+        Vol: {Number((((normalizeTemplate(logTemplate) === 'bodyweight'
+          ? displayWeight(latestBodyWeightKg, latestBodyWeightUnit)
+          : (weightMode === 'KG' ? Number(set.weightKg || 0) : (weightMode === 'LB' ? kgToLb(set.weightKg) : (manualUnit === 'lb' ? kgToLb(set.weightKg) : Number(set.weightKg || 0)))))
+        ) * Number(set.reps || 0)).toFixed(1))}
       </div>
     </div>
   );
+  const renderBodyWeightControl = (set) => {
+    const unit = set.done ? (set.weightUnit || set.weight_unit || latestBodyWeightUnit) : latestBodyWeightUnit;
+    const kg = set.done ? Number(set.weightKg || set.weight_kg || latestBodyWeightKg) : latestBodyWeightKg;
+    return (
+      <div className="bodyweight-readout">
+        {kg ? formatWeight(kg, unit) : '--'}
+      </div>
+    );
+  };
   const renderPrimaryColumn = (set, column) => {
     if (!column) return <span className="set-muted">-</span>;
     if (column.kind === 'weight') return renderWeightControl(set);
     if (column.kind === 'reps') return renderRepsControl(set);
+    if (column.kind === 'bodyweight') return renderBodyWeightControl(set);
     return renderMetricControl(set, column.key);
   };
 
@@ -6767,23 +6797,25 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 </select>
               )}
             </div>
-            <div className="metric-config-row">
-              <span className="metric-unit-settings-label">Weight input</span>
-              <div className="weight-mode-controls weight-mode-controls-split">
-                <div className={`manual-mode-card ${weightMode === 'MANUAL' ? 'active' : ''}`}>
-                  <button type="button" className="unit-btn manual-mode-main" onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')}</button>
-                  <div className="manual-unit-inline">
-                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
-                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lbs</button>
+            {templateHasWeight(logTemplate) && (
+              <div className="metric-config-row">
+                <span className="metric-unit-settings-label">{templateInputLabel} input</span>
+                <div className="weight-mode-controls weight-mode-controls-split">
+                  <div className={`manual-mode-card ${weightMode === 'MANUAL' ? 'active' : ''}`}>
+                    <button type="button" className="unit-btn manual-mode-main" onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')}</button>
+                    <div className="manual-unit-inline">
+                      <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
+                      <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lbs</button>
+                    </div>
                   </div>
+                  <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>Lbs</button>
+                  <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'KG' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'KG')} onClick={(event) => clickWeightMode(event, 'KG')}>Kg</button>
                 </div>
-                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>Lbs</button>
-                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'KG' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'KG')} onClick={(event) => clickWeightMode(event, 'KG')}>Kg</button>
               </div>
-            </div>
+            )}
             {(hasTimeMetric || hasDistanceMetric) && (
               <div className="metric-unit-settings">
-                <span className="metric-unit-settings-label">Units for draft sets</span>
+                <span className="metric-unit-settings-label">{templateInputLabel} input</span>
                 {hasTimeMetric && (
                   <div className="metric-unit-toggle">
                     <span>Time</span>
