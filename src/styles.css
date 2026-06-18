@@ -975,6 +975,34 @@ button:disabled {
   @apply rounded-lg border border-slate-200 bg-white px-1 py-2 text-xs font-black text-slate-700 outline-none focus:border-orange-500;
 }
 
+.metric-unit-badge {
+  @apply grid place-items-center rounded-lg border border-slate-200 bg-slate-50 px-1 py-2 text-xs font-black text-slate-500;
+}
+
+.metric-unit-settings {
+  @apply mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
+}
+
+.metric-unit-settings-label {
+  @apply mr-1 text-xs font-black uppercase text-slate-400;
+}
+
+.metric-unit-toggle {
+  @apply inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-500;
+}
+
+.metric-unit-toggle span {
+  @apply px-2 text-slate-400;
+}
+
+.metric-unit-toggle button {
+  @apply h-9 border-l border-slate-200 px-3;
+}
+
+.metric-unit-toggle button.active {
+  @apply bg-[#f05a28] text-white;
+}
+
 @media (min-width: 768px) {
   .set-table {
     max-width: 880px;

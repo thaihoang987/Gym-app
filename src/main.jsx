@@ -1401,7 +1401,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.8'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.9'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5711,6 +5711,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [manualUnit, setManualUnit] = useState('kg');
   const [logTemplate, setLogTemplate] = useState('strength');
   const [metricSchema, setMetricSchema] = useState([]);
+  const [metricUnits, setMetricUnits] = useState(() => ({
+    duration_unit: 'sec',
+    distance_unit: settings?.distance_unit || 'km'
+  }));
   const [, setDefaultReps] = useState(settings?.default_reps || 12);
   const [, setDefaultWeightKg] = useState(null);
   const [timer, setTimer] = useState(0);
@@ -5745,6 +5749,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
   const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
   const manualUnitLabel = manualUnit === 'lb' ? 'Lb' : 'Kg';
+  const updateMetricUnit = (unitKey, unit) => {
+    setMetricUnits((current) => ({ ...current, [unitKey]: unit }));
+    setSets((old) => old.map((set) => (
+      set.done
+        ? set
+        : { ...set, metrics: { ...(set.metrics || {}), [unitKey]: unit } }
+    )));
+  };
 
   useEffect(() => {
     api(`/api/sessions/${workout.sessionId}?userId=${userId}`)
@@ -5984,6 +5996,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const current = payload.current || [];
     const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
+    const lastMetricSource = [...doneSets].reverse().find((set) => set.metrics?.duration_unit || set.metrics?.distance_unit)?.metrics || {};
+    setMetricUnits({
+      duration_unit: lastMetricSource.duration_unit || 'sec',
+      distance_unit: lastMetricSource.distance_unit || settings?.distance_unit || 'km'
+    });
     const total = Math.max(target, doneSets.length || 1);
     const lastDone = doneSets[doneSets.length - 1];
     const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => {
@@ -5997,7 +6014,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         manualKg: draftManualKg,
         manualLb: draftManualLb,
         reps: payload.defaultReps ?? settings?.default_reps ?? 12,
-        metrics: lastDone?.metrics || {},
+        metrics: {
+          ...(lastDone?.metrics || {}),
+          duration_unit: lastMetricSource.duration_unit || 'sec',
+          distance_unit: lastMetricSource.distance_unit || settings?.distance_unit || 'km'
+        },
         done: false
       };
     });
@@ -6039,13 +6060,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         ...patch
       }
     });
-  };
-  const updateDraftMetricUnit = (unitKey, unit) => {
-    setSets((old) => old.map((set) => (
-      set.done
-        ? set
-        : { ...set, metrics: { ...(set.metrics || {}), [unitKey]: unit } }
-    )));
   };
   const changeLogTemplate = async (template) => {
     const nextTemplate = normalizeTemplate(template);
@@ -6310,6 +6324,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const rowMetricKeys = activeMetricKeys.filter((key) => !primaryMetricKeys.includes(key));
   const exerciseWeightUnit = currentWeightUnit();
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
+  const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
+  const hasDistanceMetric = activeMetricKeys.includes('distance');
   const columnLabel = (column) => {
     if (!column) return '-';
     if (column.kind === 'weight') return weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
@@ -6331,7 +6347,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'time') {
-      const unit = value === '' ? (set.metrics?.duration_unit || 'sec') : (set.metrics?.duration_unit || 'sec');
+      const unit = set.done ? (set.metrics?.duration_unit || metricUnits.duration_unit || 'sec') : (metricUnits.duration_unit || 'sec');
       const displayValue = value === '' ? '' : (unit === 'min' ? formatMetricNumber(Number(value) / 60, 1) : formatMetricNumber(value, 0));
       return (
         <div className="metric-unit-control" style={disabledStyle}>
@@ -6350,20 +6366,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               });
             }}
           />
-          <select
-            className="metric-unit-select"
-            value={unit}
-            disabled={set.done}
-            onChange={(event) => updateDraftMetricUnit('duration_unit', event.target.value)}
-          >
-            <option value="sec">sec</option>
-            <option value="min">min</option>
-          </select>
+          <span className="metric-unit-badge">{unit}</span>
         </div>
       );
     }
     if (def.type === 'distance') {
-      const unit = set.metrics?.distance_unit || settings?.distance_unit || 'km';
+      const unit = set.done ? (set.metrics?.distance_unit || metricUnits.distance_unit || settings?.distance_unit || 'km') : (metricUnits.distance_unit || settings?.distance_unit || 'km');
       const displayValue = value === '' ? '' : (unit === 'mile' ? formatMetricNumber(kmToMile(value), 2) : formatMetricNumber(value, 2));
       return (
         <div className="metric-unit-control">
@@ -6382,15 +6390,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               });
             }}
           />
-          <select
-            className="metric-unit-select"
-            value={unit}
-            disabled={set.done}
-            onChange={(event) => updateDraftMetricUnit('distance_unit', event.target.value)}
-          >
-            <option value="km">km</option>
-            <option value="mile">mile</option>
-          </select>
+          <span className="metric-unit-badge">{unit}</span>
         </div>
       );
     }
@@ -6778,6 +6778,25 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 </select>
               )}
             </div>
+            {(hasTimeMetric || hasDistanceMetric) && (
+              <div className="metric-unit-settings">
+                <span className="metric-unit-settings-label">Units for draft sets</span>
+                {hasTimeMetric && (
+                  <div className="metric-unit-toggle">
+                    <span>Time</span>
+                    <button type="button" className={metricUnits.duration_unit === 'sec' ? 'active' : ''} onClick={() => updateMetricUnit('duration_unit', 'sec')}>sec</button>
+                    <button type="button" className={metricUnits.duration_unit === 'min' ? 'active' : ''} onClick={() => updateMetricUnit('duration_unit', 'min')}>min</button>
+                  </div>
+                )}
+                {hasDistanceMetric && (
+                  <div className="metric-unit-toggle">
+                    <span>Distance</span>
+                    <button type="button" className={metricUnits.distance_unit === 'km' ? 'active' : ''} onClick={() => updateMetricUnit('distance_unit', 'km')}>km</button>
+                    <button type="button" className={metricUnits.distance_unit === 'mile' ? 'active' : ''} onClick={() => updateMetricUnit('distance_unit', 'mile')}>mile</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <button className="primary" onClick={complete}>{t('workout_end_btn')}</button>
