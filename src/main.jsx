@@ -1401,7 +1401,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.9'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.10'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6331,6 +6331,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (column.kind === 'weight') return weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
     if (column.kind === 'reps') return t('analytics_reps');
     const def = metricDef(column.key);
+    if (column.key === 'duration_seconds') return `${def.label} (${metricUnits.duration_unit || 'sec'})`;
+    if (column.key === 'distance') return `${def.label} (${metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
     return def.label;
   };
   const renderMetricControl = (set, key) => {
@@ -6366,7 +6368,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               });
             }}
           />
-          <span className="metric-unit-badge">{unit}</span>
         </div>
       );
     }
@@ -6390,7 +6391,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               });
             }}
           />
-          <span className="metric-unit-badge">{unit}</span>
         </div>
       );
     }

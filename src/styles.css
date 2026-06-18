@@ -964,7 +964,7 @@ button:disabled {
 }
 
 .metric-unit-control {
-  @apply grid min-w-0 grid-cols-[minmax(3.25rem,1fr)_4.25rem] gap-1;
+  @apply grid min-w-0 grid-cols-1;
 }
 
 .metric-unit-control .metric-input {
@@ -973,10 +973,6 @@ button:disabled {
 
 .metric-unit-select {
   @apply rounded-lg border border-slate-200 bg-white px-1 py-2 text-xs font-black text-slate-700 outline-none focus:border-orange-500;
-}
-
-.metric-unit-badge {
-  @apply grid place-items-center rounded-lg border border-slate-200 bg-slate-50 px-1 py-2 text-xs font-black text-slate-500;
 }
 
 .metric-unit-settings {
