@@ -971,6 +971,18 @@ button:disabled {
   @apply min-w-0 px-2 text-center;
 }
 
+.metric-weight-control {
+  @apply grid min-w-0 gap-1 text-center;
+}
+
+.metric-weight-control .wheel-picker {
+  @apply max-w-full;
+}
+
+.metric-weight-control span {
+  @apply text-[11px] font-bold normal-case text-slate-400;
+}
+
 .metric-unit-select {
   @apply rounded-lg border border-slate-200 bg-white px-1 py-2 text-xs font-black text-slate-700 outline-none focus:border-orange-500;
 }

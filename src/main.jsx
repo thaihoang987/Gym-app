@@ -1121,6 +1121,7 @@ const LOG_TEMPLATE_DEFS = {
   custom: { label: 'Custom', defaults: [] }
 };
 const OPTIONAL_METRIC_DEFS = [
+  { key: 'weight_kg', label: 'Weight', unit: 'kg', type: 'weight' },
   { key: 'duration_seconds', label: 'Time', unit: 'sec', type: 'time' },
   { key: 'distance', label: 'Distance', unit: 'km', type: 'distance' },
   { key: 'steps', label: 'Steps', unit: 'steps', type: 'number' },
@@ -1228,13 +1229,16 @@ const describeSetByTemplate = (set, template, settings = {}) => {
   const repsText = Number(set?.reps || 0) > 0 ? `${set.reps} reps` : '';
   const timeText = formatDurationMetric(metrics);
   const distanceText = formatDistanceMetric(metrics, settings);
+  const metricWeightText = Number(metrics.weight_kg || 0) > 0
+    ? formatWeight(metrics.weight_kg, metrics.weight_unit || weightUnit).replace(' ', '')
+    : '';
   const sideText = metrics.side ? String(metrics.side) : '';
-  if (template === 'distance') return [distanceText, timeText].filter(Boolean).join(' · ') || repsText || '-';
-  if (template === 'timed') return [timeText, weightText].filter(Boolean).join(' · ') || '-';
+  if (template === 'distance') return [distanceText, timeText, metricWeightText].filter(Boolean).join(' · ') || repsText || '-';
+  if (template === 'timed') return [timeText, metricWeightText || weightText].filter(Boolean).join(' · ') || '-';
   if (template === 'mobility') return [timeText, sideText].filter(Boolean).join(' · ') || '-';
-  if (template === 'carry') return [weightText, distanceText || timeText].filter(Boolean).join(' · ') || '-';
-  if (template === 'bodyweight') return repsText || timeText || '-';
-  const extras = [distanceText, timeText].filter(Boolean).join(' · ');
+  if (template === 'carry') return [weightText || metricWeightText, distanceText || timeText].filter(Boolean).join(' · ') || '-';
+  if (template === 'bodyweight') return [repsText, metricWeightText, timeText].filter(Boolean).join(' · ') || '-';
+  const extras = [distanceText, timeText, metricWeightText].filter(Boolean).join(' · ');
   return [weightText || 'BW', repsText, extras].filter(Boolean).join(' × ').replace(' ×  · ', ' · ') || '-';
 };
 function normalizeWeightSteps(values, fallback, unit = 'kg') {
@@ -1455,7 +1459,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.15'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.16'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6458,8 +6462,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
   const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
   const hasDistanceMetric = activeMetricKeys.includes('distance');
+  const hasWeightMetric = activeMetricKeys.includes('weight_kg');
   const templateLabel = LOG_TEMPLATE_DEFS[normalizeTemplate(logTemplate)].label;
-  const templateInputLabel = normalizeTemplate(logTemplate) === 'timed' ? 'Time' : templateLabel;
+  const templateInputLabel = hasWeightMetric && !templateHasWeight(logTemplate)
+    ? 'Weight'
+    : normalizeTemplate(logTemplate) === 'timed' ? 'Time' : templateLabel;
   const columnLabel = (column) => {
     if (!column) return '-';
     if (column.kind === 'weight') return weightMode === 'LB' ? 'Lbs' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
@@ -6526,6 +6533,50 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               });
             }}
           />
+        </div>
+      );
+    }
+    if (def.type === 'weight') {
+      const metricWeightKg = Number(set.metrics?.weight_kg || 0);
+      const metricWeightUnit = set.metrics?.weight_unit || currentWeightUnit();
+      const updateMetricWeight = (weightKg, unit = currentWeightUnit()) => {
+        updateSetMetrics(set.setIndex, {
+          weight_kg: Number(weightKg || 0),
+          weight_unit: unit
+        });
+      };
+      if (weightMode === 'MANUAL') {
+        const current = manualUnit === 'lb' ? kgToLb(metricWeightKg) : metricWeightKg;
+        return (
+          <div className="metric-weight-control" style={disabledStyle}>
+            <input
+              className="metric-input"
+              type="number"
+              step="0.1"
+              disabled={set.done}
+              value={metricWeightKg ? formatOneDecimal(current) : ''}
+              placeholder={manualUnit === 'lb' ? 'Lbs' : 'Kg'}
+              onChange={(event) => {
+                const raw = event.target.value;
+                updateMetricWeight(raw === '' ? 0 : (manualUnit === 'lb' ? lbToKg(Number(raw)) : Number(raw)), manualUnit);
+              }}
+            />
+            <span>{manualUnit === 'lb' ? `≈ ${formatWeight(metricWeightKg, 'kg')}` : `≈ ${formatWeight(metricWeightKg, 'lb')}`}</span>
+          </div>
+        );
+      }
+      if (weightMode === 'LB') {
+        return (
+          <div className="metric-weight-control" style={disabledStyle}>
+            <WheelPicker value={nearestOption(kgToLb(metricWeightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateMetricWeight(lbToKg(value), 'lb')} />
+            <span>≈ {formatWeight(metricWeightKg, 'kg')}</span>
+          </div>
+        );
+      }
+      return (
+        <div className="metric-weight-control" style={disabledStyle}>
+          <WheelPicker value={nearestOption(metricWeightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateMetricWeight(value, 'kg')} />
+          <span>≈ {formatWeight(metricWeightKg, 'lb')}</span>
         </div>
       );
     }
@@ -6899,7 +6950,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 </select>
               )}
             </div>
-            {templateHasWeight(logTemplate) && (
+            {(templateHasWeight(logTemplate) || hasWeightMetric) && (
               <div className="metric-config-row">
                 <span className="metric-unit-settings-label">{templateInputLabel} input</span>
                 <div className="weight-mode-controls weight-mode-controls-split">

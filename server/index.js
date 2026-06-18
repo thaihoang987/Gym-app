@@ -108,7 +108,7 @@ function requireBody(fields, body) {
 }
 
 const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom']);
-const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'side', 'rpe', 'rounds', 'custom']);
+const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'side', 'rpe', 'rounds', 'custom']);
 
 function safeJsonParse(value, fallback) {
   try {
@@ -138,7 +138,7 @@ function normalizeMetrics(value) {
     const cleanKey = String(key || '').trim();
     if (!cleanKey || (!METRIC_KEYS.has(cleanKey) && !cleanKey.startsWith('custom:'))) continue;
     if (raw === '' || raw === null || raw === undefined) continue;
-    if (['duration_unit', 'distance_unit', 'side', 'custom'].includes(cleanKey) || cleanKey.startsWith('custom:')) {
+    if (['duration_unit', 'distance_unit', 'weight_unit', 'side', 'custom'].includes(cleanKey) || cleanKey.startsWith('custom:')) {
       metrics[cleanKey] = String(raw).slice(0, 80);
     } else {
       const numeric = Number(raw);
