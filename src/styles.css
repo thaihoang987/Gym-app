@@ -979,6 +979,10 @@ button:disabled {
   @apply mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
 }
 
+.metric-config-row {
+  @apply mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
+}
+
 .metric-unit-settings-label {
   @apply mr-1 text-xs font-black uppercase text-slate-400;
 }

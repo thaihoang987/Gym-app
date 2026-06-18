@@ -1401,7 +1401,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.10'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.11'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5748,7 +5748,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
   const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
   const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
-  const manualUnitLabel = manualUnit === 'lb' ? 'Lb' : 'Kg';
+  const manualUnitLabel = manualUnit === 'lb' ? 'Lbs' : 'Kg';
   const updateMetricUnit = (unitKey, unit) => {
     setMetricUnits((current) => ({ ...current, [unitKey]: unit }));
     setSets((old) => old.map((set) => (
@@ -6328,7 +6328,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const hasDistanceMetric = activeMetricKeys.includes('distance');
   const columnLabel = (column) => {
     if (!column) return '-';
-    if (column.kind === 'weight') return weightMode === 'LB' ? 'Lb' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
+    if (column.kind === 'weight') return weightMode === 'LB' ? 'Lbs' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
     if (column.kind === 'reps') return t('analytics_reps');
     const def = metricDef(column.key);
     if (column.key === 'duration_seconds') return `${def.label} (${metricUnits.duration_unit || 'sec'})`;
@@ -6673,17 +6673,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               })()}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <div className="weight-mode-controls weight-mode-controls-split">
-                <div className={`manual-mode-card ${weightMode === 'MANUAL' ? 'active' : ''}`}>
-                  <button type="button" className="unit-btn manual-mode-main" onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')}</button>
-                  <div className="manual-unit-inline">
-                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
-                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lb</button>
-                  </div>
-                </div>
-                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>lb</button>
-                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'KG' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'KG')} onClick={(event) => clickWeightMode(event, 'KG')}>kg</button>
-              </div>
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
             </div>
           </div>
@@ -6777,6 +6766,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                   {metricChoices.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
                 </select>
               )}
+            </div>
+            <div className="metric-config-row">
+              <span className="metric-unit-settings-label">Weight input</span>
+              <div className="weight-mode-controls weight-mode-controls-split">
+                <div className={`manual-mode-card ${weightMode === 'MANUAL' ? 'active' : ''}`}>
+                  <button type="button" className="unit-btn manual-mode-main" onPointerUp={(event) => tapWeightMode(event, 'MANUAL')} onClick={(event) => clickWeightMode(event, 'MANUAL')}>{t('workout_manual_label')}</button>
+                  <div className="manual-unit-inline">
+                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'kg' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'kg')} onClick={(event) => clickManualUnit(event, 'kg')}>Kg</button>
+                    <button type="button" className={`unit-btn unit-btn-sm ${weightMode === 'MANUAL' && manualUnit === 'lb' ? 'active' : ''}`} onPointerUp={(event) => tapManualUnit(event, 'lb')} onClick={(event) => clickManualUnit(event, 'lb')}>Lbs</button>
+                  </div>
+                </div>
+                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'LB' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'LB')} onClick={(event) => clickWeightMode(event, 'LB')}>Lbs</button>
+                <button type="button" className={`unit-btn weight-mode-standalone ${weightMode === 'KG' ? 'active' : ''}`} onPointerUp={(event) => tapWeightMode(event, 'KG')} onClick={(event) => clickWeightMode(event, 'KG')}>Kg</button>
+              </div>
             </div>
             {(hasTimeMetric || hasDistanceMetric) && (
               <div className="metric-unit-settings">
