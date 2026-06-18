@@ -692,6 +692,38 @@ function readApiCache(path) {
   try { return JSON.parse(localStorage.getItem(API_CACHE_PREFIX + path) || 'null'); } catch { return null; }
 }
 
+function cacheExercisePreferenceMutation(userId, exerciseId, patch = {}) {
+  if (!userId || !exerciseId || typeof localStorage === 'undefined') return;
+  const exerciseKey = String(exerciseId);
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(API_CACHE_PREFIX)) continue;
+    const path = key.slice(API_CACHE_PREFIX.length);
+    const match = path.match(/\/api\/sessions\/(\d+)\/exercises\/([^/?]+)\/sets/);
+    if (!match || String(decodeURIComponent(match[2])) !== exerciseKey || Number(userIdFromApiPath(path)) !== Number(userId)) continue;
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!cached) continue;
+      const next = {
+        ...cached,
+        weightMode: patch.weightMode ?? cached.weightMode,
+        manualWeightKg: patch.manualWeightKg ?? cached.manualWeightKg,
+        manualWeightLb: patch.manualWeightLb ?? cached.manualWeightLb,
+        manualUnit: patch.manualUnit ?? cached.manualUnit,
+        targetSets: patch.targetSets ?? cached.targetSets,
+        defaultReps: patch.defaultReps ?? cached.defaultReps,
+        defaultWeightKg: patch.defaultWeightKg ?? cached.defaultWeightKg,
+        logTemplate: patch.logTemplate ?? cached.logTemplate,
+        metricSchema: patch.metricSchema ?? cached.metricSchema,
+        defaultDurationUnit: patch.defaultDurationUnit ?? cached.defaultDurationUnit,
+        defaultDistanceUnit: patch.defaultDistanceUnit ?? cached.defaultDistanceUnit
+      };
+      localStorage.setItem(key, JSON.stringify(next));
+      routeGetResponseToStore(path, next);
+    } catch {}
+  }
+}
+
 function settingsPatchToCacheFields(body = {}) {
   const fields = {};
   const map = {
@@ -981,8 +1013,13 @@ function applyOfflineQueueToCachedApi(path, data) {
         manualWeightKg: mergedPatch.manualWeightKg ?? result.manualWeightKg,
         manualWeightLb: mergedPatch.manualWeightLb ?? result.manualWeightLb,
         manualUnit: mergedPatch.manualUnit ?? result.manualUnit,
+        targetSets: mergedPatch.targetSets ?? result.targetSets,
+        defaultReps: mergedPatch.defaultReps ?? result.defaultReps,
+        defaultWeightKg: mergedPatch.defaultWeightKg ?? result.defaultWeightKg,
         logTemplate: mergedPatch.logTemplate ?? result.logTemplate,
-        metricSchema: mergedPatch.metricSchema ?? result.metricSchema
+        metricSchema: mergedPatch.metricSchema ?? result.metricSchema,
+        defaultDurationUnit: mergedPatch.defaultDurationUnit ?? result.defaultDurationUnit,
+        defaultDistanceUnit: mergedPatch.defaultDistanceUnit ?? result.defaultDistanceUnit
       };
     }
 
@@ -1418,7 +1455,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.14'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.15'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -1920,6 +1957,15 @@ async function api(path, options = {}) {
     }
     if (!isGet) {
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const preferencesMatch = path.match(/^\/api\/exercises\/([^/]+)\/preferences/);
+      if (method === 'PUT' && preferencesMatch) {
+        let body = {};
+        try { body = JSON.parse(options.body || '{}'); } catch {}
+        const exerciseId = decodeURIComponent(preferencesMatch[1]);
+        const { userId: bodyUserId, ...patch } = body;
+        cacheExercisePreferenceMutation(bodyUserId || userId, exerciseId, patch);
+        return data;
+      }
       clearWorkoutApiCaches(userId);
     }
     return dataWithOffline;
@@ -1976,7 +2022,9 @@ async function api(path, options = {}) {
       try { body = JSON.parse(options.body || '{}'); } catch {}
       const exerciseId = decodeURIComponent(preferencesMatch[1]);
       const { userId: bodyUserId, ...patch } = body;
-      addToOfflineQueue(bodyUserId || userIdFromApiPath(path), { type: 'exercisePreferenceUpdate', exerciseId, patch });
+      const userId = bodyUserId || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'exercisePreferenceUpdate', exerciseId, patch });
+      cacheExercisePreferenceMutation(userId, exerciseId, patch);
       return { ok: true, offline: true };
     }
     if (offlineQueue && method === 'POST' && path.startsWith('/api/weekly/reset')) {
