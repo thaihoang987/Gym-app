@@ -1107,6 +1107,16 @@ const roundDisplayWeight = (value) => {
   const rounded = Number(Number(value || 0).toFixed(1));
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 };
+const formatOneDecimal = (value) => {
+  const rounded = Number(Number(value || 0).toFixed(1));
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+};
+const estimateOneRepMaxKg = (weightKg, reps) => {
+  const weight = Number(weightKg || 0);
+  const repCount = Number(reps || 0);
+  if (weight <= 0 || repCount <= 0) return 0;
+  return weight * (1 + repCount / 30);
+};
 const formatMetricNumber = (value, decimals = 2) => {
   const rounded = Number(Number(value || 0).toFixed(decimals));
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
@@ -1408,7 +1418,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.13'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.14'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -4267,27 +4277,31 @@ function SessionDetail({ detail, settings }) {
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_exercises')}</p><strong>{detail.summary.exerciseCount}</strong></div>
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_sets')}</p><strong>{detail.summary.totalSets}</strong></div>
-        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_volume')}</p><strong>{Math.round(detail.summary.totalVolume)}</strong></div>
+        <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_volume')}</p><strong>{formatOneDecimal(detail.summary.totalVolume)}</strong></div>
       </div>
       <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail.summary.improvedCount, detail.summary.exerciseCount)}</p>
       <div className="space-y-2">
         {detail.exercises.map((exercise) => {
-          const volumeDiff = exercise.volume - exercise.previousVolume;
-          const weightDiff = exercise.maxWeight - exercise.previousMaxWeight;
+          const volume = Number(formatOneDecimal(exercise.volume || 0));
+          const previousVolume = Number(formatOneDecimal(exercise.previousVolume || 0));
+          const maxWeight = Number(formatOneDecimal(exercise.maxWeight || 0));
+          const previousMaxWeight = Number(formatOneDecimal(exercise.previousMaxWeight || 0));
+          const volumeDiff = Number(formatOneDecimal(volume - previousVolume));
+          const weightDiff = Number(formatOneDecimal(maxWeight - previousMaxWeight));
           return (
             <div key={exercise.id} className="rounded-md bg-slate-50 p-2">
               <div className="flex gap-2">
                 <GifThumb exercise={exercise} />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{exercise.name}</p>
-                  <p className="text-xs text-slate-600">{exercise.sets.length} set · max {exercise.maxWeight} kg · volume {Math.round(exercise.volume)}</p>
+                  <p className="text-xs text-slate-600">{exercise.sets.length} set · max {formatOneDecimal(maxWeight)} kg · volume {formatOneDecimal(volume)}</p>
                   <p className={`text-xs font-bold ${volumeDiff > 0 || weightDiff > 0 ? 'text-green-700' : 'text-slate-500'}`}>
-                    {t('detail_vs_prev', `${volumeDiff >= 0 ? '+' : ''}${Math.round(volumeDiff)}`, `${weightDiff >= 0 ? '+' : ''}${weightDiff}`)}
+                    {t('detail_vs_prev', `${volumeDiff >= 0 ? '+' : ''}${formatOneDecimal(volumeDiff)}`, `${weightDiff >= 0 ? '+' : ''}${formatOneDecimal(weightDiff)}`)}
                   </p>
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-1 text-xs">
-                {exercise.sets.map((set) => <span key={set.id} className="rounded bg-white px-2 py-1">Set {set.setIndex}: {set.weightKg}kg x {set.reps}</span>)}
+                {exercise.sets.map((set) => <span key={set.id} className="rounded bg-white px-2 py-1">Set {set.setIndex}: {formatOneDecimal(set.weightKg)}kg x {set.reps}</span>)}
               </div>
               <div className="mt-2 rounded-md border border-dashed border-slate-200 bg-white p-2">
                 <p className="mb-1 text-xs font-bold text-slate-500">
@@ -5396,21 +5410,22 @@ function gradeFromDetail(detail, t) {
   const s = detail?.summary;
   const totalVolume = s?.totalVolume || 0;
   const previousTotalVolume = s?.previousTotalVolume || 0;
-  const volumeDisplay = totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume;
+  const volumeDisplay = totalVolume >= 1000 ? `${formatOneDecimal(totalVolume / 1000)}k` : formatOneDecimal(totalVolume);
   const volumeDiff = totalVolume - previousTotalVolume;
   const hasPreviousVolume = previousTotalVolume > 0;
   const volumeArrow = !hasPreviousVolume ? '' : volumeDiff > 0 ? '▲' : volumeDiff < 0 ? '▼' : '●';
   const volumeColor = !hasPreviousVolume ? '#fff' : volumeDiff > 0 ? '#86efac' : volumeDiff < 0 ? '#f87171' : '#fff';
+  const volumeDiffDisplay = hasPreviousVolume ? `${volumeArrow} ${volumeDiff > 0 ? '+' : ''}${formatOneDecimal(volumeDiff)} kg` : '';
   const grade = s?.improvedCount >= Math.ceil((s?.exerciseCount || 1) * 0.6) ? 'great' : s?.improvedCount > 0 ? 'ok' : 'start';
   const gradeText = { great: t('summary_great'), ok: t('summary_ok'), start: t('summary_start') }[grade];
   const gradeGradient = { great: 'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)', ok: 'linear-gradient(135deg,#f05a28,#f59e0b)', start: 'linear-gradient(135deg,#0ea5e9,#14b8a6)' }[grade];
-  return { volumeDisplay, volumeArrow, volumeColor, gradeText, gradeGradient };
+  return { volumeDisplay, volumeArrow, volumeColor, volumeDiffDisplay, gradeText, gradeGradient };
 }
 
 const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessionName, settings }, ref) {
   const t = useLang();
   const { summary: s, exercises, session } = detail;
-  const { volumeDisplay, volumeArrow, volumeColor, gradeText, gradeGradient } = gradeFromDetail(detail, t);
+  const { volumeDisplay, volumeArrow, volumeColor, volumeDiffDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
   return (
     <div ref={ref} style={{ width: 400, fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 20, overflow: 'hidden', background: gradeGradient }}>
       <div style={{ padding: 28, color: '#fff' }}>
@@ -5432,10 +5447,11 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
             { label: 'Duration', value: `${session?.duration_minutes}`, unit: 'min' },
             { label: 'Exercises', value: s?.exerciseCount, unit: '' },
             { label: 'Sets', value: s?.totalSets, unit: '' },
-            { label: 'Volume', value: `${volumeArrow ? `${volumeArrow} ` : ''}${volumeDisplay}`, unit: 'kg', color: volumeColor },
+            { label: 'Volume', value: `${volumeArrow ? `${volumeArrow} ` : ''}${volumeDisplay}`, unit: 'kg', color: volumeColor, sub: volumeDiffDisplay },
           ].map((stat) => (
             <div key={stat.label} style={{ flex: 1, background: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: '10px 6px', textAlign: 'center' }}>
               <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: stat.color || '#fff' }}>{stat.value}<span style={{ fontSize: 10, opacity: 0.75 }}> {stat.unit}</span></div>
+              {stat.sub ? <div style={{ fontSize: 8, fontWeight: 800, color: stat.color || '#fff', lineHeight: 1.4, marginTop: 3 }}>{stat.sub}</div> : null}
               <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{stat.label}</div>
             </div>
           ))}
@@ -5443,8 +5459,8 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
         {/* All exercises */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {(exercises || []).map((exercise) => {
-            const volume = Math.round((exercise.volume || 0) * 10) / 10;
-            const previousVolume = Math.round((exercise.previousVolume || 0) * 10) / 10;
+            const volume = Number(formatOneDecimal(exercise.volume || 0));
+            const previousVolume = Number(formatOneDecimal(exercise.previousVolume || 0));
             const isPR = exercise.maxWeight > exercise.previousMaxWeight;
             const volDiff = volume - previousVolume;
             const hasPrevious = previousVolume > 0;
@@ -5457,10 +5473,10 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
                   : <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🏋️</div>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, paddingTop: 2 }}>{exercise.name}</div>
-                  <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {exercise.maxWeight} kg</div>
+                  <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.5 }}>{exercise.sets.length} sets · max {formatOneDecimal(exercise.maxWeight)} kg</div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: volColor, lineHeight: 1.5 }}>{volArrow} {volume} kg</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: volColor, lineHeight: 1.5 }}>{volArrow} {formatOneDecimal(volume)} kg</div>
                   {isPR && <div style={{ fontSize: 10, fontWeight: 800, background: 'rgba(255,255,255,0.25)', borderRadius: 6, padding: '2px 7px', marginTop: 2, lineHeight: 1.5 }}>🏆 PR</div>}
                 </div>
               </div>
@@ -5497,7 +5513,7 @@ function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
   const t = useLang();
   const { detail, sessionName } = summary;
   const { summary: s, exercises, session } = detail;
-  const { volumeDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
+  const { volumeDisplay, volumeArrow, volumeColor, volumeDiffDisplay, gradeText, gradeGradient } = gradeFromDetail(detail, t);
   const shareCardRef = React.useRef(null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [shareImageUrl, setShareImageUrl] = useState(null);
@@ -5591,10 +5607,11 @@ function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
             { label: t('summary_duration'), value: `${session?.duration_minutes}`, unit: 'min' },
             { label: t('summary_exercises'), value: s?.exerciseCount, unit: '' },
             { label: t('summary_sets'), value: s?.totalSets, unit: '' },
-            { label: t('summary_volume'), value: volumeDisplay, unit: 'kg' },
+            { label: t('summary_volume'), value: `${volumeArrow ? `${volumeArrow} ` : ''}${volumeDisplay}`, unit: 'kg', color: volumeColor, sub: volumeDiffDisplay },
           ].map((stat) => (
             <div key={stat.label} className="rounded-xl bg-white/15 p-3 text-center">
-              <div className="text-xl font-black">{stat.value}<span className="text-xs font-bold opacity-70"> {stat.unit}</span></div>
+              <div className="text-xl font-black" style={stat.color ? { color: stat.color } : undefined}>{stat.value}<span className="text-xs font-bold opacity-70"> {stat.unit}</span></div>
+              {stat.sub ? <div className="mt-1 text-[10px] font-black" style={{ color: stat.color }}>{stat.sub}</div> : null}
               <div className="mt-0.5 text-[11px] opacity-70">{stat.label}</div>
             </div>
           ))}
@@ -5612,7 +5629,13 @@ function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
       {/* Exercise list */}
       <div className="space-y-2">
         {exercises?.map((exercise) => {
-          const improved = exercise.volume > exercise.previousVolume || exercise.maxWeight > exercise.previousMaxWeight;
+          const volume = Number(formatOneDecimal(exercise.volume || 0));
+          const previousVolume = Number(formatOneDecimal(exercise.previousVolume || 0));
+          const maxWeight = Number(formatOneDecimal(exercise.maxWeight || 0));
+          const previousMaxWeight = Number(formatOneDecimal(exercise.previousMaxWeight || 0));
+          const volumeDiff = Number(formatOneDecimal(volume - previousVolume));
+          const maxDiff = Number(formatOneDecimal(maxWeight - previousMaxWeight));
+          const improved = volume > previousVolume || maxWeight > previousMaxWeight;
           return (
             <div key={exercise.id} className={`flex items-center gap-3 rounded-xl border p-3 ${improved ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
               {exercise.imageUrl
@@ -5620,8 +5643,8 @@ function WorkoutSummary({ summary, settings, onClose, userId, checkDonate }) {
                 : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-slate-100 text-xl">🏋️</span>}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">{exercise.name}</p>
-                <p className="text-xs text-slate-500">{exercise.sets.length} sets · max {exercise.maxWeight} kg · vol {exercise.volume}</p>
-                {improved && <p className="text-xs font-bold text-emerald-600">▲ {exercise.volume > exercise.previousVolume ? `vol +${exercise.volume - exercise.previousVolume}` : ''}{exercise.maxWeight > exercise.previousMaxWeight ? ` max +${exercise.maxWeight - exercise.previousMaxWeight}kg` : ''}</p>}
+                <p className="text-xs text-slate-500">{exercise.sets.length} sets · max {formatOneDecimal(maxWeight)} kg · vol {formatOneDecimal(volume)}</p>
+                {improved && <p className="text-xs font-bold text-emerald-600">▲ {volume > previousVolume ? `vol +${formatOneDecimal(volumeDiff)}` : ''}{maxWeight > previousMaxWeight ? ` max +${formatOneDecimal(maxDiff)}kg` : ''}</p>}
               </div>
             </div>
           );
@@ -6721,33 +6744,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               <div className="mx-auto grid h-[300px] max-h-[45vh] w-full max-w-xl place-items-center text-7xl md:h-[360px]">{exercise.customIcon || '🏋️'}</div>
             )}
           </div>
-          {(() => {
-            // Epley 1RM từ set done tốt nhất hiện tại
-            const bestDone = [...sets].filter((s) => s.done && Number(s.weightKg||0) > 0 && Number(s.reps||0) > 0)
-              .sort((a,b) => Number(b.weightKg)*Number(b.reps) - Number(a.weightKg)*Number(a.reps))[0];
-            const e1rm = bestDone ? Math.round(Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30)) : null;
-            const prBeat = e1rm && allTimePR > 0 && e1rm > allTimePR;
-            return null; // chỉ tính, render dưới
-          })()}
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
-              {(() => {
-                const bestDone = [...sets].filter((s) => s.done && Number(s.weightKg||0) > 0 && Number(s.reps||0) > 0)
-                  .sort((a,b) => Number(b.weightKg)*Number(b.reps) - Number(a.weightKg)*Number(a.reps))[0];
-                const e1rmKg = bestDone ? Number(bestDone.weightKg) * (1 + Number(bestDone.reps) / 30) : null;
-                return (
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${formatWeight(previousSets[0].weight_kg, previousSets[0].weight_unit || 'kg')} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
-                    {e1rmKg && (
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${allTimePR > 0 && e1rmKg > allTimePR ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {allTimePR > 0 && e1rmKg > allTimePR ? '🏆 ' : ''}~1RM {formatWeight(e1rmKg, exerciseWeightUnit)}
-                      </span>
-                    )}
-                    {allTimePR > 0 && <span className="text-xs text-slate-400">PR {formatWeight(allTimePR, exerciseWeightUnit)}</span>}
-                  </div>
-                );
-              })()}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${formatWeight(previousSets[0].weight_kg, previousSets[0].weight_unit || 'kg')} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
+                {allTimePR > 0 && (
+                  <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-black text-yellow-700">
+                    🏆 1RM PR {formatWeight(allTimePR, exerciseWeightUnit)}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <button className="icon-btn" onClick={() => setPaused((v) => !v)}>{paused ? <Play /> : <Pause />}</button>
@@ -6767,8 +6774,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
-                // PR: set đã done và weight vượt all-time max
-                const isPR = set.done && allTimePR > 0 && Number(set.weightKg || 0) > allTimePR;
+                const setOneRepMax = estimateOneRepMaxKg(set.weightKg, set.reps);
+                const isPR = set.done && allTimePR > 0 && setOneRepMax > allTimePR;
                 return (
                   <React.Fragment key={set.setIndex}>
                   <div className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>

@@ -2074,12 +2074,16 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
   // All-time PR: max weight đã từng log cho bài này
   const prRow = one(`
-    SELECT COALESCE(MAX(wl.weight_kg), 0) AS all_time_max
+    SELECT COALESCE(MAX(wl.weight_kg * (1 + (wl.reps / 30.0))), 0) AS all_time_one_rm
     FROM workout_logs wl
     JOIN workout_sessions ws ON ws.id = wl.session_id
-    WHERE wl.user_id = ? AND wl.exercise_id = ? AND ws.status = 'COMPLETED'
+    WHERE wl.user_id = ?
+      AND wl.exercise_id = ?
+      AND ws.status = 'COMPLETED'
+      AND wl.weight_kg > 0
+      AND wl.reps > 0
   `, [userId, exerciseId]);
-  const allTimePR = Number(prRow?.all_time_max || 0);
+  const allTimePR = Number(prRow?.all_time_one_rm || 0);
 
   res.json({
     current: current.map(logRow),
