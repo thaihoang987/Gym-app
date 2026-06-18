@@ -245,6 +245,8 @@ export function migrate() {
       default_weight_kg REAL,
       log_template TEXT NOT NULL DEFAULT 'strength',
       metric_schema_json TEXT NOT NULL DEFAULT '[]',
+      default_duration_unit TEXT NOT NULL DEFAULT 'sec',
+      default_distance_unit TEXT NOT NULL DEFAULT 'km',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, exercise_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -340,6 +342,12 @@ export function migrate() {
   }
   if (!hasColumn('exercise_notes', 'metric_schema_json')) {
     db.exec("ALTER TABLE exercise_notes ADD COLUMN metric_schema_json TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!hasColumn('exercise_notes', 'default_duration_unit')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN default_duration_unit TEXT NOT NULL DEFAULT 'sec'");
+  }
+  if (!hasColumn('exercise_notes', 'default_distance_unit')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN default_distance_unit TEXT NOT NULL DEFAULT 'km'");
   }
   const exerciseColumns = [
     ['custom_user_id', 'INTEGER'],

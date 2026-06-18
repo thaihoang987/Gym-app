@@ -2068,7 +2068,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       )
     ORDER BY wl.set_index
   `, [userId, exerciseId, sessionId, sessionId]);
-  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
+  const preference = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json, default_duration_unit, default_distance_unit FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, exerciseId]);
   const manualSetRows = all('SELECT set_index, manual_weight_kg, manual_weight_lb FROM exercise_set_manual WHERE user_id = ? AND exercise_id = ? ORDER BY set_index', [userId, exerciseId]);
   const manualSets = manualSetRows.map((row) => ({ setIndex: row.set_index, manualWeightKg: row.manual_weight_kg ?? null, manualWeightLb: row.manual_weight_lb ?? null }));
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
@@ -2095,6 +2095,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     manualUnit: preference?.manual_unit || 'kg',
     logTemplate: normalizeLogTemplate(preference?.log_template || 'strength'),
     metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]'),
+    defaultDurationUnit: ['sec', 'min'].includes(preference?.default_duration_unit) ? preference.default_duration_unit : 'sec',
+    defaultDistanceUnit: ['km', 'mile'].includes(preference?.default_distance_unit) ? preference.default_distance_unit : 'km',
     manualSets
   });
 });
@@ -2137,7 +2139,7 @@ app.put('/api/exercises/:id/note', (req, res) => {
 
 app.put('/api/exercises/:id/preferences', (req, res) => {
   const userId = getUserId(req);
-  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
+  const previous = one('SELECT note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json, default_duration_unit, default_distance_unit FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.params.id]) || {};
   const targetSets = req.body.targetSets === undefined ? Number(previous.target_sets || 3) : Math.max(1, Math.min(20, Number(req.body.targetSets || 3)));
   const requestedMode = String(req.body.weightMode || previous.weight_mode || 'KG').toUpperCase();
   const weightMode = ['KG', 'LB', 'MANUAL'].includes(requestedMode) ? requestedMode : 'KG';
@@ -2161,9 +2163,15 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
   const metricSchema = req.body.metricSchema === undefined
     ? normalizeMetricSchema(previous.metric_schema_json || '[]')
     : normalizeMetricSchema(req.body.metricSchema || []);
+  const defaultDurationUnit = req.body.defaultDurationUnit === undefined
+    ? (['sec', 'min'].includes(previous.default_duration_unit) ? previous.default_duration_unit : 'sec')
+    : (['sec', 'min'].includes(req.body.defaultDurationUnit) ? req.body.defaultDurationUnit : 'sec');
+  const defaultDistanceUnit = req.body.defaultDistanceUnit === undefined
+    ? (['km', 'mile'].includes(previous.default_distance_unit) ? previous.default_distance_unit : 'km')
+    : (['km', 'mile'].includes(req.body.defaultDistanceUnit) ? req.body.defaultDistanceUnit : 'km');
   db.prepare(`
-    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json, updated_at)
-    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, manual_weight_lb, manual_unit, default_reps, default_weight_kg, log_template, metric_schema_json, default_duration_unit, default_distance_unit, updated_at)
+    VALUES (?, ?, COALESCE(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(user_id, exercise_id) DO UPDATE SET
       target_sets = excluded.target_sets,
       weight_mode = excluded.weight_mode,
@@ -2174,9 +2182,11 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
       default_weight_kg = excluded.default_weight_kg,
       log_template = excluded.log_template,
       metric_schema_json = excluded.metric_schema_json,
+      default_duration_unit = excluded.default_duration_unit,
+      default_distance_unit = excluded.default_distance_unit,
       updated_at = CURRENT_TIMESTAMP
-  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, JSON.stringify(metricSchema));
-  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, metricSchema });
+  `).run(userId, req.params.id, previous.note || '', targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, JSON.stringify(metricSchema), defaultDurationUnit, defaultDistanceUnit);
+  res.json({ ok: true, targetSets, weightMode, manualWeightKg, manualWeightLb, manualUnit, defaultReps, defaultWeightKg, logTemplate, metricSchema, defaultDurationUnit, defaultDistanceUnit });
 });
 
 app.get('/api/exercises/:id/last-log', (req, res) => {

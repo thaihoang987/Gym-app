@@ -1116,6 +1116,13 @@ const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? 
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
+const cleanMetricSchemaForTemplate = (template, schema = []) => {
+  const normalized = normalizeTemplate(template);
+  if (normalized === 'custom') return schema || [];
+  const baseMetrics = new Set(['duration_seconds', 'distance']);
+  const allowedBaseMetrics = new Set(LOG_TEMPLATE_DEFS[normalized].defaults || []);
+  return (schema || []).filter((key) => !baseMetrics.has(key) || allowedBaseMetrics.has(key));
+};
 const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
 const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
 const templatePrimaryColumns = (template) => {
@@ -1129,7 +1136,7 @@ const templatePrimaryColumns = (template) => {
     case 'mobility':
       return [{ kind: 'metric', key: 'duration_seconds' }, { kind: 'metric', key: 'side' }];
     case 'bodyweight':
-      return [{ kind: 'reps' }, { kind: 'bodyweight' }];
+      return [{ kind: 'bodyweight' }, { kind: 'reps' }];
     default:
       return [{ kind: 'weight' }, { kind: 'reps' }];
   }
@@ -1401,7 +1408,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.12'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.13'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -5761,6 +5768,15 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         ? set
         : { ...set, metrics: { ...(set.metrics || {}), [unitKey]: unit } }
     )));
+    if (exercise?.id) {
+      const patch = unitKey === 'duration_unit'
+        ? { defaultDurationUnit: unit }
+        : { defaultDistanceUnit: unit };
+      api(`/api/exercises/${exercise.id}/preferences`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema, ...patch })
+      }).catch((error) => console.warn('Save metric unit failed', error));
+    }
   };
 
   useEffect(() => {
@@ -6002,18 +6018,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
     setDefaultWeightKg(payload.defaultWeightKg ?? null);
     setWeightMode(payload.weightMode || 'KG');
-    setLogTemplate(normalizeTemplate(payload.logTemplate || 'strength'));
-    setMetricSchema(Array.isArray(payload.metricSchema) ? payload.metricSchema : []);
+    const nextTemplate = normalizeTemplate(payload.logTemplate || 'strength');
+    setLogTemplate(nextTemplate);
+    setMetricSchema(cleanMetricSchemaForTemplate(nextTemplate, Array.isArray(payload.metricSchema) ? payload.metricSchema : []));
     const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
     setManualUnit(unit);
     const current = payload.current || [];
     const manualSetMap = new Map((payload.manualSets || []).map((row) => [row.setIndex, row]));
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, weightUnit: row.weight_unit || 'kg', manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
     const lastMetricSource = [...doneSets].reverse().find((set) => set.metrics?.duration_unit || set.metrics?.distance_unit)?.metrics || {};
-    setMetricUnits({
-      duration_unit: lastMetricSource.duration_unit || 'sec',
-      distance_unit: lastMetricSource.distance_unit || settings?.distance_unit || 'km'
-    });
+    const savedDurationUnit = ['sec', 'min'].includes(payload.defaultDurationUnit) ? payload.defaultDurationUnit : null;
+    const savedDistanceUnit = ['km', 'mile'].includes(payload.defaultDistanceUnit) ? payload.defaultDistanceUnit : null;
+    const nextMetricUnits = {
+      duration_unit: savedDurationUnit || lastMetricSource.duration_unit || 'sec',
+      distance_unit: savedDistanceUnit || lastMetricSource.distance_unit || settings?.distance_unit || 'km'
+    };
+    setMetricUnits(nextMetricUnits);
     const total = Math.max(target, doneSets.length || 1);
     const lastDone = doneSets[doneSets.length - 1];
     const drafts = Array.from({ length: Math.max(0, total - doneSets.length) }, (_, offset) => {
@@ -6029,8 +6049,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         reps: payload.defaultReps ?? settings?.default_reps ?? 12,
         metrics: {
           ...(lastDone?.metrics || {}),
-          duration_unit: lastMetricSource.duration_unit || 'sec',
-          distance_unit: lastMetricSource.distance_unit || settings?.distance_unit || 'km'
+          duration_unit: nextMetricUnits.duration_unit,
+          distance_unit: nextMetricUnits.distance_unit
         },
         done: false
       };
@@ -6076,14 +6096,28 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const changeLogTemplate = async (template) => {
     const nextTemplate = normalizeTemplate(template);
+    const nextSchema = cleanMetricSchemaForTemplate(nextTemplate, metricSchema);
     setLogTemplate(nextTemplate);
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate: nextTemplate, metricSchema }) });
+    setMetricSchema(nextSchema);
+    await api(`/api/exercises/${exercise.id}/preferences`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        userId,
+        targetSets,
+        weightMode,
+        manualUnit,
+        logTemplate: nextTemplate,
+        metricSchema: nextSchema,
+        defaultDurationUnit: metricUnits.duration_unit,
+        defaultDistanceUnit: metricUnits.distance_unit
+      })
+    });
   };
   const addMetricToExercise = async (metricKey) => {
     if (!metricKey) return;
-    const nextSchema = [...new Set([...metricSchema, metricKey])];
+    const nextSchema = cleanMetricSchemaForTemplate(logTemplate, [...new Set([...metricSchema, metricKey])]);
     setMetricSchema(nextSchema);
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema, defaultDurationUnit: metricUnits.duration_unit, defaultDistanceUnit: metricUnits.distance_unit }) });
   };
   const removeMetricFromExercise = async (metricKey) => {
     const nextSchema = metricSchema.filter((key) => key !== metricKey);
@@ -6095,7 +6129,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (metricKey === 'distance') delete nextMetrics.distance_unit;
       return { ...set, metrics: nextMetrics };
     }));
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema, defaultDurationUnit: metricUnits.duration_unit, defaultDistanceUnit: metricUnits.distance_unit }) });
   };
   const completeSet = async (set, options = {}) => {
     // Untick: chỉ cho phép untick set done cuối cùng (ngược thứ tự)
@@ -6205,7 +6239,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
   };
   const saveWeightPreference = async (patch) => {
-    await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema, ...patch }) });
+    await api(`/api/exercises/${exercise.id}/preferences`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        userId,
+        targetSets,
+        weightMode,
+        manualUnit,
+        logTemplate,
+        metricSchema,
+        defaultDurationUnit: metricUnits.duration_unit,
+        defaultDistanceUnit: metricUnits.distance_unit,
+        ...patch
+      })
+    });
   };
   const changeWeightMode = (mode) => {
     const nextTemplate = templateHasWeight(logTemplate) ? logTemplate : 'custom';
