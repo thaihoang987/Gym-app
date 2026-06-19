@@ -1025,8 +1025,7 @@ button:disabled {
 .set-table-header,
 .set-table-row {
   display: grid;
-  min-width: 42rem;
-  grid-template-columns: 3rem minmax(8rem, 1fr) minmax(8rem, 9rem) minmax(8rem, 9rem) 3rem 3rem;
+  grid-template-columns: 3rem minmax(5.5rem, 1fr) 5rem 5rem 3rem 3rem;
   align-items: center;
   column-gap: 0.5rem;
 }
@@ -1147,9 +1146,8 @@ button:disabled {
 
   .set-table-header,
   .set-table-row {
-    min-width: 42rem;
-    grid-template-columns: 3rem minmax(8rem, 1fr) minmax(8rem, 9rem) minmax(8rem, 9rem) 3rem 3rem;
-    column-gap: 0.5rem;
+    grid-template-columns: 2.1rem minmax(2.6rem, 0.7fr) minmax(4.4rem, 1fr) minmax(4.2rem, 1fr) 2.4rem 2.4rem;
+    column-gap: 0.25rem;
   }
 
   .set-table-header {
@@ -1157,7 +1155,7 @@ button:disabled {
   }
 
   .set-table-row {
-    @apply p-2;
+    @apply p-1.5;
     row-gap: 0.5rem;
   }
 
@@ -1174,11 +1172,11 @@ button:disabled {
   }
 
   .compact-wheel-picker {
-    @apply h-[98px] rounded-lg;
+    @apply h-[88px] rounded-md;
   }
 
   .manual-weight-input {
-    @apply h-[98px] rounded-lg text-xl;
+    @apply h-[88px] rounded-md text-base;
   }
 
   .compact-wheel-highlight-wrapper {
@@ -1186,12 +1184,12 @@ button:disabled {
   }
 
   .compact-wheel-highlight {
-    @apply text-lg;
+    @apply text-base;
   }
 
   .compact-wheel-option,
   .compact-wheel-highlight {
-    @apply text-sm;
+    @apply text-xs;
   }
 
   .compact-wheel-label {
@@ -1199,15 +1197,15 @@ button:disabled {
   }
 
   .compact-wheel-label small {
-    @apply text-[10px];
+    @apply text-[8px];
   }
 
   .set-check {
-    @apply h-11 w-11 rounded-xl;
+    @apply h-9 w-9 rounded-lg;
   }
 
   .tiny-btn {
-    @apply h-11 w-11 rounded-xl;
+    @apply h-9 w-9 rounded-lg;
   }
 }
 
