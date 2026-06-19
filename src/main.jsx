@@ -1164,13 +1164,7 @@ const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? 
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
-const cleanMetricSchemaForTemplate = (template, schema = []) => {
-  const normalized = normalizeTemplate(template);
-  if (normalized === 'custom') return schema || [];
-  const baseMetrics = new Set(['duration_seconds', 'distance']);
-  const allowedBaseMetrics = new Set(LOG_TEMPLATE_DEFS[normalized].defaults || []);
-  return (schema || []).filter((key) => !baseMetrics.has(key) || allowedBaseMetrics.has(key));
-};
+const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
 const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
 const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
 const templatePrimaryColumns = (template) => {
@@ -1196,15 +1190,17 @@ const formatDuration = (seconds) => {
   const rest = total % 60;
   return minutes ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
 };
-const formatMetricValue = (key, value, settings = {}) => {
+const formatMetricValue = (key, value, settings = {}, metrics = {}) => {
   if (value === undefined || value === null || value === '') return '';
-  if (key === 'duration_seconds') return formatDuration(value);
-  if (key === 'distance') return `${Number(value)} ${settings.distance_unit || 'km'}`;
+  if (key === 'duration_seconds') return formatDurationMetric({ duration_seconds: value, duration_unit: metrics.duration_unit });
+  if (key === 'distance') return formatDistanceMetric({ distance: value, distance_unit: metrics.distance_unit }, settings);
+  if (key === 'weight_kg') return formatWeight(value, metrics.weight_unit || settings.default_weight_unit || 'kg');
   if (key === 'heart_rate') return `${Number(value)} bpm`;
   if (key === 'calories') return `${Number(value)} kcal`;
   if (key === 'incline') return `${Number(value)}%`;
   if (key === 'rpe') return `${Number(value)}/10`;
   if (key === 'steps') return `${Number(value)} steps`;
+  if (key === 'resistance') return `level ${Number(value)}`;
   return String(value);
 };
 const formatDurationMetric = (metrics = {}) => {
@@ -1233,12 +1229,21 @@ const describeSetByTemplate = (set, template, settings = {}) => {
     ? formatWeight(metrics.weight_kg, metrics.weight_unit || weightUnit).replace(' ', '')
     : '';
   const sideText = metrics.side ? String(metrics.side) : '';
-  if (template === 'distance') return [distanceText, timeText, metricWeightText].filter(Boolean).join(' · ') || repsText || '-';
-  if (template === 'timed') return [timeText, metricWeightText || weightText].filter(Boolean).join(' · ') || '-';
-  if (template === 'mobility') return [timeText, sideText].filter(Boolean).join(' · ') || '-';
-  if (template === 'carry') return [weightText || metricWeightText, distanceText || timeText].filter(Boolean).join(' · ') || '-';
-  if (template === 'bodyweight') return [repsText, metricWeightText, timeText].filter(Boolean).join(' · ') || '-';
-  const extras = [distanceText, timeText, metricWeightText].filter(Boolean).join(' · ');
+  const shownMetricKeys = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'side']);
+  const extraMetricText = Object.keys(metrics)
+    .filter((key) => !shownMetricKeys.has(key) && metricDef(key))
+    .map((key) => {
+      const text = formatMetricValue(key, metrics[key], settings, metrics);
+      return text ? `${metricDef(key).label}: ${text}` : '';
+    })
+    .filter(Boolean)
+    .join(' · ');
+  if (template === 'distance') return [distanceText, timeText, metricWeightText, extraMetricText].filter(Boolean).join(' · ') || repsText || '-';
+  if (template === 'timed') return [timeText, metricWeightText || weightText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
+  if (template === 'mobility') return [timeText, sideText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
+  if (template === 'carry') return [weightText || metricWeightText, distanceText || timeText, extraMetricText].filter(Boolean).join(' · ') || '-';
+  if (template === 'bodyweight') return [repsText, metricWeightText, timeText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
+  const extras = [distanceText, timeText, metricWeightText, sideText, extraMetricText].filter(Boolean).join(' · ');
   return [weightText || 'BW', repsText, extras].filter(Boolean).join(' × ').replace(' ×  · ', ' · ') || '-';
 };
 function normalizeWeightSteps(values, fallback, unit = 'kg') {
@@ -1459,7 +1464,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.17'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.18'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
