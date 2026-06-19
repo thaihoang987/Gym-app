@@ -1064,11 +1064,11 @@ button:disabled {
 }
 
 .set-metric-previous {
-  @apply grid min-h-[4.25rem] content-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase text-slate-400;
+  @apply grid content-start gap-1 px-1 py-1 text-xs font-black uppercase text-slate-400;
 }
 
 .set-metric-previous strong {
-  @apply break-words text-sm normal-case text-slate-700;
+  @apply break-words text-sm normal-case leading-snug text-slate-700;
 }
 
 .set-muted {

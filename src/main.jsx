@@ -1464,7 +1464,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.19'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.20'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6515,6 +6515,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (column.key === 'distance') return `${def.label} (${metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
     return def.label;
   };
+  const metricFieldLabel = (key) => {
+    const def = metricDef(key);
+    if (key === 'duration_seconds') return `${def.label} (${metricUnits.duration_unit || 'sec'})`;
+    if (key === 'distance') return `${def.label} (${metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
+    if (key === 'weight_kg') return `${def.label} (${weightMode === 'LB' ? 'lb' : weightMode === 'MANUAL' ? manualUnit : 'kg'})`;
+    return `${def.label}${def.unit ? ` (${def.unit})` : ''}`;
+  };
   const renderMetricControl = (set, key) => {
     const def = metricDef(key);
     const disabledStyle = set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined;
@@ -6959,7 +6966,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                               <strong>{previousMetricText(previous, key)}</strong>
                             </div>
                             <label className="set-metric-field">
-                              <span>{def.label}{def.unit && !['duration_seconds', 'distance'].includes(key) ? ` (${def.unit})` : ''}</span>
+                              <span>{metricFieldLabel(key)}</span>
                               {renderMetricControl(set, key)}
                             </label>
                           </div>
