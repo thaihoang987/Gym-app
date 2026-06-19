@@ -1464,7 +1464,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.18'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.19'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6698,6 +6698,15 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (column.kind === 'bodyweight') return renderBodyWeightControl(set);
     return renderMetricControl(set, column.key);
   };
+  const previousMetricText = (previous, key) => {
+    if (!previous) return '-';
+    const metrics = previous.metrics || {};
+    const rawValue = key === 'weight_kg'
+      ? (metrics.weight_kg ?? previous.weightKg ?? previous.weight_kg)
+      : metrics[key];
+    const text = formatMetricValue(key, rawValue, settings, metrics);
+    return text || '-';
+  };
 
   // Hiển thị summary card sau khi hoàn thành
   if (summary) return <WorkoutSummary summary={summary} settings={settings} onClose={onClose} userId={userId} checkDonate />;
@@ -6944,10 +6953,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                       {rowMetricKeys.map((key) => {
                         const def = metricDef(key);
                         return (
-                          <label key={key} className="set-metric-field">
-                            <span>{def.label}{def.unit && !['duration_seconds', 'distance'].includes(key) ? ` (${def.unit})` : ''}</span>
-                            {renderMetricControl(set, key)}
-                          </label>
+                          <div key={key} className="set-metric-compare">
+                            <div className="set-metric-previous">
+                              <span>{t('workout_prev_btn')}</span>
+                              <strong>{previousMetricText(previous, key)}</strong>
+                            </div>
+                            <label className="set-metric-field">
+                              <span>{def.label}{def.unit && !['duration_seconds', 'distance'].includes(key) ? ` (${def.unit})` : ''}</span>
+                              {renderMetricControl(set, key)}
+                            </label>
+                          </div>
                         );
                       })}
                     </div>

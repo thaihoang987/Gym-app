@@ -1048,7 +1048,7 @@ button:disabled {
 }
 
 .set-metric-row {
-  @apply ml-12 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2 sm:grid-cols-2 lg:grid-cols-3;
+  @apply ml-12 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2;
 }
 
 .set-metric-row.done {
@@ -1057,6 +1057,18 @@ button:disabled {
 
 .set-metric-field {
   @apply grid gap-1 text-xs font-black uppercase text-slate-400;
+}
+
+.set-metric-compare {
+  @apply grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-start gap-2 rounded-lg bg-slate-50 p-2;
+}
+
+.set-metric-previous {
+  @apply grid min-h-[4.25rem] content-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase text-slate-400;
+}
+
+.set-metric-previous strong {
+  @apply break-words text-sm normal-case text-slate-700;
 }
 
 .set-muted {
