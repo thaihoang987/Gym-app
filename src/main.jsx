@@ -1464,7 +1464,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.20'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.21'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -2449,8 +2449,12 @@ function offlineAuthKey(username) {
   return `${OFFLINE_AUTH_PREFIX}${String(username || '').trim().toLowerCase()}`;
 }
 
+function hasWebCryptoSubtle() {
+  return typeof globalThis !== 'undefined' && Boolean(globalThis.crypto?.subtle && globalThis.crypto?.getRandomValues);
+}
+
 async function saveOfflineAuth(username, password, user) {
-  if (!username || !password || !user?.id || !crypto?.subtle) return;
+  if (!username || !password || !user?.id || !hasWebCryptoSubtle()) return;
   const verifier = await passwordDigest(password);
   localStorage.setItem(offlineAuthKey(username), JSON.stringify({
     username: String(username).trim(),
@@ -2464,7 +2468,7 @@ async function saveOfflineAuth(username, password, user) {
 
 async function verifyOfflineAuth(username, password) {
   const raw = localStorage.getItem(offlineAuthKey(username));
-  if (!raw || !password || !crypto?.subtle) return null;
+  if (!raw || !password || !hasWebCryptoSubtle()) return null;
   const saved = JSON.parse(raw);
   const verifier = await passwordDigest(password, saved.salt);
   return verifier.hash === saved.hash ? saved.user : null;
@@ -2539,18 +2543,29 @@ function App() {
         if (JSON.stringify(nextUser) !== JSON.stringify(user)) setUser(nextUser);
         localStorage.setItem(BOOT_CACHE_KEY(user.id), JSON.stringify(data));
       })
-      .catch(() => {
-        // Chỉ logout nếu đang có mạng (lỗi auth thật sự)
-        // Mất mạng → giữ nguyên, không bao giờ clear user
-        if (isServerOnline) {
+      .catch((error) => {
+        const authFailed = error?.status === 401 || error?.status === 403;
+        if (authFailed) {
           clearOfflineAuth(user.username);
           localStorage.removeItem('familyGymUser');
           sessionStorage.removeItem('familyGymUser');
           setUser(null);
         } else if (localBoot) {
           setBoot(localBoot);
+        } else {
+          setBoot({
+            users: [user],
+            activeUser: user,
+            settings: {
+              timezone: user.timezone || fallbackDisplay.timezone,
+              locale: user.locale || fallbackDisplay.locale,
+              default_weight_unit: 'kg',
+              distance_unit: 'km'
+            },
+            exerciseCount: 0,
+            suggestion: { mode: 'FREE', title: 'Free training', routine: null }
+          });
         }
-        // Nếu offline + chưa có cachedBoot → vẫn giữ user, hiện màn offline
       });
   }, [user, refresh, isServerOnline]);
 
@@ -2723,7 +2738,7 @@ function Login({ onLogin }) {
       localStorage.removeItem('familyGymUser');
       sessionStorage.removeItem('familyGymUser');
       storage.setItem('familyGymUser', JSON.stringify(result.user));
-      await saveOfflineAuth(username, password, result.user);
+      await saveOfflineAuth(username, password, result.user).catch(() => {});
       warmOfflineData(result.user.id).catch(() => {});
       onLogin(result.user);
     } catch (err) {
