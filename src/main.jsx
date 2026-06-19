@@ -1459,7 +1459,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.16'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.17'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -3286,7 +3286,13 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
   };
   const completeActiveSession = async (active) => {
     const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
-    if (!totalSets && !(await dialog.confirm(t('confirm_no_sets')))) return;
+    if (!totalSets) {
+      if (!(await dialog.confirm(t('confirm_no_sets')))) return;
+      await api(`/api/sessions/${active.session.id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+      localStorage.removeItem(`familyGymWorkout:${userId}`);
+      setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
+      return;
+    }
     await api(`/api/sessions/${active.session.id}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     localStorage.removeItem(`familyGymWorkout:${userId}`);
     setActiveSessions((current) => current.filter((item) => item.session.id !== active.session.id));
@@ -5855,16 +5861,32 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
     api(`/api/sessions/${workout.sessionId}?userId=${userId}`)
       .then((payload) => {
+        if (cancelled) return;
         if (payload?.session?.status === 'DELETED' || !payload?.exercises?.length) {
           setData(findOfflineSessionPayload(userId, workout.sessionId) || payload);
           return;
         }
         setData(payload);
       })
-      .catch(() => setData(findOfflineSessionPayload(userId, workout.sessionId)));
-  }, [workout.sessionId, userId]);
+      .catch((error) => {
+        if (cancelled) return;
+        const fallback = findOfflineSessionPayload(userId, workout.sessionId);
+        if (fallback) {
+          setData(fallback);
+          return;
+        }
+        if (error?.status === 404) {
+          localStorage.removeItem(`familyGymWorkout:${userId}`);
+          onClose();
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workout.sessionId, userId, onClose]);
 
   useEffect(() => {
     api(`/api/body-weight/recent?userId=${userId}`)
@@ -6287,7 +6309,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (item.id === exercise.id) return sets.some((set) => set.done);
       return Number(item.completedSets || item.sets || 0) > 0;
     });
-    if (!hasCompletedSet && !(await dialog.confirm(t('workout_confirm_end')))) return;
+    if (!hasCompletedSet) {
+      if (!(await dialog.confirm(t('workout_confirm_end')))) return;
+      await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
+      localStorage.removeItem(`familyGymWorkout:${userId}`);
+      onClose();
+      return;
+    }
     // Offline: queue complete action + optimistic update dashboard cache
     if (!isOnline) {
       addToOfflineQueue(userId, { type: 'complete', sessionId: workout.sessionId });
@@ -6298,13 +6326,18 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     }
     // Flush offline queue trước khi complete để không mất set nào
     await flushOfflineQueue(userId).catch(() => {});
+    let result = null;
     try {
-      await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
+      result = await api(`/api/sessions/${workout.sessionId}/complete`, { method: 'POST', body: JSON.stringify({ userId }) });
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       addToOfflineQueue(userId, { type: 'complete', sessionId: workout.sessionId });
     }
     localStorage.removeItem(`familyGymWorkout:${userId}`);
+    if (result?.discarded) {
+      onClose();
+      return;
+    }
     // Fetch detail cho summary card
     try {
       const detail = await api(`/api/sessions/${workout.sessionId}/detail?userId=${userId}`);
