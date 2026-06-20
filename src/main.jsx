@@ -1205,7 +1205,7 @@ const templatePrimaryColumns = (template) => {
     case 'timed':
       return [{ kind: 'metric', key: 'duration_seconds' }, null];
     case 'distance':
-      return [{ kind: 'metric', key: 'distance' }, null];
+      return [{ kind: 'metric', key: 'distance' }, { kind: 'metric', key: 'duration_seconds' }];
     case 'carry':
       return [{ kind: 'weight' }, { kind: 'metric', key: 'distance' }];
     case 'mobility':
