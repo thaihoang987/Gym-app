@@ -1251,6 +1251,63 @@ const formatDistanceMetric = (metrics = {}, settings = {}) => {
     ? `${formatMetricNumber(kmToMile(distanceKm), 2)} mile`
     : `${formatMetricNumber(distanceKm, 2)} km`;
 };
+const formatPaceValue = (secondsPerKm, settings = {}) => {
+  const seconds = Number(secondsPerKm || 0);
+  if (!seconds) return '';
+  const unit = settings.distance_unit || 'km';
+  const displaySeconds = unit === 'mile' ? seconds * KM_PER_MILE : seconds;
+  return `${formatDuration(displaySeconds)} / ${unit === 'mile' ? 'mile' : 'km'}`;
+};
+const formatPrItem = (item, settings = {}, fallbackUnit = 'kg') => {
+  if (!item || !Number(item.value)) return '';
+  switch (item.kind) {
+    case 'one_rm':
+    case 'metric_one_rm':
+      return `1RM PR ${formatWeight(item.value, item.unit || fallbackUnit)}`;
+    case 'weight':
+    case 'metric_weight':
+      return `Weight PR ${formatWeight(item.value, item.unit || fallbackUnit)}`;
+    case 'reps':
+    case 'metric_reps':
+      return `Rep PR ${formatMetricNumber(item.value, 0)} reps`;
+    case 'volume':
+      return `Vol PR ${formatMetricNumber(item.value, 1)}`;
+    case 'distance':
+    case 'metric_distance':
+      return `Distance PR ${formatDistanceMetric({ distance: item.value, distance_unit: item.unit }, settings)}`;
+    case 'duration':
+    case 'metric_duration':
+      return `Time PR ${formatDurationMetric({ duration_seconds: item.value, duration_unit: item.unit })}`;
+    case 'pace':
+    case 'metric_pace':
+      return `Pace PR ${formatPaceValue(item.value, settings)}`;
+    default:
+      return `${String(item.kind || 'Metric').replace(/^metric_/, '')} PR ${formatMetricNumber(item.value, 1)}`;
+  }
+};
+const setPrValue = (set, template, settings = {}) => {
+  const metrics = set?.metrics || {};
+  const weightKg = Number(set?.weightKg ?? set?.weight_kg ?? 0);
+  const reps = Number(set?.reps || 0);
+  const distance = Number(metrics.distance || 0);
+  const seconds = Number(metrics.duration_seconds || 0);
+  switch (normalizeTemplate(template)) {
+    case 'distance':
+      return distance || 0;
+    case 'timed':
+    case 'mobility':
+      return seconds || 0;
+    case 'bodyweight':
+      return reps || 0;
+    default:
+      return estimateOneRepMaxKg(weightKg, reps);
+  }
+};
+const setBeatsPr = (value, prItem) => {
+  if (!prItem || !Number(value)) return false;
+  if (prItem.kind === 'pace' || prItem.kind === 'metric_pace') return Number(value) < Number(prItem.value || Infinity);
+  return Number(value) > Number(prItem.value || 0);
+};
 const describeSetByTemplate = (set, template, settings = {}) => {
   const metrics = set?.metrics || {};
   const weightValue = set?.weightKg ?? set?.weight_kg ?? 0;
@@ -5881,6 +5938,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const [sets, setSets] = useState([]);
   const [previousSets, setPreviousSets] = useState([]);
   const [allTimePR, setAllTimePR] = useState(0);
+  const [prStats, setPrStats] = useState(null);
   const [note, setNote] = useState('');
   const [targetSets, setTargetSets] = useState(3);
   const [weightMode, setWeightMode] = useState('KG');
@@ -6027,6 +6085,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`).then((payload) => {
       setPreviousSets(payload.previous || []);
       setAllTimePR(Number(payload.allTimePR || 0));
+      setPrStats(payload.prStats || null);
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualUnit(payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg'));
@@ -6232,6 +6291,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const payload = await api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`);
     const target = payload.targetSets || targetSets || settings?.default_sets || 3;
     setPreviousSets(payload.previous || []);
+    setPrStats(payload.prStats || null);
     setNote(payload.note || '');
     setTargetSets(target);
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
@@ -6863,6 +6923,36 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const text = formatMetricValue(key, rawValue, settings, metrics);
     return text || '-';
   };
+  const prBadgeItems = (() => {
+    const items = [];
+    const templateStats = prStats?.template || {};
+    const metricStats = prStats?.metrics || {};
+    const template = normalizeTemplate(logTemplate);
+    if (template === 'distance') items.push(templateStats.distance, templateStats.pace);
+    else if (template === 'timed' || template === 'mobility') items.push(templateStats.duration);
+    else if (template === 'bodyweight') items.push(templateStats.reps);
+    else items.push(templateStats.oneRm, templateStats.weight, templateStats.volume);
+    if (prStats?.metricOneRm) items.push(prStats.metricOneRm);
+    metricSchema.forEach((key) => {
+      if (metricStats[key]) items.push(metricStats[key]);
+      if (key === 'distance' && metricStats.pace) items.push(metricStats.pace);
+    });
+    return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit)).filter(Boolean).slice(0, 6);
+  })();
+  const metricPrForSet = (set, key) => {
+    const metrics = set?.metrics || {};
+    if (key === 'weight_kg' && metrics.weight_kg && metrics.metric_reps && prStats?.metricOneRm) {
+      const value = estimateOneRepMaxKg(metrics.weight_kg, metrics.metric_reps);
+      return setBeatsPr(value, prStats.metricOneRm) ? formatPrItem({ ...prStats.metricOneRm, value }, settings, exerciseWeightUnit) : '';
+    }
+    if (key === 'distance' && metrics.distance && metrics.duration_seconds && prStats?.metrics?.pace) {
+      const pace = Number(metrics.duration_seconds) / Number(metrics.distance);
+      if (setBeatsPr(pace, prStats.metrics.pace)) return formatPrItem({ ...prStats.metrics.pace, value: pace }, settings, exerciseWeightUnit);
+    }
+    const item = prStats?.metrics?.[key];
+    const raw = key === 'weight_kg' ? metrics.weight_kg : metrics[key];
+    return setBeatsPr(raw, item) ? formatPrItem({ ...item, value: raw }, settings, exerciseWeightUnit) : '';
+  };
   const WeightOptionControls = ({ label, option, onMode, onManualUnit }) => (
     <div className="metric-config-row">
       <span className="metric-unit-settings-label">{label}</span>
@@ -7083,7 +7173,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               <h1 className="text-2xl font-black">{exerciseDisplayName(exercise, settings)}</h1>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-slate-500">{t('workout_prev_lift')} {previousSets[0] ? `${formatWeight(previousSets[0].weight_kg, previousSets[0].weight_unit || 'kg')} x ${previousSets[0].reps}` : t('workout_no_prev_lift')}</p>
-                {allTimePR > 0 && (
+                {prBadgeItems.length > 0 ? prBadgeItems.map((label) => (
+                  <span key={label} className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-black text-yellow-700">
+                    🏆 {label}
+                  </span>
+                )) : allTimePR > 0 && (
                   <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-black text-yellow-700">
                     🏆 1RM PR {formatWeight(allTimePR, exerciseWeightUnit)}
                   </span>
@@ -7105,8 +7199,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lastDoneIndex = [...sets].filter((s) => s.done).sort((a, b) => b.setIndex - a.setIndex)[0]?.setIndex;
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
-                const setOneRepMax = estimateOneRepMaxKg(set.weightKg, set.reps);
-                const isPR = set.done && allTimePR > 0 && setOneRepMax > allTimePR;
+                const setPrimaryPrValue = setPrValue(set, logTemplate, settings);
+                const isPR = set.done && setBeatsPr(setPrimaryPrValue, prStats?.primary || prStats?.template?.oneRm);
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
                     <div className={`set-table-row ${set.done ? 'done' : ''}`}>
@@ -7154,7 +7248,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                               <strong>{previousMetricText(previous, key)}</strong>
                             </div>
                             <label className="set-metric-field">
-                              <span>{metricFieldLabel(key)}</span>
+                              <span>
+                                {metricFieldLabel(key)}
+                                {set.done && metricPrForSet(set, key) && <em className="ml-1 rounded bg-yellow-100 px-1 not-italic text-yellow-700">PR</em>}
+                              </span>
                               {renderMetricControl(set, key)}
                             </label>
                           </div>

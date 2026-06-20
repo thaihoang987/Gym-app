@@ -202,6 +202,96 @@ function logRow(row) {
   return { ...row, metrics, metrics_json: JSON.stringify(metrics) };
 }
 
+function estimateOneRepMax(weightKg, reps) {
+  const weight = Number(weightKg || 0);
+  const repCount = Number(reps || 0);
+  if (weight <= 0 || repCount <= 0) return 0;
+  return weight * (1 + repCount / 30);
+}
+
+function higherPr(current, candidate) {
+  if (!candidate || !Number.isFinite(Number(candidate.value))) return current;
+  if (!current || Number(candidate.value) > Number(current.value || 0)) return candidate;
+  return current;
+}
+
+function lowerPr(current, candidate) {
+  if (!candidate || !Number.isFinite(Number(candidate.value)) || Number(candidate.value) <= 0) return current;
+  if (!current || Number(candidate.value) < Number(current.value || Infinity)) return candidate;
+  return current;
+}
+
+function prBase(row, value, extra = {}) {
+  return {
+    value: Number(value || 0),
+    logId: row.id,
+    sessionId: row.session_id,
+    setIndex: row.set_index,
+    completedAt: row.completed_at,
+    ...extra
+  };
+}
+
+function buildPrStats(rows = [], template = 'strength') {
+  const stats = { template: {}, metrics: {}, metricOneRm: null };
+  for (const raw of rows) {
+    const row = logRow(raw);
+    const metrics = row.metrics || {};
+    const weightKg = Number(row.weight_kg || 0);
+    const reps = Number(row.reps || 0);
+    const oneRm = estimateOneRepMax(weightKg, reps);
+    const volume = weightKg * reps;
+    const distance = Number(metrics.distance || 0);
+    const seconds = Number(metrics.duration_seconds || 0);
+    const metricWeightKg = Number(metrics.weight_kg || 0);
+    const metricReps = Number(metrics.metric_reps || 0);
+    const metricOneRm = estimateOneRepMax(metricWeightKg, metricReps);
+
+    if (oneRm > 0) stats.template.oneRm = higherPr(stats.template.oneRm, prBase(row, oneRm, { kind: 'one_rm', weightKg, reps }));
+    if (weightKg > 0) stats.template.weight = higherPr(stats.template.weight, prBase(row, weightKg, { kind: 'weight', unit: row.weight_unit || 'kg' }));
+    if (reps > 0) stats.template.reps = higherPr(stats.template.reps, prBase(row, reps, { kind: 'reps' }));
+    if (volume > 0) stats.template.volume = higherPr(stats.template.volume, prBase(row, volume, { kind: 'volume', weightKg, reps }));
+    if (distance > 0) stats.template.distance = higherPr(stats.template.distance, prBase(row, distance, { kind: 'distance', unit: metrics.distance_unit || 'km' }));
+    if (seconds > 0) stats.template.duration = higherPr(stats.template.duration, prBase(row, seconds, { kind: 'duration', unit: metrics.duration_unit || 'sec' }));
+    if (distance > 0 && seconds > 0) {
+      stats.template.pace = lowerPr(stats.template.pace, prBase(row, seconds / distance, { kind: 'pace', distance, seconds }));
+    }
+
+    if (metricWeightKg > 0) stats.metrics.weight_kg = higherPr(stats.metrics.weight_kg, prBase(row, metricWeightKg, { kind: 'metric_weight', unit: metrics.weight_unit || 'kg' }));
+    if (metricReps > 0) stats.metrics.metric_reps = higherPr(stats.metrics.metric_reps, prBase(row, metricReps, { kind: 'metric_reps' }));
+    if (metricOneRm > 0) stats.metricOneRm = higherPr(stats.metricOneRm, prBase(row, metricOneRm, { kind: 'metric_one_rm', weightKg: metricWeightKg, reps: metricReps, unit: metrics.weight_unit || 'kg' }));
+    if (distance > 0) stats.metrics.distance = higherPr(stats.metrics.distance, prBase(row, distance, { kind: 'metric_distance', unit: metrics.distance_unit || 'km' }));
+    if (seconds > 0) stats.metrics.duration_seconds = higherPr(stats.metrics.duration_seconds, prBase(row, seconds, { kind: 'metric_duration', unit: metrics.duration_unit || 'sec' }));
+    if (distance > 0 && seconds > 0) stats.metrics.pace = lowerPr(stats.metrics.pace, prBase(row, seconds / distance, { kind: 'metric_pace', distance, seconds }));
+
+    for (const [key, value] of Object.entries(metrics)) {
+      if (['weight_kg', 'weight_unit', 'metric_reps', 'distance', 'distance_unit', 'duration_seconds', 'duration_unit'].includes(key)) continue;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) stats.metrics[key] = higherPr(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
+    }
+  }
+
+  switch (normalizeLogTemplate(template)) {
+    case 'distance':
+      stats.primary = stats.template.distance || stats.template.pace || null;
+      break;
+    case 'timed':
+    case 'mobility':
+      stats.primary = stats.template.duration || null;
+      break;
+    case 'bodyweight':
+      stats.primary = stats.template.reps || null;
+      break;
+    case 'carry':
+      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.distance || null;
+      break;
+    default:
+      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.volume || null;
+      break;
+  }
+  return stats;
+}
+
 function saveUploadedDataUrl(dataUrl, prefix) {
   if (!dataUrl) return null;
   if (typeof dataUrl === 'string' && dataUrl.startsWith('/uploads/')) return dataUrl;
@@ -2132,6 +2222,16 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       AND wl.reps > 0
   `, [userId, exerciseId]);
   const allTimePR = Number(prRow?.all_time_one_rm || 0);
+  const completedRows = all(`
+    SELECT wl.id, wl.session_id, wl.set_index, wl.weight_kg, wl.weight_unit, wl.reps, wl.metrics_json, wl.completed_at
+    FROM workout_logs wl
+    JOIN workout_sessions ws ON ws.id = wl.session_id
+    WHERE wl.user_id = ?
+      AND wl.exercise_id = ?
+      AND ws.status = 'COMPLETED'
+    ORDER BY wl.completed_at, wl.id
+  `, [userId, exerciseId]);
+  const prStats = buildPrStats(completedRows, normalizeLogTemplate(preference?.log_template || 'strength'));
   const inputOptions = normalizeInputOptions(preference?.input_options_json || '{}', {
     template: {
       weightMode: preference?.weight_mode || 'KG',
@@ -2145,6 +2245,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     current: current.map(logRow),
     previous: previous.map(logRow),
     allTimePR,
+    prStats,
     note: preference?.note || '',
     targetSets: preference?.target_sets || settings.default_sets || 3,
     defaultReps: preference?.default_reps || settings.default_reps || 12,
