@@ -958,6 +958,14 @@ button:disabled {
   @apply grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-emerald-800;
 }
 
+.metric-option-section {
+  @apply mt-3 rounded-xl border border-emerald-100 bg-white/60 p-2;
+}
+
+.metric-option-title {
+  @apply px-1 pb-1 text-[11px] font-black uppercase tracking-wide text-slate-500;
+}
+
 .metric-add-select,
 .metric-input {
   @apply min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-orange-500;
@@ -996,11 +1004,11 @@ button:disabled {
 }
 
 .metric-unit-settings {
-  @apply mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
+  @apply mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
 }
 
 .metric-config-row {
-  @apply mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
+  @apply mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-100 bg-white/70 p-2;
 }
 
 .metric-unit-settings-label {

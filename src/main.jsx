@@ -1117,7 +1117,7 @@ const LOG_TEMPLATE_DEFS = {
   strength: { label: 'Strength', defaults: [] },
   bodyweight: { label: 'Bodyweight', defaults: [] },
   timed: { label: 'Timed', defaults: ['duration_seconds'] },
-  distance: { label: 'Distance', defaults: ['distance'] },
+  distance: { label: 'Distance', defaults: ['distance', 'duration_seconds'] },
   carry: { label: 'Carry', defaults: ['distance', 'duration_seconds'] },
   mobility: { label: 'Mobility', defaults: ['duration_seconds', 'side'] },
   custom: { label: 'Custom', defaults: [] }
@@ -1166,7 +1166,8 @@ const displayWeight = (kg, unit) => Number(unit === 'lb' ? roundDisplayWeight(kg
 const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit === 'lb' ? 'Lbs' : 'kg'}`;
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
-const templateMetrics = (template, schema = []) => [...new Set([...(LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || []), ...(schema || [])])];
+const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
+const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
 const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
 const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
 const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
@@ -1521,7 +1522,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.30'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.31'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6621,15 +6622,20 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (index > 0) openExercise(index - 1);
   };
   const exerciseGroups = workoutExerciseGroups(data);
+  const templateMetricKeys = templateDefaultMetrics(logTemplate);
   const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
   const primaryColumns = templatePrimaryColumns(logTemplate);
   const primaryMetricKeys = primaryColumns.filter((column) => column?.kind === 'metric').map((column) => column.key);
-  const rowMetricKeys = activeMetricKeys.filter((key) => !primaryMetricKeys.includes(key));
+  const rowMetricKeys = metricSchema;
   const exerciseWeightUnit = currentWeightUnit();
-  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !activeMetricKeys.includes(item.key));
+  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !metricSchema.includes(item.key));
   const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
   const hasDistanceMetric = activeMetricKeys.includes('distance');
-  const hasWeightMetric = activeMetricKeys.includes('weight_kg');
+  const hasWeightMetric = metricSchema.includes('weight_kg');
+  const hasTemplateTimeMetric = templateMetricKeys.includes('duration_seconds');
+  const hasTemplateDistanceMetric = templateMetricKeys.includes('distance');
+  const hasRowTimeMetric = rowMetricKeys.includes('duration_seconds');
+  const hasRowDistanceMetric = rowMetricKeys.includes('distance');
   const templateLabel = LOG_TEMPLATE_DEFS[normalizeTemplate(logTemplate)].label;
   const templateInputLabel = hasWeightMetric && !templateHasWeight(logTemplate)
     ? 'Weight'
@@ -7174,36 +7180,49 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 </select>
               )}
             </div>
-            {templateHasWeight(logTemplate) && (
-              <WeightOptionControls
-                label={`${templateInputLabel} input`}
-                option={inputOptions.template || { weightMode, manualUnit }}
-                onMode={changeWeightMode}
-                onManualUnit={updateManualUnit}
-              />
+            {(templateHasWeight(logTemplate) || hasTemplateTimeMetric || hasTemplateDistanceMetric) && (
+              <div className="metric-option-section">
+                <p className="metric-option-title">Template option</p>
+                {templateHasWeight(logTemplate) && (
+                  <WeightOptionControls
+                    label={`${templateInputLabel} input`}
+                    option={inputOptions.template || { weightMode, manualUnit }}
+                    onMode={changeWeightMode}
+                    onManualUnit={updateManualUnit}
+                  />
+                )}
+                {(hasTemplateTimeMetric || hasTemplateDistanceMetric) && (
+                  <div className="metric-unit-settings">
+                    {hasTemplateTimeMetric && (
+                      <UnitOptionControls label={`${templateInputLabel} time`} kind="time" option={inputOptions.template || { durationUnit: metricUnits.duration_unit }} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'template')} />
+                    )}
+                    {hasTemplateDistanceMetric && (
+                      <UnitOptionControls label={`${templateInputLabel} distance`} kind="distance" option={inputOptions.template || { distanceUnit: metricUnits.distance_unit }} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'template')} />
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-            {hasWeightMetric && (
-              <WeightOptionControls
-                label="Weight metric input"
-                option={metricOption('weight_kg')}
-                onMode={(mode) => changeMetricWeightMode('weight_kg', mode)}
-                onManualUnit={(unit) => changeMetricManualUnit('weight_kg', unit)}
-              />
-            )}
-            {(hasTimeMetric || hasDistanceMetric) && (
-              <div className="metric-unit-settings">
-                <span className="metric-unit-settings-label">Unit options</span>
-                {primaryMetricKeys.includes('duration_seconds') && (
-                  <UnitOptionControls label={`${templateInputLabel} time`} kind="time" option={inputOptions.template || { durationUnit: metricUnits.duration_unit }} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'template')} />
+            {(hasWeightMetric || hasRowTimeMetric || hasRowDistanceMetric) && (
+              <div className="metric-option-section">
+                <p className="metric-option-title">Metric option</p>
+                {hasWeightMetric && (
+                  <WeightOptionControls
+                    label="Weight metric input"
+                    option={metricOption('weight_kg')}
+                    onMode={(mode) => changeMetricWeightMode('weight_kg', mode)}
+                    onManualUnit={(unit) => changeMetricManualUnit('weight_kg', unit)}
+                  />
                 )}
-                {rowMetricKeys.includes('duration_seconds') && (
-                  <UnitOptionControls label="Time metric" kind="time" option={metricOption('duration_seconds')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'duration_seconds')} />
-                )}
-                {primaryMetricKeys.includes('distance') && (
-                  <UnitOptionControls label={`${templateInputLabel} distance`} kind="distance" option={inputOptions.template || { distanceUnit: metricUnits.distance_unit }} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'template')} />
-                )}
-                {rowMetricKeys.includes('distance') && (
-                  <UnitOptionControls label="Distance metric" kind="distance" option={metricOption('distance')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'distance')} />
+                {(hasRowTimeMetric || hasRowDistanceMetric) && (
+                  <div className="metric-unit-settings">
+                    {hasRowTimeMetric && (
+                      <UnitOptionControls label="Time metric" kind="time" option={metricOption('duration_seconds')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'duration_seconds')} />
+                    )}
+                    {hasRowDistanceMetric && (
+                      <UnitOptionControls label="Distance metric" kind="distance" option={metricOption('distance')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'distance')} />
+                    )}
+                  </div>
                 )}
               </div>
             )}
