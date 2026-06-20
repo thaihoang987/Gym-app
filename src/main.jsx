@@ -1464,7 +1464,7 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.23'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = '0.4.0-beta.24'; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
@@ -6628,14 +6628,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (weightMode === 'LB') {
         return (
           <div className="metric-weight-control" style={disabledStyle}>
-            <WheelPicker value={nearestOption(kgToLb(metricWeightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateMetricWeight(lbToKg(value), 'lb')} />
+            <WheelPicker dense value={nearestOption(kgToLb(metricWeightKg), weightStepsLbOptions)} options={weightStepsLbOptions} suffix="lb" onChange={(value) => updateMetricWeight(lbToKg(value), 'lb')} />
             <span>≈ {formatWeight(metricWeightKg, 'kg')}</span>
           </div>
         );
       }
       return (
         <div className="metric-weight-control" style={disabledStyle}>
-          <WheelPicker value={nearestOption(metricWeightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateMetricWeight(value, 'kg')} />
+          <WheelPicker dense value={nearestOption(metricWeightKg, weightStepsKgOptions)} options={weightStepsKgOptions} suffix="kg" onChange={(value) => updateMetricWeight(value, 'kg')} />
           <span>≈ {formatWeight(metricWeightKg, 'lb')}</span>
         </div>
       );
@@ -6945,36 +6945,34 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const setOneRepMax = estimateOneRepMaxKg(set.weightKg, set.reps);
                 const isPR = set.done && allTimePR > 0 && setOneRepMax > allTimePR;
                 return (
-                  <React.Fragment key={set.setIndex}>
-                  <div className={`set-table-row ${set.done ? 'done' : ''} ${isPR ? 'ring-2 ring-yellow-400 rounded-xl' : ''}`}>
-                    <strong className="set-number">
-                      {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
-                    </strong>
-                    <span className="set-previous">{previous ? describeSetByTemplate(previous, logTemplate, settings) : '-'}</span>
-                    {renderPrimaryColumn(set, primaryColumns[0])}
-                    {renderPrimaryColumn(set, primaryColumns[1])}
-                    <button
-                      className={`set-check ${set.done ? 'done' : ''}`}
-                      style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
-                      title={lockedUndone ? `Hoàn thành Set ${prevUndone.setIndex} trước` : lockedDone ? 'Bỏ Set sau trước' : undefined}
-                      onClick={() => completeSet(set)}
-                    >
-                      {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
-                    </button>
-                    <button
-                      className="tiny-btn"
-                      disabled={set.done || sets.length <= 1}
-                      style={set.done ? { opacity: 0.22, cursor: 'not-allowed', filter: 'grayscale(1)' } : undefined}
-                      onClick={() => removeDraftSet(set.setIndex)}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                  {rowMetricKeys.length > 0 && (
-                    <div className={`set-metric-row ${set.done ? 'done' : ''}`}>
-                      {rowMetricKeys.map((key) => {
-                        const def = metricDef(key);
-                        return (
+                  <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
+                    <div className={`set-table-row ${set.done ? 'done' : ''}`}>
+                      <strong className="set-number">
+                        {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
+                      </strong>
+                      <span className="set-previous">{previous ? describeSetByTemplate(previous, logTemplate, settings) : '-'}</span>
+                      {renderPrimaryColumn(set, primaryColumns[0])}
+                      {renderPrimaryColumn(set, primaryColumns[1])}
+                      <button
+                        className={`set-check ${set.done ? 'done' : ''}`}
+                        style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                        title={lockedUndone ? `Hoàn thành Set ${prevUndone.setIndex} trước` : lockedDone ? 'Bỏ Set sau trước' : undefined}
+                        onClick={() => completeSet(set)}
+                      >
+                        {lockedUndone ? <Lock size={18} /> : <Check size={22} />}
+                      </button>
+                      <button
+                        className="tiny-btn"
+                        disabled={set.done || sets.length <= 1}
+                        style={set.done ? { opacity: 0.22, cursor: 'not-allowed', filter: 'grayscale(1)' } : undefined}
+                        onClick={() => removeDraftSet(set.setIndex)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    {rowMetricKeys.length > 0 && (
+                      <div className={`set-metric-row ${set.done ? 'done' : ''}`}>
+                        {rowMetricKeys.map((key) => (
                           <div key={key} className="set-metric-compare">
                             <div className="set-metric-previous">
                               <span>{t('workout_prev_btn')}</span>
@@ -6985,11 +6983,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                               {renderMetricControl(set, key)}
                             </label>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  </React.Fragment>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -7107,7 +7104,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   );
 }
 
-function WheelPicker({ value, options, suffix = '', onChange }) {
+function WheelPicker({ value, options, suffix = '', onChange, dense = false }) {
   const pickerOptions = useMemo(() => options.map((item) => ({
     value: String(item),
     label: (
@@ -7127,14 +7124,14 @@ function WheelPicker({ value, options, suffix = '', onChange }) {
   };
 
   return (
-    <WheelPickerWrapper className="compact-wheel-picker">
+    <WheelPickerWrapper className={`compact-wheel-picker ${dense ? 'dense' : ''}`}>
       <ReactWheelPicker
         value={currentValue}
         options={pickerOptions}
         onValueChange={changeValue}
         infinite={false}
-        visibleCount={12}
-        optionItemHeight={26}
+        visibleCount={dense ? 5 : 12}
+        optionItemHeight={dense ? 22 : 26}
         dragSensitivity={3}
         scrollSensitivity={5}
         classNames={{

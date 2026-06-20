@@ -1042,12 +1042,24 @@ button:disabled {
   @apply rounded-lg bg-slate-50 p-2;
 }
 
+.set-card {
+  @apply rounded-xl border border-slate-200 bg-white p-2 shadow-sm;
+}
+
+.set-card.done {
+  @apply border-green-200 bg-green-50;
+}
+
+.set-card.pr {
+  @apply ring-2 ring-yellow-400;
+}
+
 .set-table-row.done {
   @apply bg-green-100;
 }
 
 .set-metric-row {
-  @apply ml-12 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2;
+  @apply mt-2 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2;
 }
 
 .set-metric-row.done {
@@ -1059,7 +1071,7 @@ button:disabled {
 }
 
 .set-metric-compare {
-  @apply grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] items-start gap-2 rounded-lg bg-slate-50 p-2;
+  @apply grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-start gap-2 rounded-lg bg-slate-50 p-2;
 }
 
 .set-metric-previous {
@@ -1106,6 +1118,10 @@ button:disabled {
   @apply h-[98px] w-full overflow-hidden rounded-lg bg-white text-center ring-1 ring-slate-200;
 }
 
+.compact-wheel-picker.dense {
+  @apply h-[66px] rounded-md;
+}
+
 .compact-wheel-picker [data-rwp] {
   cursor: grab;
 }
@@ -1125,6 +1141,14 @@ button:disabled {
 
 .compact-wheel-highlight {
   @apply text-lg font-black text-orange-800;
+}
+
+.compact-wheel-picker.dense .compact-wheel-option {
+  @apply text-xs;
+}
+
+.compact-wheel-picker.dense .compact-wheel-highlight {
+  @apply text-sm;
 }
 
 .compact-wheel-label {
@@ -1159,8 +1183,33 @@ button:disabled {
     row-gap: 0.5rem;
   }
 
+  .set-card {
+    @apply p-1.5;
+  }
+
   .set-metric-row {
-    @apply ml-0;
+    @apply mt-1.5 gap-1.5 p-1.5;
+  }
+
+  .set-metric-compare {
+    @apply grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-1.5 p-1.5;
+  }
+
+  .set-metric-field,
+  .set-metric-previous {
+    @apply text-[10px];
+  }
+
+  .set-metric-previous strong {
+    @apply text-xs;
+  }
+
+  .metric-weight-control {
+    @apply gap-0.5;
+  }
+
+  .metric-weight-control span {
+    @apply text-[10px];
   }
 
   .set-number {
@@ -1173,6 +1222,10 @@ button:disabled {
 
   .compact-wheel-picker {
     @apply h-[88px] rounded-md;
+  }
+
+  .compact-wheel-picker.dense {
+    @apply h-[60px];
   }
 
   .manual-weight-input {
