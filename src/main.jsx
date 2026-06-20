@@ -7097,9 +7097,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <ExerciseInstructions exercise={exercise} settings={settings} />
 
           <div className="set-table">
-            <div className="set-table-header">
-              <span>{t('detail_sets')}</span><span>{t('workout_prev_btn')}</span><span>{columnLabel(primaryColumns[0])}</span><span>{columnLabel(primaryColumns[1])}</span><span /><span />
-            </div>
             <div className="space-y-2">
               {sets.map((set) => {
                 const previous = previousSets[set.setIndex - 1];
@@ -7113,12 +7110,24 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
                     <div className={`set-table-row ${set.done ? 'done' : ''}`}>
-                      <strong className="set-number">
-                        {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
-                      </strong>
-                      <span className="set-previous">{previous ? describePrimarySetByTemplate(previous, logTemplate, settings) : '-'}</span>
-                      {renderPrimaryColumn(set, primaryColumns[0])}
-                      {renderPrimaryColumn(set, primaryColumns[1])}
+                      <div className="set-main-field">
+                        <span className="set-cell-label">{t('detail_sets')}</span>
+                        <strong className="set-number">
+                          {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
+                        </strong>
+                      </div>
+                      <div className="set-main-field">
+                        <span className="set-cell-label">{t('workout_prev_btn')}</span>
+                        <span className="set-previous">{previous ? describePrimarySetByTemplate(previous, logTemplate, settings) : '-'}</span>
+                      </div>
+                      <div className="set-main-field">
+                        <span className="set-cell-label">{columnLabel(primaryColumns[0])}</span>
+                        {renderPrimaryColumn(set, primaryColumns[0])}
+                      </div>
+                      <div className="set-main-field">
+                        <span className="set-cell-label">{columnLabel(primaryColumns[1])}</span>
+                        {renderPrimaryColumn(set, primaryColumns[1])}
+                      </div>
                       <button
                         className={`set-check ${set.done ? 'done' : ''}`}
                         style={locked ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
