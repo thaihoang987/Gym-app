@@ -1114,26 +1114,26 @@ const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
 const timeOptions = Array.from({ length: 241 }, (_, index) => index * 5);
 const distanceOptions = Array.from({ length: 401 }, (_, index) => Number((index * 0.05).toFixed(2)));
 const LOG_TEMPLATE_DEFS = {
-  strength: { label: 'Strength', defaults: [] },
-  bodyweight: { label: 'Bodyweight', defaults: [] },
-  timed: { label: 'Timed', defaults: ['duration_seconds'] },
-  distance: { label: 'Distance', defaults: ['distance', 'duration_seconds'] },
-  carry: { label: 'Carry', defaults: ['distance', 'duration_seconds'] },
-  mobility: { label: 'Mobility', defaults: ['duration_seconds', 'side'] },
-  custom: { label: 'Custom', defaults: [] }
+  strength: { labelKey: 'template_strength', defaults: [] },
+  bodyweight: { labelKey: 'template_bodyweight', defaults: [] },
+  timed: { labelKey: 'template_timed', defaults: ['duration_seconds'] },
+  distance: { labelKey: 'template_distance', defaults: ['distance', 'duration_seconds'] },
+  carry: { labelKey: 'template_carry', defaults: ['distance', 'duration_seconds'] },
+  mobility: { labelKey: 'template_mobility', defaults: ['duration_seconds', 'side'] },
+  custom: { labelKey: 'template_custom', defaults: [] }
 };
 const OPTIONAL_METRIC_DEFS = [
-  { key: 'weight_kg', label: 'Weight', unit: 'kg', type: 'weight' },
-  { key: 'metric_reps', label: 'Reps', unit: 'reps', type: 'reps' },
-  { key: 'duration_seconds', label: 'Time', unit: 'sec', type: 'time' },
-  { key: 'distance', label: 'Distance', unit: 'km', type: 'distance' },
-  { key: 'steps', label: 'Steps', unit: 'steps', type: 'number' },
-  { key: 'calories', label: 'Calories', unit: 'kcal', type: 'number' },
-  { key: 'heart_rate', label: 'Heart rate', unit: 'bpm', type: 'number' },
-  { key: 'incline', label: 'Incline', unit: '%', type: 'number' },
-  { key: 'resistance', label: 'Resistance', unit: 'level', type: 'number' },
-  { key: 'rpe', label: 'RPE', unit: '/10', type: 'number' },
-  { key: 'side', label: 'Side', unit: '', type: 'side' }
+  { key: 'weight_kg', labelKey: 'metric_weight', unit: 'kg', type: 'weight' },
+  { key: 'metric_reps', labelKey: 'metric_reps', unit: 'reps', type: 'reps' },
+  { key: 'duration_seconds', labelKey: 'metric_time', unit: 'sec', type: 'time' },
+  { key: 'distance', labelKey: 'metric_distance', unit: 'km', type: 'distance' },
+  { key: 'steps', labelKey: 'metric_steps', unit: 'steps', type: 'number' },
+  { key: 'calories', labelKey: 'metric_calories', unit: 'kcal', type: 'number' },
+  { key: 'heart_rate', labelKey: 'metric_heart_rate', unit: 'bpm', type: 'number' },
+  { key: 'incline', labelKey: 'metric_incline', unit: '%', type: 'number' },
+  { key: 'resistance', labelKey: 'metric_resistance', unit: 'level', type: 'number' },
+  { key: 'rpe', labelKey: 'metric_rpe', unit: '/10', type: 'number' },
+  { key: 'side', labelKey: 'metric_side', unit: '', type: 'side' }
 ];
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
 const getCustomTargetOptions = (t) => t('custom_targets');
@@ -1164,7 +1164,7 @@ const formatMetricNumber = (value, decimals = 2) => {
 };
 const displayWeight = (kg, unit) => Number(unit === 'lb' ? roundDisplayWeight(kgToLb(kg)) : roundDisplayWeight(kg));
 const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit === 'lb' ? 'Lbs' : 'kg'}`;
-const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, label: key, unit: '', type: 'number' };
+const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, labelKey: key, unit: '', type: 'number' };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
@@ -1258,31 +1258,31 @@ const formatPaceValue = (secondsPerKm, settings = {}) => {
   const displaySeconds = unit === 'mile' ? seconds * KM_PER_MILE : seconds;
   return `${formatDuration(displaySeconds)} / ${unit === 'mile' ? 'mile' : 'km'}`;
 };
-const formatPrItem = (item, settings = {}, fallbackUnit = 'kg') => {
+const formatPrItem = (item, settings = {}, fallbackUnit = 'kg', t = createT(settings?.locale || 'en-US')) => {
   if (!item || !Number(item.value)) return '';
   switch (item.kind) {
     case 'one_rm':
     case 'metric_one_rm':
-      return `1RM PR ${formatWeight(item.value, item.unit || fallbackUnit)}`;
+      return t('pr_1rm', formatWeight(item.value, item.unit || fallbackUnit));
     case 'weight':
     case 'metric_weight':
-      return `Weight PR ${formatWeight(item.value, item.unit || fallbackUnit)}`;
+      return t('pr_weight', formatWeight(item.value, item.unit || fallbackUnit));
     case 'reps':
     case 'metric_reps':
-      return `Rep PR ${formatMetricNumber(item.value, 0)} reps`;
+      return t('pr_reps', formatMetricNumber(item.value, 0));
     case 'volume':
-      return `Vol PR ${formatMetricNumber(item.value, 1)}`;
+      return t('pr_volume', formatMetricNumber(item.value, 1));
     case 'distance':
     case 'metric_distance':
-      return `Distance PR ${formatDistanceMetric({ distance: item.value, distance_unit: item.unit }, settings)}`;
+      return t('pr_distance', formatDistanceMetric({ distance: item.value, distance_unit: item.unit }, settings));
     case 'duration':
     case 'metric_duration':
-      return `Time PR ${formatDurationMetric({ duration_seconds: item.value, duration_unit: item.unit })}`;
+      return t('pr_time', formatDurationMetric({ duration_seconds: item.value, duration_unit: item.unit }));
     case 'pace':
     case 'metric_pace':
-      return `Pace PR ${formatPaceValue(item.value, settings)}`;
+      return t('pr_pace', formatPaceValue(item.value, settings));
     default:
-      return `${String(item.kind || 'Metric').replace(/^metric_/, '')} PR ${formatMetricNumber(item.value, 1)}`;
+      return t('pr_generic', t(`metric_${String(item.kind || 'metric').replace(/^metric_/, '')}`), formatMetricNumber(item.value, 1));
   }
 };
 const setPrValue = (set, template, settings = {}) => {
@@ -1325,7 +1325,8 @@ const describeSetByTemplate = (set, template, settings = {}) => {
     .filter((key) => !shownMetricKeys.has(key) && metricDef(key))
     .map((key) => {
       const text = formatMetricValue(key, metrics[key], settings, metrics);
-      return text ? `${metricDef(key).label}: ${text}` : '';
+      const t = createT(settings?.locale || 'en-US');
+      return text ? `${t(metricDef(key).labelKey)}: ${text}` : '';
     })
     .filter(Boolean)
     .join(' · ');
@@ -6706,27 +6707,27 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const hasTemplateDistanceMetric = templateMetricKeys.includes('distance');
   const hasRowTimeMetric = rowMetricKeys.includes('duration_seconds');
   const hasRowDistanceMetric = rowMetricKeys.includes('distance');
-  const templateLabel = LOG_TEMPLATE_DEFS[normalizeTemplate(logTemplate)].label;
+  const templateLabel = t(LOG_TEMPLATE_DEFS[normalizeTemplate(logTemplate)].labelKey);
   const templateInputLabel = hasWeightMetric && !templateHasWeight(logTemplate)
-    ? 'Weight'
-    : normalizeTemplate(logTemplate) === 'timed' ? 'Time' : templateLabel;
+    ? t('metric_weight')
+    : normalizeTemplate(logTemplate) === 'timed' ? t('metric_time') : templateLabel;
   const columnLabel = (column) => {
     if (!column) return '-';
     if (column.kind === 'weight') return weightMode === 'LB' ? 'Lbs' : weightMode === 'MANUAL' ? manualUnitLabel : 'Kg';
     if (column.kind === 'reps') return t('analytics_reps');
     if (column.kind === 'bodyweight') return `Body weight (${latestBodyWeightUnit === 'lb' ? 'Lbs' : 'Kg'})`;
     const def = metricDef(column.key);
-    if (column.key === 'duration_seconds') return `${def.label} (${inputOptions.template?.durationUnit || metricUnits.duration_unit || 'sec'})`;
-    if (column.key === 'distance') return `${def.label} (${inputOptions.template?.distanceUnit || metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
-    return def.label;
+    if (column.key === 'duration_seconds') return `${t(def.labelKey)} (${inputOptions.template?.durationUnit || metricUnits.duration_unit || 'sec'})`;
+    if (column.key === 'distance') return `${t(def.labelKey)} (${inputOptions.template?.distanceUnit || metricUnits.distance_unit || settings?.distance_unit || 'km'})`;
+    return t(def.labelKey);
   };
   const metricFieldLabel = (key) => {
     const def = metricDef(key);
     const option = metricOption(key);
-    if (key === 'duration_seconds') return `${def.label} (${option.durationUnit || 'sec'})`;
-    if (key === 'distance') return `${def.label} (${option.distanceUnit || settings?.distance_unit || 'km'})`;
-    if (key === 'weight_kg') return `${def.label} (${option.weightMode === 'LB' ? 'lb' : option.weightMode === 'MANUAL' ? option.manualUnit : 'kg'})`;
-    return `${def.label}${def.unit ? ` (${def.unit})` : ''}`;
+    if (key === 'duration_seconds') return `${t(def.labelKey)} (${option.durationUnit || 'sec'})`;
+    if (key === 'distance') return `${t(def.labelKey)} (${option.distanceUnit || settings?.distance_unit || 'km'})`;
+    if (key === 'weight_kg') return `${t(def.labelKey)} (${option.weightMode === 'LB' ? 'lb' : option.weightMode === 'MANUAL' ? option.manualUnit : 'kg'})`;
+    return `${t(def.labelKey)}${def.unit ? ` (${def.unit})` : ''}`;
   };
   const renderMetricControl = (set, key, scope = 'metric') => {
     const def = metricDef(key);
@@ -6736,9 +6737,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (def.type === 'side') {
       return (
         <select className="metric-input" value={value || 'both'} disabled={set.done} onChange={(e) => updateSetMetric(set.setIndex, key, e.target.value)}>
-          <option value="both">both</option>
-          <option value="left">left</option>
-          <option value="right">right</option>
+          <option value="both">{t('metric_side_both')}</option>
+          <option value="left">{t('metric_side_left')}</option>
+          <option value="right">{t('metric_side_right')}</option>
         </select>
       );
     }
@@ -6937,21 +6938,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (metricStats[key]) items.push(metricStats[key]);
       if (key === 'distance' && metricStats.pace) items.push(metricStats.pace);
     });
-    return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit)).filter(Boolean).slice(0, 6);
+    return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 6);
   })();
   const metricPrForSet = (set, key) => {
     const metrics = set?.metrics || {};
     if (key === 'weight_kg' && metrics.weight_kg && metrics.metric_reps && prStats?.metricOneRm) {
       const value = estimateOneRepMaxKg(metrics.weight_kg, metrics.metric_reps);
-      return setBeatsPr(value, prStats.metricOneRm) ? formatPrItem({ ...prStats.metricOneRm, value }, settings, exerciseWeightUnit) : '';
+      return setBeatsPr(value, prStats.metricOneRm) ? formatPrItem({ ...prStats.metricOneRm, value }, settings, exerciseWeightUnit, t) : '';
     }
     if (key === 'distance' && metrics.distance && metrics.duration_seconds && prStats?.metrics?.pace) {
       const pace = Number(metrics.duration_seconds) / Number(metrics.distance);
-      if (setBeatsPr(pace, prStats.metrics.pace)) return formatPrItem({ ...prStats.metrics.pace, value: pace }, settings, exerciseWeightUnit);
+      if (setBeatsPr(pace, prStats.metrics.pace)) return formatPrItem({ ...prStats.metrics.pace, value: pace }, settings, exerciseWeightUnit, t);
     }
     const item = prStats?.metrics?.[key];
     const raw = key === 'weight_kg' ? metrics.weight_kg : metrics[key];
-    return setBeatsPr(raw, item) ? formatPrItem({ ...item, value: raw }, settings, exerciseWeightUnit) : '';
+    return setBeatsPr(raw, item) ? formatPrItem({ ...item, value: raw }, settings, exerciseWeightUnit, t) : '';
   };
   const WeightOptionControls = ({ label, option, onMode, onManualUnit }) => (
     <div className="metric-config-row">
@@ -7179,7 +7180,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                   </span>
                 )) : allTimePR > 0 && (
                   <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-black text-yellow-700">
-                    🏆 1RM PR {formatWeight(allTimePR, exerciseWeightUnit)}
+                    🏆 {t('pr_1rm', formatWeight(allTimePR, exerciseWeightUnit))}
                   </span>
                 )}
               </div>
@@ -7250,7 +7251,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                             <label className="set-metric-field">
                               <span>
                                 {metricFieldLabel(key)}
-                                {set.done && metricPrForSet(set, key) && <em className="ml-1 rounded bg-yellow-100 px-1 not-italic text-yellow-700">PR</em>}
+                                {set.done && metricPrForSet(set, key) && <em className="ml-1 rounded bg-yellow-100 px-1 not-italic text-yellow-700">{t('pr_badge')}</em>}
                               </span>
                               {renderMetricControl(set, key)}
                             </label>
@@ -7275,30 +7276,30 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
           <div className="log-template-panel">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-black uppercase text-slate-400">Log template</p>
-                <p className="text-sm font-semibold text-slate-600">Choose what this exercise mainly tracks. Saved per exercise.</p>
+                <p className="text-xs font-black uppercase text-slate-400">{t('log_template_title')}</p>
+                <p className="text-sm font-semibold text-slate-600">{t('log_template_desc')}</p>
               </div>
               <select className="metric-input max-w-[220px]" value={logTemplate} onChange={(event) => changeLogTemplate(event.target.value)}>
-                {Object.entries(LOG_TEMPLATE_DEFS).map(([key, def]) => <option key={key} value={key}>{def.label}</option>)}
+                {Object.entries(LOG_TEMPLATE_DEFS).map(([key, def]) => <option key={key} value={key}>{t(def.labelKey)}</option>)}
               </select>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {activeMetricKeys.map((key) => (
                 <span key={key} className="metric-chip">
-                  {metricDef(key).label}
+                  {t(metricDef(key).labelKey)}
                   {metricSchema.includes(key) && <button type="button" onClick={() => removeMetricFromExercise(key)}>×</button>}
                 </span>
               ))}
               {metricChoices.length > 0 && (
                 <select className="metric-add-select" value="" onChange={(event) => { addMetricToExercise(event.target.value); event.target.value = ''; }}>
-                  <option value="">+ Add metric</option>
-                  {metricChoices.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                  <option value="">{t('log_add_metric')}</option>
+                  {metricChoices.map((item) => <option key={item.key} value={item.key}>{t(item.labelKey)}</option>)}
                 </select>
               )}
             </div>
             {(templateHasWeight(logTemplate) || hasTemplateTimeMetric || hasTemplateDistanceMetric) && (
               <div className="metric-option-section">
-                <p className="metric-option-title">Template option</p>
+                <p className="metric-option-title">{t('template_option_title')}</p>
                 {templateHasWeight(logTemplate) && (
                   <WeightOptionControls
                     label={`${templateInputLabel} input`}
@@ -7321,10 +7322,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             )}
             {(hasWeightMetric || hasRowTimeMetric || hasRowDistanceMetric) && (
               <div className="metric-option-section">
-                <p className="metric-option-title">Metric option</p>
+                <p className="metric-option-title">{t('metric_option_title')}</p>
                 {hasWeightMetric && (
                   <WeightOptionControls
-                    label="Weight metric input"
+                    label={t('metric_weight_input')}
                     option={metricOption('weight_kg')}
                     onMode={(mode) => changeMetricWeightMode('weight_kg', mode)}
                     onManualUnit={(unit) => changeMetricManualUnit('weight_kg', unit)}
@@ -7333,10 +7334,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 {(hasRowTimeMetric || hasRowDistanceMetric) && (
                   <div className="metric-unit-settings">
                     {hasRowTimeMetric && (
-                      <UnitOptionControls label="Time metric" kind="time" option={metricOption('duration_seconds')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'duration_seconds')} />
+                      <UnitOptionControls label={t('metric_time_input')} kind="time" option={metricOption('duration_seconds')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'duration_seconds')} />
                     )}
                     {hasRowDistanceMetric && (
-                      <UnitOptionControls label="Distance metric" kind="distance" option={metricOption('distance')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'distance')} />
+                      <UnitOptionControls label={t('metric_distance_input')} kind="distance" option={metricOption('distance')} onChange={(unitKey, unit) => updateMetricUnit(unitKey, unit, 'metric', 'distance')} />
                     )}
                   </div>
                 )}
