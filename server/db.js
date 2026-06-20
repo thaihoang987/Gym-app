@@ -245,6 +245,7 @@ export function migrate() {
       default_weight_kg REAL,
       log_template TEXT NOT NULL DEFAULT 'strength',
       metric_schema_json TEXT NOT NULL DEFAULT '[]',
+      input_options_json TEXT NOT NULL DEFAULT '{}',
       default_duration_unit TEXT NOT NULL DEFAULT 'sec',
       default_distance_unit TEXT NOT NULL DEFAULT 'km',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -342,6 +343,9 @@ export function migrate() {
   }
   if (!hasColumn('exercise_notes', 'metric_schema_json')) {
     db.exec("ALTER TABLE exercise_notes ADD COLUMN metric_schema_json TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!hasColumn('exercise_notes', 'input_options_json')) {
+    db.exec("ALTER TABLE exercise_notes ADD COLUMN input_options_json TEXT NOT NULL DEFAULT '{}'");
   }
   if (!hasColumn('exercise_notes', 'default_duration_unit')) {
     db.exec("ALTER TABLE exercise_notes ADD COLUMN default_duration_unit TEXT NOT NULL DEFAULT 'sec'");

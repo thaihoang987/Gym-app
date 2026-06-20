@@ -960,11 +960,11 @@ button:disabled {
 
 .metric-add-select,
 .metric-input {
-  @apply rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-orange-500;
+  @apply min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-orange-500;
 }
 
 .metric-unit-control {
-  @apply grid min-w-0 grid-cols-1;
+  @apply grid min-w-0 max-w-full grid-cols-1 overflow-hidden;
 }
 
 .metric-unit-control .metric-input {
@@ -972,11 +972,19 @@ button:disabled {
 }
 
 .metric-weight-control {
-  @apply grid min-w-0 gap-1 text-center;
+  @apply grid min-w-0 max-w-full gap-1 overflow-hidden text-center;
+}
+
+.metric-reps-control {
+  @apply grid min-w-0 max-w-full overflow-hidden text-center;
 }
 
 .metric-weight-control .wheel-picker {
-  @apply max-w-full;
+  @apply min-w-0 max-w-full;
+}
+
+.metric-reps-control .wheel-picker {
+  @apply min-w-0 max-w-full;
 }
 
 .metric-weight-control span {
@@ -1039,15 +1047,15 @@ button:disabled {
 }
 
 .set-table-row {
-  @apply rounded-lg bg-slate-50 p-2;
+  @apply rounded-lg bg-white p-2;
 }
 
 .set-card {
-  @apply rounded-xl border border-slate-200 bg-white p-2 shadow-sm;
+  @apply rounded-xl border border-slate-400 bg-slate-100 p-2 shadow-md;
 }
 
 .set-card.done {
-  @apply border-green-200 bg-green-50;
+  @apply border-green-300 bg-green-100 shadow-md;
 }
 
 .set-card.pr {
@@ -1059,7 +1067,7 @@ button:disabled {
 }
 
 .set-metric-row {
-  @apply mt-2 grid gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-2;
+  @apply mt-2 grid gap-2 rounded-lg border border-dashed border-slate-300 bg-white p-2;
 }
 
 .set-metric-row.done {
@@ -1067,15 +1075,15 @@ button:disabled {
 }
 
 .set-metric-field {
-  @apply grid gap-1 text-xs font-black uppercase text-slate-400;
+  @apply grid min-w-0 gap-1 text-xs font-black uppercase text-slate-400;
 }
 
 .set-metric-compare {
-  @apply grid grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-start gap-2 rounded-lg bg-slate-50 p-2;
+  @apply grid min-w-0 grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-start gap-2 overflow-hidden rounded-lg bg-slate-50 p-2;
 }
 
 .set-metric-previous {
-  @apply grid content-start gap-1 px-1 py-1 text-xs font-black uppercase text-slate-400;
+  @apply grid min-w-0 content-start gap-1 px-1 py-1 text-xs font-black uppercase text-slate-400;
 }
 
 .set-metric-previous strong {
@@ -1115,7 +1123,7 @@ button:disabled {
 }
 
 .compact-wheel-picker {
-  @apply h-[98px] w-full overflow-hidden rounded-lg bg-white text-center ring-1 ring-slate-200;
+  @apply h-[98px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white text-center ring-1 ring-slate-200;
 }
 
 .compact-wheel-picker.dense {
@@ -1184,15 +1192,19 @@ button:disabled {
   }
 
   .set-card {
-    @apply p-1.5;
+    @apply border-slate-500 bg-slate-200 p-1.5 shadow-md;
+  }
+
+  .set-card.done {
+    @apply border-green-400 bg-green-100;
   }
 
   .set-metric-row {
-    @apply mt-1.5 gap-1.5 p-1.5;
+    @apply mt-1.5 gap-1.5 border-slate-300 p-1.5;
   }
 
   .set-metric-compare {
-    @apply grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-1.5 p-1.5;
+    @apply grid-cols-[minmax(3.4rem,0.62fr)_minmax(0,1.38fr)] gap-1.5 p-1.5;
   }
 
   .set-metric-field,
@@ -1205,7 +1217,19 @@ button:disabled {
   }
 
   .metric-weight-control {
-    @apply gap-0.5;
+    @apply w-full min-w-0 max-w-full gap-0.5 overflow-hidden;
+  }
+
+  .metric-reps-control {
+    @apply w-full min-w-0 max-w-full overflow-hidden;
+  }
+
+  .metric-input {
+    @apply w-full px-2 text-center text-xs;
+  }
+
+  .metric-unit-control {
+    @apply w-full min-w-0 max-w-full;
   }
 
   .metric-weight-control span {
@@ -1225,7 +1249,7 @@ button:disabled {
   }
 
   .compact-wheel-picker.dense {
-    @apply h-[60px];
+    @apply h-[58px] w-full min-w-0 max-w-full;
   }
 
   .manual-weight-input {
