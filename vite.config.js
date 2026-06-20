@@ -27,6 +27,34 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'pwa-192.png', 'pwa-512.png'],
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        navigateFallback: '/index.html',
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/media/') || url.pathname.startsWith('/uploads/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'exercise-media',
+              expiration: {
+                maxEntries: 5000,
+                maxAgeSeconds: 60 * 60 * 24 * 180
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/health',
+            handler: 'NetworkOnly'
+          }
+        ]
+      },
       manifest: {
         name: 'Gym App',
         short_name: 'Gym',
@@ -52,31 +80,6 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        navigateFallback: '/index.html',
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/media/') || url.pathname.startsWith('/uploads/'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'exercise-media',
-              expiration: {
-                maxEntries: 5000,
-                maxAgeSeconds: 60 * 60 * 24 * 180
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/health',
-            handler: 'NetworkOnly'
-          }
-        ]
-      }
     })
   ],
   server: {

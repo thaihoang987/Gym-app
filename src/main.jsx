@@ -1522,13 +1522,23 @@ function localIsoDate(date) {
 // GET-only API calls được cache vào localStorage để dùng offline
 const API_CACHE_PREFIX = 'gymApiCache:';
 const CACHE_BUST_KEY = 'gymCacheVersion';
-const CURRENT_CACHE_VERSION = '0.4.0-beta.31'; // tăng khi data schema thay đổi
+const CURRENT_CACHE_VERSION = __APP_VERSION__; // tăng khi data schema thay đổi
 const DASHBOARD_SNAPSHOT_KEY = (userId) => `gymDashboardSnapshot:${userId}`;
 
 function bustCacheIfNeeded() {
   try {
     const stored = localStorage.getItem(CACHE_BUST_KEY);
     if (stored === CURRENT_CACHE_VERSION) return;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.update())))
+        .catch(() => {});
+    }
+    if (window.caches?.keys) {
+      window.caches.keys()
+        .then((keys) => Promise.all(keys.filter((key) => key.startsWith('workbox-') || key.startsWith('precache-')).map((key) => window.caches.delete(key))))
+        .catch(() => {});
+    }
     // Xoá tất cả API cache cũ để force fresh fetch
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith(API_CACHE_PREFIX) || key.startsWith('gymStore:')) {
