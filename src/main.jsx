@@ -1120,7 +1120,12 @@ const LOG_TEMPLATE_DEFS = {
   distance: { labelKey: 'template_distance', defaults: ['distance', 'duration_seconds'] },
   carry: { labelKey: 'template_carry', defaults: ['distance', 'duration_seconds'] },
   mobility: { labelKey: 'template_mobility', defaults: ['duration_seconds', 'side'] },
-  custom: { labelKey: 'template_custom', defaults: [] }
+  custom: { labelKey: 'template_custom', defaults: [] },
+  running: { labelKey: 'template_running', defaults: ['distance', 'duration_seconds', 'pace'] },
+  stairclimber: { labelKey: 'template_stairclimber', defaults: ['duration_seconds', 'steps', 'floors'] },
+  cycling: { labelKey: 'template_cycling', defaults: ['distance', 'duration_seconds', 'speed'] },
+  elliptical: { labelKey: 'template_elliptical', defaults: ['duration_seconds', 'distance', 'resistance'] },
+  rowing: { labelKey: 'template_rowing', defaults: ['distance', 'duration_seconds', 'spm'] }
 };
 const OPTIONAL_METRIC_DEFS = [
   { key: 'weight_kg', labelKey: 'metric_weight', unit: 'kg', type: 'weight' },
@@ -1133,6 +1138,13 @@ const OPTIONAL_METRIC_DEFS = [
   { key: 'incline', labelKey: 'metric_incline', unit: '%', type: 'number' },
   { key: 'resistance', labelKey: 'metric_resistance', unit: 'level', type: 'number' },
   { key: 'rpe', labelKey: 'metric_rpe', unit: '/10', type: 'number' },
+  { key: 'pace', labelKey: 'metric_pace', unit: '/km', type: 'pace' },
+  { key: 'speed', labelKey: 'metric_speed', unit: 'km/h', type: 'number' },
+  { key: 'floors', labelKey: 'metric_floors', unit: 'floors', type: 'number' },
+  { key: 'cadence', labelKey: 'metric_cadence', unit: 'rpm', type: 'number' },
+  { key: 'watts', labelKey: 'metric_watts', unit: 'W', type: 'number' },
+  { key: 'strides', labelKey: 'metric_strides', unit: 'strides', type: 'number' },
+  { key: 'spm', labelKey: 'metric_spm', unit: 'spm', type: 'number' },
   { key: 'side', labelKey: 'metric_side', unit: '', type: 'side' }
 ];
 const customExerciseIcons = ['🏋️', '💪', '🔥', '⚡', '🦵', '❤️', '🎯', '⭐'];
@@ -1194,6 +1206,20 @@ const metricFormatContext = (key, metrics = {}, scope = 'metric') => {
   return metrics;
 };
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
+const exerciseDefaultTemplate = (exercise) => {
+  if (!exercise) return 'strength';
+  const name = String(exercise.name || '').toLowerCase();
+  const equipment = String(exercise.equipment || '').toLowerCase();
+  const category = String(exercise.category || '').toLowerCase();
+  if (category !== 'cardio') return 'strength';
+  if (name.includes('stepmill') || name.includes('stairclimber') || name.includes('stair climb') || equipment.includes('stepmill')) return 'stairclimber';
+  if (name.includes('bike') || name.includes('cycling') || name.includes('cycle cross') || equipment.includes('stationary bike')) return 'cycling';
+  if (name.includes('elliptical') || equipment.includes('elliptical')) return 'elliptical';
+  if (name.includes('rowing') || name.includes('row machine') || equipment.includes('rowing')) return 'rowing';
+  if (name.includes('run') || name.includes('walking') || name.includes('treadmill') || name.includes('stride') || name.includes('sprint')) return 'running';
+  if (name.includes('jump rope')) return 'timed';
+  return 'timed';
+};
 const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
 const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
@@ -1202,7 +1228,7 @@ const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].inclu
 const normalizeWeightMode = (value, fallback = 'KG') => ['KG', 'LB', 'MANUAL'].includes(String(value || fallback).toUpperCase()) ? String(value || fallback).toUpperCase() : 'KG';
 const normalizeManualUnit = (value, fallback = 'kg') => ['kg', 'lb'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'kg';
 const normalizeDurationUnit = (value, fallback = 'sec') => ['sec', 'min'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'sec';
-const normalizeDistanceUnit = (value, fallback = 'km') => ['km', 'mile'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'km';
+const normalizeDistanceUnit = (value, fallback = 'km') => ['km', 'mile', 'm'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'km';
 const normalizeInputOptions = (value = {}, fallback = {}) => {
   const source = value && typeof value === 'object' ? value : {};
   const fallbackTemplate = fallback.template || {};
@@ -1233,7 +1259,14 @@ const templatePrimaryColumns = (template) => {
     case 'timed':
       return [{ kind: 'metric', key: 'duration_seconds' }, null];
     case 'distance':
+    case 'running':
+    case 'cycling':
+    case 'rowing':
       return [{ kind: 'metric', key: 'distance' }, { kind: 'metric', key: 'duration_seconds' }];
+    case 'stairclimber':
+      return [{ kind: 'metric', key: 'duration_seconds' }, { kind: 'metric', key: 'steps' }];
+    case 'elliptical':
+      return [{ kind: 'metric', key: 'duration_seconds' }, { kind: 'metric', key: 'distance' }];
     case 'carry':
       return [{ kind: 'weight' }, { kind: 'metric', key: 'distance' }];
     case 'mobility':
@@ -1320,8 +1353,14 @@ const setPrValue = (set, template, settings = {}) => {
   const distance = Number(metrics.distance || 0);
   const seconds = Number(metrics.duration_seconds || 0);
   switch (normalizeTemplate(template)) {
+    case 'running':
+      return (distance > 0 && seconds > 0) ? seconds / distance : 0;
     case 'distance':
+    case 'cycling':
+    case 'rowing':
       return distance || 0;
+    case 'stairclimber':
+    case 'elliptical':
     case 'timed':
     case 'mobility':
       return seconds || 0;
@@ -1358,7 +1397,9 @@ const describeSetByTemplate = (set, template, settings = {}) => {
     })
     .filter(Boolean)
     .join(' · ');
-  if (template === 'distance') return [distanceText, timeText, metricWeightText, extraMetricText].filter(Boolean).join(' · ') || repsText || '-';
+  if (template === 'distance' || template === 'running' || template === 'cycling' || template === 'rowing') return [distanceText, timeText, metricWeightText, extraMetricText].filter(Boolean).join(' · ') || repsText || '-';
+  if (template === 'stairclimber') return [timeText, extraMetricText].filter(Boolean).join(' · ') || '-';
+  if (template === 'elliptical') return [timeText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
   if (template === 'timed') return [timeText, metricWeightText || weightText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
   if (template === 'mobility') return [timeText, sideText, distanceText, extraMetricText].filter(Boolean).join(' · ') || '-';
   if (template === 'carry') return [weightText || metricWeightText, distanceText || timeText, extraMetricText].filter(Boolean).join(' · ') || '-';
@@ -1377,7 +1418,14 @@ const describePrimarySetByTemplate = (set, template, settings = {}) => {
   const sideText = metrics.side ? String(metrics.side) : '';
   switch (normalizeTemplate(template)) {
     case 'distance':
-      return distanceText || '-';
+    case 'running':
+    case 'cycling':
+    case 'rowing':
+      return [distanceText, timeText].filter(Boolean).join(' · ') || '-';
+    case 'stairclimber':
+      return timeText || '-';
+    case 'elliptical':
+      return [timeText, distanceText].filter(Boolean).join(' · ') || '-';
     case 'timed':
       return timeText || '-';
     case 'mobility':
@@ -6111,14 +6159,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   }, [userId, workout.sessionId, index, view]);
   useEffect(() => {
     if (!exercise) return;
-    api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`).then((payload) => {
+    let cancelled = false;
+    const requestedExerciseId = String(exercise.id);
+    api(`/api/sessions/${workout.sessionId}/exercises/${requestedExerciseId}/sets?userId=${userId}`).then((payload) => {
+      if (cancelled || String(payload.exerciseId || requestedExerciseId) !== requestedExerciseId) return;
       setPreviousSets(payload.previous || []);
       setAllTimePR(Number(payload.allTimePR || 0));
       setPrStats(payload.prStats || null);
       setNote(payload.note || '');
       setWeightMode(payload.weightMode || 'KG');
       setManualUnit(payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg'));
-      const nextTemplate = normalizeTemplate(payload.logTemplate || 'strength');
+      const nextTemplate = normalizeTemplate(payload.logTemplate || exerciseDefaultTemplate(exercise) || 'strength');
       setLogTemplate(nextTemplate);
       setMetricSchema(Array.isArray(payload.metricSchema) ? payload.metricSchema : []);
       const nextInputOptions = normalizeInputOptions(payload.inputOptions || {}, {
@@ -6171,6 +6222,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         setSets(seed);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [exercise?.id, userId, workout.sessionId]);
   // startTimer: set thời điểm kết thúc theo thời gian thực
   const restNotificationRef = React.useRef(null);
@@ -6317,7 +6371,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets: nextCount }) });
   };
   const refreshExerciseSets = async () => {
-    const payload = await api(`/api/sessions/${workout.sessionId}/exercises/${exercise.id}/sets?userId=${userId}`);
+    const requestedExerciseId = String(exercise.id);
+    const payload = await api(`/api/sessions/${workout.sessionId}/exercises/${requestedExerciseId}/sets?userId=${userId}`);
+    if (String(payload.exerciseId || requestedExerciseId) !== requestedExerciseId) return;
     const target = payload.targetSets || targetSets || settings?.default_sets || 3;
     setPreviousSets(payload.previous || []);
     setPrStats(payload.prStats || null);
@@ -6326,7 +6382,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setDefaultReps(payload.defaultReps || settings?.default_reps || 12);
     setDefaultWeightKg(payload.defaultWeightKg ?? null);
     setWeightMode(payload.weightMode || 'KG');
-    const nextTemplate = normalizeTemplate(payload.logTemplate || 'strength');
+    const nextTemplate = normalizeTemplate(payload.logTemplate || exerciseDefaultTemplate(exercise) || 'strength');
     setLogTemplate(nextTemplate);
     setMetricSchema(cleanMetricSchemaForTemplate(nextTemplate, Array.isArray(payload.metricSchema) ? payload.metricSchema : []));
     const unit = payload.manualUnit || (defaultWeightUnit === 'lb' ? 'lb' : 'kg');
@@ -6958,7 +7014,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const templateStats = prStats?.template || {};
     const metricStats = prStats?.metrics || {};
     const template = normalizeTemplate(logTemplate);
-    if (template === 'distance') items.push(templateStats.distance, templateStats.pace);
+    if (template === 'running') items.push(templateStats.pace, templateStats.distance);
+    else if (template === 'distance' || template === 'cycling' || template === 'rowing') items.push(templateStats.distance, templateStats.pace);
+    else if (template === 'stairclimber' || template === 'elliptical') items.push(templateStats.duration, templateStats.distance);
     else if (template === 'timed' || template === 'mobility') items.push(templateStats.duration);
     else if (template === 'bodyweight') items.push(templateStats.reps);
     else items.push(templateStats.oneRm, templateStats.weight, templateStats.volume);

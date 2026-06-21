@@ -107,8 +107,8 @@ function requireBody(fields, body) {
   }
 }
 
-const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom']);
-const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side', 'extra_side', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'rpe', 'rounds', 'custom']);
+const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom', 'running', 'stairclimber', 'cycling', 'elliptical', 'rowing']);
+const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side', 'extra_side', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'rpe', 'rounds', 'custom', 'floors', 'cadence', 'watts', 'strides', 'spm']);
 
 function safeJsonParse(value, fallback) {
   try {
@@ -148,7 +148,7 @@ function normalizeDurationUnit(value, fallback = 'sec') {
 
 function normalizeDistanceUnit(value, fallback = 'km') {
   const unit = String(value || fallback || 'km').toLowerCase();
-  return ['km', 'mile'].includes(unit) ? unit : 'km';
+  return ['km', 'mile', 'm'].includes(unit) ? unit : 'km';
 }
 
 function normalizeInputOptions(value, fallback = {}) {
@@ -276,6 +276,19 @@ function buildPrStats(rows = [], template = 'strength') {
   switch (normalizeLogTemplate(template)) {
     case 'distance':
       stats.primary = stats.template.distance || stats.template.pace || null;
+      break;
+    case 'running':
+      stats.primary = stats.template.pace || stats.template.distance || null;
+      break;
+    case 'cycling':
+    case 'rowing':
+      stats.primary = stats.template.distance || stats.template.pace || null;
+      break;
+    case 'stairclimber':
+      stats.primary = stats.template.duration || stats.metrics.floors || null;
+      break;
+    case 'elliptical':
+      stats.primary = stats.template.duration || stats.template.distance || null;
       break;
     case 'timed':
     case 'mobility':
@@ -2233,7 +2246,10 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
       AND ws.status = 'COMPLETED'
     ORDER BY wl.completed_at, wl.id
   `, [userId, exerciseId]);
-  const prStats = buildPrStats(completedRows, normalizeLogTemplate(preference?.log_template || 'strength'));
+  const prStats = {
+    ...buildPrStats(completedRows, normalizeLogTemplate(preference?.log_template || 'strength')),
+    exerciseId
+  };
   const inputOptions = normalizeInputOptions(preference?.input_options_json || '{}', {
     template: {
       weightMode: preference?.weight_mode || 'KG',
@@ -2244,6 +2260,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   });
 
   res.json({
+    exerciseId,
     current: current.map(logRow),
     previous: previous.map(logRow),
     allTimePR,
@@ -2256,11 +2273,11 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     manualWeightKg: preference?.manual_weight_kg ?? null,
     manualWeightLb: preference?.manual_weight_lb ?? null,
     manualUnit: preference?.manual_unit || 'kg',
-    logTemplate: normalizeLogTemplate(preference?.log_template || 'strength'),
+    logTemplate: preference ? normalizeLogTemplate(preference.log_template || 'strength') : null,
     metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]'),
     inputOptions,
     defaultDurationUnit: ['sec', 'min'].includes(preference?.default_duration_unit) ? preference.default_duration_unit : 'sec',
-    defaultDistanceUnit: ['km', 'mile'].includes(preference?.default_distance_unit) ? preference.default_distance_unit : 'km',
+    defaultDistanceUnit: ['km', 'mile', 'm'].includes(preference?.default_distance_unit) ? preference.default_distance_unit : 'km',
     manualSets
   });
 });
@@ -2331,8 +2348,8 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
     ? (['sec', 'min'].includes(previous.default_duration_unit) ? previous.default_duration_unit : 'sec')
     : (['sec', 'min'].includes(req.body.defaultDurationUnit) ? req.body.defaultDurationUnit : 'sec');
   const defaultDistanceUnit = req.body.defaultDistanceUnit === undefined
-    ? (['km', 'mile'].includes(previous.default_distance_unit) ? previous.default_distance_unit : 'km')
-    : (['km', 'mile'].includes(req.body.defaultDistanceUnit) ? req.body.defaultDistanceUnit : 'km');
+    ? (['km', 'mile', 'm'].includes(previous.default_distance_unit) ? previous.default_distance_unit : 'km')
+    : (['km', 'mile', 'm'].includes(req.body.defaultDistanceUnit) ? req.body.defaultDistanceUnit : 'km');
   const inputOptions = req.body.inputOptions === undefined
     ? normalizeInputOptions(previous.input_options_json || '{}', {
       template: { weightMode, manualUnit, durationUnit: defaultDurationUnit, distanceUnit: defaultDistanceUnit }
