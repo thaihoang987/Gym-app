@@ -108,7 +108,7 @@ function requireBody(fields, body) {
 }
 
 const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom']);
-const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'side', 'rpe', 'rounds', 'custom']);
+const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'side', 'rpe', 'rounds', 'custom']);
 
 function safeJsonParse(value, fallback) {
   try {
@@ -186,7 +186,7 @@ function normalizeMetrics(value) {
     const cleanKey = String(key || '').trim();
     if (!cleanKey || (!METRIC_KEYS.has(cleanKey) && !cleanKey.startsWith('custom:'))) continue;
     if (raw === '' || raw === null || raw === undefined) continue;
-    if (['duration_unit', 'distance_unit', 'weight_unit', 'side', 'custom'].includes(cleanKey) || cleanKey.startsWith('custom:')) {
+    if (['duration_unit', 'distance_unit', 'weight_unit', 'extra_duration_unit', 'extra_distance_unit', 'extra_weight_unit', 'side', 'custom'].includes(cleanKey) || cleanKey.startsWith('custom:')) {
       metrics[cleanKey] = String(raw).slice(0, 80);
     } else {
       const numeric = Number(raw);
@@ -243,8 +243,10 @@ function buildPrStats(rows = [], template = 'strength') {
     const volume = weightKg * reps;
     const distance = Number(metrics.distance || 0);
     const seconds = Number(metrics.duration_seconds || 0);
-    const metricWeightKg = Number(metrics.weight_kg || 0);
-    const metricReps = Number(metrics.metric_reps || 0);
+    const metricWeightKg = Number(metrics.extra_weight_kg || 0);
+    const metricReps = Number(metrics.extra_metric_reps || 0);
+    const metricDistance = Number(metrics.extra_distance || 0);
+    const metricSeconds = Number(metrics.extra_duration_seconds || 0);
     const metricOneRm = estimateOneRepMax(metricWeightKg, metricReps);
 
     if (oneRm > 0) stats.template.oneRm = higherPr(stats.template.oneRm, prBase(row, oneRm, { kind: 'one_rm', weightKg, reps }));
@@ -257,15 +259,15 @@ function buildPrStats(rows = [], template = 'strength') {
       stats.template.pace = lowerPr(stats.template.pace, prBase(row, seconds / distance, { kind: 'pace', distance, seconds }));
     }
 
-    if (metricWeightKg > 0) stats.metrics.weight_kg = higherPr(stats.metrics.weight_kg, prBase(row, metricWeightKg, { kind: 'metric_weight', unit: metrics.weight_unit || 'kg' }));
+    if (metricWeightKg > 0) stats.metrics.weight_kg = higherPr(stats.metrics.weight_kg, prBase(row, metricWeightKg, { kind: 'metric_weight', unit: metrics.extra_weight_unit || 'kg' }));
     if (metricReps > 0) stats.metrics.metric_reps = higherPr(stats.metrics.metric_reps, prBase(row, metricReps, { kind: 'metric_reps' }));
-    if (metricOneRm > 0) stats.metricOneRm = higherPr(stats.metricOneRm, prBase(row, metricOneRm, { kind: 'metric_one_rm', weightKg: metricWeightKg, reps: metricReps, unit: metrics.weight_unit || 'kg' }));
-    if (distance > 0) stats.metrics.distance = higherPr(stats.metrics.distance, prBase(row, distance, { kind: 'metric_distance', unit: metrics.distance_unit || 'km' }));
-    if (seconds > 0) stats.metrics.duration_seconds = higherPr(stats.metrics.duration_seconds, prBase(row, seconds, { kind: 'metric_duration', unit: metrics.duration_unit || 'sec' }));
-    if (distance > 0 && seconds > 0) stats.metrics.pace = lowerPr(stats.metrics.pace, prBase(row, seconds / distance, { kind: 'metric_pace', distance, seconds }));
+    if (metricOneRm > 0) stats.metricOneRm = higherPr(stats.metricOneRm, prBase(row, metricOneRm, { kind: 'metric_one_rm', weightKg: metricWeightKg, reps: metricReps, unit: metrics.extra_weight_unit || 'kg' }));
+    if (metricDistance > 0) stats.metrics.distance = higherPr(stats.metrics.distance, prBase(row, metricDistance, { kind: 'metric_distance', unit: metrics.extra_distance_unit || 'km' }));
+    if (metricSeconds > 0) stats.metrics.duration_seconds = higherPr(stats.metrics.duration_seconds, prBase(row, metricSeconds, { kind: 'metric_duration', unit: metrics.extra_duration_unit || 'sec' }));
+    if (metricDistance > 0 && metricSeconds > 0) stats.metrics.pace = lowerPr(stats.metrics.pace, prBase(row, metricSeconds / metricDistance, { kind: 'metric_pace', distance: metricDistance, seconds: metricSeconds }));
 
     for (const [key, value] of Object.entries(metrics)) {
-      if (['weight_kg', 'weight_unit', 'metric_reps', 'distance', 'distance_unit', 'duration_seconds', 'duration_unit'].includes(key)) continue;
+      if (['weight_kg', 'weight_unit', 'metric_reps', 'distance', 'distance_unit', 'duration_seconds', 'duration_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'extra_distance', 'extra_distance_unit', 'extra_duration_seconds', 'extra_duration_unit'].includes(key)) continue;
       const numeric = Number(value);
       if (Number.isFinite(numeric)) stats.metrics[key] = higherPr(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
     }

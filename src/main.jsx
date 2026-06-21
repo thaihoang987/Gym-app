@@ -1165,6 +1165,33 @@ const formatMetricNumber = (value, decimals = 2) => {
 const displayWeight = (kg, unit) => Number(unit === 'lb' ? roundDisplayWeight(kgToLb(kg)) : roundDisplayWeight(kg));
 const formatWeight = (kg, unit = 'kg') => `${roundDisplayWeight(unit === 'lb' ? kgToLb(kg) : kg)} ${unit === 'lb' ? 'Lbs' : 'kg'}`;
 const metricDef = (key) => OPTIONAL_METRIC_DEFS.find((item) => item.key === key) || { key, labelKey: key, unit: '', type: 'number' };
+const metricStorageKey = (key, scope = 'metric') => {
+  if (scope === 'template') return key;
+  return ({
+    duration_seconds: 'extra_duration_seconds',
+    distance: 'extra_distance',
+    weight_kg: 'extra_weight_kg',
+    metric_reps: 'extra_metric_reps'
+  })[key] || key;
+};
+const metricUnitStorageKey = (key, scope = 'metric') => {
+  if (scope === 'template') {
+    if (key === 'duration_seconds') return 'duration_unit';
+    if (key === 'distance') return 'distance_unit';
+    if (key === 'weight_kg') return 'weight_unit';
+    return null;
+  }
+  if (key === 'duration_seconds') return 'extra_duration_unit';
+  if (key === 'distance') return 'extra_distance_unit';
+  if (key === 'weight_kg') return 'extra_weight_unit';
+  return null;
+};
+const metricFormatContext = (key, metrics = {}, scope = 'metric') => {
+  if (key === 'duration_seconds') return { duration_unit: metrics[metricUnitStorageKey(key, scope)] };
+  if (key === 'distance') return { distance_unit: metrics[metricUnitStorageKey(key, scope)] };
+  if (key === 'weight_kg') return { weight_unit: metrics[metricUnitStorageKey(key, scope)] };
+  return metrics;
+};
 const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
@@ -1320,7 +1347,7 @@ const describeSetByTemplate = (set, template, settings = {}) => {
     ? formatWeight(metrics.weight_kg, metrics.weight_unit || weightUnit).replace(' ', '')
     : '';
   const sideText = metrics.side ? String(metrics.side) : '';
-  const shownMetricKeys = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'side']);
+  const shownMetricKeys = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side']);
   const extraMetricText = Object.keys(metrics)
     .filter((key) => !shownMetricKeys.has(key) && metricDef(key))
     .map((key) => {
@@ -6416,9 +6443,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setMetricSchema(nextSchema);
     setSets((old) => old.map((set) => {
       const nextMetrics = { ...(set.metrics || {}) };
-      delete nextMetrics[metricKey];
-      if (metricKey === 'duration_seconds') delete nextMetrics.duration_unit;
-      if (metricKey === 'distance') delete nextMetrics.distance_unit;
+      delete nextMetrics[metricStorageKey(metricKey, 'metric')];
+      const unitKey = metricUnitStorageKey(metricKey, 'metric');
+      if (unitKey) delete nextMetrics[unitKey];
       return { ...set, metrics: nextMetrics };
     }));
     await api(`/api/exercises/${exercise.id}/preferences`, { method: 'PUT', body: JSON.stringify({ userId, targetSets, weightMode, manualUnit, logTemplate, metricSchema: nextSchema, inputOptions, defaultDurationUnit: metricUnits.duration_unit, defaultDistanceUnit: metricUnits.distance_unit }) });
@@ -6732,11 +6759,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const renderMetricControl = (set, key, scope = 'metric') => {
     const def = metricDef(key);
     const disabledStyle = set.done ? { opacity: 0.45, pointerEvents: 'none' } : undefined;
-    const value = set.metrics?.[key] ?? '';
+    const storageKey = metricStorageKey(key, scope);
+    const unitKey = metricUnitStorageKey(key, scope);
+    const value = set.metrics?.[storageKey] ?? '';
     const option = scope === 'template' ? (inputOptions.template || {}) : metricOption(key);
     if (def.type === 'side') {
       return (
-        <select className="metric-input" value={value || 'both'} disabled={set.done} onChange={(e) => updateSetMetric(set.setIndex, key, e.target.value)}>
+        <select className="metric-input" value={value || 'both'} disabled={set.done} onChange={(e) => updateSetMetric(set.setIndex, storageKey, e.target.value)}>
           <option value="both">{t('metric_side_both')}</option>
           <option value="left">{t('metric_side_left')}</option>
           <option value="right">{t('metric_side_right')}</option>
@@ -6744,7 +6773,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'time') {
-      const unit = set.done ? (set.metrics?.duration_unit || option.durationUnit || 'sec') : (option.durationUnit || 'sec');
+      const unit = set.done ? (set.metrics?.[unitKey] || option.durationUnit || 'sec') : (option.durationUnit || 'sec');
       const displayValue = value === '' ? '' : (unit === 'min' ? formatMetricNumber(Number(value) / 60, 1) : formatMetricNumber(value, 0));
       return (
         <div className="metric-unit-control" style={disabledStyle}>
@@ -6758,8 +6787,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             onChange={(event) => {
               const raw = event.target.value;
               updateSetMetrics(set.setIndex, {
-                duration_seconds: raw === '' ? '' : (unit === 'min' ? Number(raw) * 60 : Number(raw)),
-                duration_unit: unit
+                [storageKey]: raw === '' ? '' : (unit === 'min' ? Number(raw) * 60 : Number(raw)),
+                [unitKey]: unit
               });
             }}
           />
@@ -6767,7 +6796,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'distance') {
-      const unit = set.done ? (set.metrics?.distance_unit || option.distanceUnit || settings?.distance_unit || 'km') : (option.distanceUnit || settings?.distance_unit || 'km');
+      const unit = set.done ? (set.metrics?.[unitKey] || option.distanceUnit || settings?.distance_unit || 'km') : (option.distanceUnit || settings?.distance_unit || 'km');
       const displayValue = value === '' ? '' : (unit === 'mile' ? formatMetricNumber(kmToMile(value), 2) : formatMetricNumber(value, 2));
       return (
         <div className="metric-unit-control">
@@ -6781,8 +6810,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             onChange={(event) => {
               const raw = event.target.value;
               updateSetMetrics(set.setIndex, {
-                distance: raw === '' ? '' : (unit === 'mile' ? mileToKm(Number(raw)) : Number(raw)),
-                distance_unit: unit
+                [storageKey]: raw === '' ? '' : (unit === 'mile' ? mileToKm(Number(raw)) : Number(raw)),
+                [unitKey]: unit
               });
             }}
           />
@@ -6790,11 +6819,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'weight') {
-      const metricWeightKg = Number(set.metrics?.weight_kg || 0);
+      const metricWeightKg = Number(set.metrics?.[storageKey] || 0);
       const updateMetricWeight = (weightKg, unit = currentWeightUnit()) => {
         updateSetMetrics(set.setIndex, {
-          weight_kg: Number(weightKg || 0),
-          weight_unit: unit
+          [storageKey]: Number(weightKg || 0),
+          [unitKey]: unit
         });
       };
       const pickerUnit = option.weightMode === 'LB' || (option.weightMode === 'MANUAL' && option.manualUnit === 'lb') ? 'lb' : 'kg';
@@ -6831,7 +6860,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (def.type === 'reps') {
       return (
         <div className="metric-reps-control" style={disabledStyle}>
-          <WheelPicker value={Number(value || 0)} options={[0, ...repOptions]} onChange={(next) => updateSetMetric(set.setIndex, key, next)} />
+          <WheelPicker value={Number(value || 0)} options={[0, ...repOptions]} onChange={(next) => updateSetMetric(set.setIndex, storageKey, next)} />
         </div>
       );
     }
@@ -6843,7 +6872,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         disabled={set.done}
         value={value}
         placeholder={def.unit}
-        onChange={(event) => updateSetMetric(set.setIndex, key, event.target.value === '' ? '' : Number(event.target.value))}
+        onChange={(event) => updateSetMetric(set.setIndex, storageKey, event.target.value === '' ? '' : Number(event.target.value))}
       />
     );
   };
@@ -6918,10 +6947,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const previousMetricText = (previous, key) => {
     if (!previous) return '-';
     const metrics = previous.metrics || {};
-    const rawValue = key === 'weight_kg'
-      ? (metrics.weight_kg ?? previous.weightKg ?? previous.weight_kg)
-      : metrics[key];
-    const text = formatMetricValue(key, rawValue, settings, metrics);
+    const storageKey = metricStorageKey(key, 'metric');
+    const rawValue = metrics[storageKey];
+    const text = formatMetricValue(key, rawValue, settings, metricFormatContext(key, metrics, 'metric'));
     return text || '-';
   };
   const prBadgeItems = (() => {
@@ -6942,16 +6970,21 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   })();
   const metricPrForSet = (set, key) => {
     const metrics = set?.metrics || {};
-    if (key === 'weight_kg' && metrics.weight_kg && metrics.metric_reps && prStats?.metricOneRm) {
-      const value = estimateOneRepMaxKg(metrics.weight_kg, metrics.metric_reps);
+    const storageKey = metricStorageKey(key, 'metric');
+    const weightKey = metricStorageKey('weight_kg', 'metric');
+    const repsKey = metricStorageKey('metric_reps', 'metric');
+    const distanceKey = metricStorageKey('distance', 'metric');
+    const durationKey = metricStorageKey('duration_seconds', 'metric');
+    if (key === 'weight_kg' && metrics[weightKey] && metrics[repsKey] && prStats?.metricOneRm) {
+      const value = estimateOneRepMaxKg(metrics[weightKey], metrics[repsKey]);
       return setBeatsPr(value, prStats.metricOneRm) ? formatPrItem({ ...prStats.metricOneRm, value }, settings, exerciseWeightUnit, t) : '';
     }
-    if (key === 'distance' && metrics.distance && metrics.duration_seconds && prStats?.metrics?.pace) {
-      const pace = Number(metrics.duration_seconds) / Number(metrics.distance);
+    if (key === 'distance' && metrics[distanceKey] && metrics[durationKey] && prStats?.metrics?.pace) {
+      const pace = Number(metrics[durationKey]) / Number(metrics[distanceKey]);
       if (setBeatsPr(pace, prStats.metrics.pace)) return formatPrItem({ ...prStats.metrics.pace, value: pace }, settings, exerciseWeightUnit, t);
     }
     const item = prStats?.metrics?.[key];
-    const raw = key === 'weight_kg' ? metrics.weight_kg : metrics[key];
+    const raw = metrics[storageKey];
     return setBeatsPr(raw, item) ? formatPrItem({ ...item, value: raw }, settings, exerciseWeightUnit, t) : '';
   };
   const WeightOptionControls = ({ label, option, onMode, onManualUnit }) => (
