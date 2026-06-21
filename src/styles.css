@@ -1067,6 +1067,24 @@ button:disabled {
 
 .set-card.pr {
   @apply ring-2 ring-yellow-400;
+  background: linear-gradient(135deg, #fef9c3 0%, #fef08a 50%, #fde047 100%);
+  animation: pr-glow 1.5s ease-in-out;
+}
+
+.pr-banner {
+  @apply flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-900 shadow-lg;
+  animation: pr-slide-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pr-glow {
+  0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
+  50% { box-shadow: 0 0 20px 6px rgba(250, 204, 21, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+}
+
+@keyframes pr-slide-in {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .set-table-row.done {

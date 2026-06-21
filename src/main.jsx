@@ -7011,22 +7011,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   };
   const prBadgeItems = (() => {
     const items = [];
-    const templateStats = prStats?.template || {};
-    const metricStats = prStats?.metrics || {};
-    const template = normalizeTemplate(logTemplate);
-    if (template === 'running') items.push(templateStats.pace, templateStats.distance);
-    else if (template === 'distance' || template === 'cycling' || template === 'rowing') items.push(templateStats.distance, templateStats.pace);
-    else if (template === 'stairclimber' || template === 'elliptical') items.push(templateStats.duration, templateStats.distance);
-    else if (template === 'timed' || template === 'mobility') items.push(templateStats.duration);
-    else if (template === 'bodyweight') items.push(templateStats.reps);
-    else items.push(templateStats.oneRm, templateStats.weight, templateStats.volume);
-    if (prStats?.metricOneRm) items.push(prStats.metricOneRm);
-    const prWorthy = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
-    metricSchema.forEach((key) => {
-      if (prWorthy.has(key) && metricStats[key]) items.push(metricStats[key]);
-      if (key === 'distance' && metricStats.pace) items.push(metricStats.pace);
-    });
-    return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 6);
+    if (prStats?.primary) items.push(prStats.primary);
+    return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 1);
   })();
   const metricPrForSet = (set, key) => {
     const prWorthyMetrics = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
@@ -7299,11 +7285,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const isPR = set.done && setBeatsPr(setPrimaryPrValue, prStats?.primary || prStats?.template?.oneRm);
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
+                    {isPR && <div className="pr-banner">🏆 Personal Record!</div>}
                     <div className={`set-table-row ${set.done ? 'done' : ''}`}>
                       <div className="set-main-field">
                         <span className="set-cell-label">{t('detail_sets')}</span>
                         <strong className="set-number">
-                          {isPR ? <span title="Personal Record!">🏆</span> : set.setIndex}
+                          {isPR ? <span>🏆</span> : set.setIndex}
                         </strong>
                       </div>
                       <div className="set-main-field">
