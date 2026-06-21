@@ -1194,7 +1194,7 @@ button:disabled {
   }
 
   .set-cell-label {
-    @apply text-[9px];
+    @apply text-[10px];
   }
 
   .set-card {
@@ -1231,7 +1231,8 @@ button:disabled {
   }
 
   .metric-input {
-    @apply w-full px-2 text-center text-xs;
+    @apply w-full px-2 text-center;
+    font-size: 16px;
   }
 
   .metric-unit-control {
