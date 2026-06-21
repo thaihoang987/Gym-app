@@ -7282,7 +7282,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
                 const setPrimaryPrValue = setPrValue(set, logTemplate, settings);
-                const isPR = set.done && setBeatsPr(setPrimaryPrValue, prStats?.primary || prStats?.template?.oneRm);
+                const isPR = set.done && prStats?.primary && setBeatsPr(setPrimaryPrValue, prStats.primary);
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
                     {isPR && <div className="pr-banner">🏆 Personal Record!</div>}
