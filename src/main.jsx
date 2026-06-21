@@ -1171,7 +1171,8 @@ const metricStorageKey = (key, scope = 'metric') => {
     duration_seconds: 'extra_duration_seconds',
     distance: 'extra_distance',
     weight_kg: 'extra_weight_kg',
-    metric_reps: 'extra_metric_reps'
+    metric_reps: 'extra_metric_reps',
+    side: 'extra_side'
   })[key] || key;
 };
 const metricUnitStorageKey = (key, scope = 'metric') => {
@@ -1347,7 +1348,7 @@ const describeSetByTemplate = (set, template, settings = {}) => {
     ? formatWeight(metrics.weight_kg, metrics.weight_unit || weightUnit).replace(' ', '')
     : '';
   const sideText = metrics.side ? String(metrics.side) : '';
-  const shownMetricKeys = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side']);
+  const shownMetricKeys = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side', 'extra_side']);
   const extraMetricText = Object.keys(metrics)
     .filter((key) => !shownMetricKeys.has(key) && metricDef(key))
     .map((key) => {
