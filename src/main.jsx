@@ -7021,13 +7021,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     else if (template === 'bodyweight') items.push(templateStats.reps);
     else items.push(templateStats.oneRm, templateStats.weight, templateStats.volume);
     if (prStats?.metricOneRm) items.push(prStats.metricOneRm);
+    const prWorthy = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
     metricSchema.forEach((key) => {
-      if (metricStats[key]) items.push(metricStats[key]);
+      if (prWorthy.has(key) && metricStats[key]) items.push(metricStats[key]);
       if (key === 'distance' && metricStats.pace) items.push(metricStats.pace);
     });
     return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 6);
   })();
   const metricPrForSet = (set, key) => {
+    const prWorthyMetrics = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
+    if (!prWorthyMetrics.has(key)) return '';
     const metrics = set?.metrics || {};
     const storageKey = metricStorageKey(key, 'metric');
     const weightKey = metricStorageKey('weight_kg', 'metric');
