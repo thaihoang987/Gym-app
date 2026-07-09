@@ -1215,7 +1215,10 @@ const exerciseDefaultTemplate = (exercise) => {
   return 'timed';
 };
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
-const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
+const cleanMetricSchemaForTemplate = (template, schema = []) => {
+  const primaryKeys = templatePrimaryColumns(template).filter((column) => column?.kind === 'metric').map((column) => column.key);
+  return (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key) && !primaryKeys.includes(key));
+};
 const normalizeWeightMode = (value, fallback = 'KG') => ['KG', 'LB', 'MANUAL'].includes(String(value || fallback).toUpperCase()) ? String(value || fallback).toUpperCase() : 'KG';
 const normalizeManualUnit = (value, fallback = 'kg') => ['kg', 'lb'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'kg';
 const normalizeDurationUnit = (value, fallback = 'sec') => ['sec', 'min'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'sec';
@@ -6790,7 +6793,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const primaryMetricKeys = primaryColumns.filter((column) => column?.kind === 'metric').map((column) => column.key);
   const rowMetricKeys = metricSchema;
   const exerciseWeightUnit = currentWeightUnit();
-  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !metricSchema.includes(item.key));
+  // Don't offer a metric that's already the template's own primary column (e.g. distance/duration for running) —
+  // it would create a redundant second input for data that's already recorded as the exercise's main field.
+  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !metricSchema.includes(item.key) && !primaryMetricKeys.includes(item.key));
   const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
   const hasDistanceMetric = activeMetricKeys.includes('distance');
   const hasWeightMetric = metricSchema.includes('weight_kg');
@@ -7022,8 +7027,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 1);
   })();
   const metricPrForSet = (set, key) => {
-    const prWorthyMetrics = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
-    if (!prWorthyMetrics.has(key)) return '';
+    // Every numeric metric gets a PR — only the categorical 'side' selector has nothing to compare.
+    if (metricDef(key).type === 'side') return '';
     const metrics = set?.metrics || {};
     const storageKey = metricStorageKey(key, 'metric');
     const weightKey = metricStorageKey('weight_kg', 'metric');

@@ -210,6 +210,8 @@ function higherPr(current, candidate) {
   return current;
 }
 
+const LOWER_IS_BETTER_METRIC_KEYS = new Set(['pace']);
+
 function lowerPr(current, candidate) {
   if (!candidate || !Number.isFinite(Number(candidate.value)) || Number(candidate.value) <= 0) return current;
   if (!current || Number(candidate.value) < Number(current.value || Infinity)) return candidate;
@@ -266,7 +268,11 @@ function buildPrStats(rows = [], template = 'strength') {
     for (const [key, value] of Object.entries(metrics)) {
       if (['weight_kg', 'weight_unit', 'metric_reps', 'distance', 'distance_unit', 'duration_seconds', 'duration_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'extra_distance', 'extra_distance_unit', 'extra_duration_seconds', 'extra_duration_unit'].includes(key)) continue;
       const numeric = Number(value);
-      if (Number.isFinite(numeric)) stats.metrics[key] = higherPr(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
+      if (!Number.isFinite(numeric)) continue;
+      // 'pace' is lower-is-better (seconds/km), same as the derived pace above — keep the comparison direction consistent
+      // whether the value came from a manually-entered pace metric or the extra_distance/extra_duration_seconds calculation.
+      const pick = LOWER_IS_BETTER_METRIC_KEYS.has(key) ? lowerPr : higherPr;
+      stats.metrics[key] = pick(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
     }
   }
 
