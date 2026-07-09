@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
-import { distanceBucket, normalizeLogTemplate, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
+import { distanceBucket, normalizeLogTemplate, templateDefaultMetrics, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -119,11 +119,14 @@ function safeJsonParse(value, fallback) {
   }
 }
 
-function normalizeMetricSchema(value) {
+function normalizeMetricSchema(value, template = null) {
   const source = Array.isArray(value) ? value : safeJsonParse(value, []);
-  return Array.isArray(source)
-    ? [...new Set(source.map((item) => String(item || '').trim()).filter((item) => item && (METRIC_KEYS.has(item) || item.startsWith('custom:'))))].slice(0, 12)
-    : [];
+  if (!Array.isArray(source)) return [];
+  // A template's own primary fields (templateDefaultMetrics) are never valid entries in the
+  // user-added metric schema — enforced here too, not just in the client UI, so the primary/secondary
+  // boundary holds even for requests that bypass the normal "Add metric" flow.
+  const primaryKeys = template ? new Set(templateDefaultMetrics(template)) : new Set();
+  return [...new Set(source.map((item) => String(item || '').trim()).filter((item) => item && (METRIC_KEYS.has(item) || item.startsWith('custom:')) && !primaryKeys.has(item)))].slice(0, 12);
 }
 
 function normalizeWeightMode(value, fallback = 'KG') {
@@ -675,7 +678,8 @@ function importExcelRows(userId, rows) {
         db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, data.session_id, userId, data.exercise_id, data.set_index, data.weight_kg, data.weight_unit || 'kg', data.reps, JSON.stringify(normalizeMetrics(data.metrics_json || data.metrics || {})), data.completed_at);
         bump(type);
       } else if (type === 'Ghi chú bài tập') {
-        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, normalizeLogTemplate(data.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(data.metric_schema_json || data.metricSchema || [])), JSON.stringify(normalizeInputOptions(data.input_options_json || data.inputOptions || {})), data.updated_at);
+        const restoredTemplate = normalizeLogTemplate(data.log_template || 'strength');
+        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, restoredTemplate, JSON.stringify(normalizeMetricSchema(data.metric_schema_json || data.metricSchema || [], restoredTemplate)), JSON.stringify(normalizeInputOptions(data.input_options_json || data.inputOptions || {})), data.updated_at);
         bump(type);
       } else if (type === 'Cân nặng cơ thể') {
         db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(data.id, userId, data.weight, data.unit || 'kg', data.logged_at);
@@ -2255,7 +2259,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     manualWeightLb: preference?.manual_weight_lb ?? null,
     manualUnit: preference?.manual_unit || 'kg',
     logTemplate: preference ? normalizeLogTemplate(preference.log_template || 'strength') : null,
-    metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]'),
+    metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]', normalizeLogTemplate(preference?.log_template || 'strength')),
     inputOptions,
     defaultDurationUnit: ['sec', 'min'].includes(preference?.default_duration_unit) ? preference.default_duration_unit : 'sec',
     defaultDistanceUnit: ['km', 'mile', 'm'].includes(preference?.default_distance_unit) ? preference.default_distance_unit : 'km',
@@ -2323,8 +2327,8 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
     ? normalizeLogTemplate(previous.log_template || 'strength')
     : normalizeLogTemplate(req.body.logTemplate);
   const metricSchema = req.body.metricSchema === undefined
-    ? normalizeMetricSchema(previous.metric_schema_json || '[]')
-    : normalizeMetricSchema(req.body.metricSchema || []);
+    ? normalizeMetricSchema(previous.metric_schema_json || '[]', logTemplate)
+    : normalizeMetricSchema(req.body.metricSchema || [], logTemplate);
   const defaultDurationUnit = req.body.defaultDurationUnit === undefined
     ? (['sec', 'min'].includes(previous.default_duration_unit) ? previous.default_duration_unit : 'sec')
     : (['sec', 'min'].includes(req.body.defaultDurationUnit) ? req.body.defaultDurationUnit : 'sec');
@@ -2537,7 +2541,8 @@ function importBackupData(userId, backup) {
       db.prepare('INSERT OR IGNORE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, JSON.stringify(normalizeMetrics(log.metrics_json || log.metrics || {})), log.completed_at);
     }
     for (const note of data.exerciseNotes || []) {
-      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, normalizeLogTemplate(note.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(note.metric_schema_json || note.metricSchema || [])), JSON.stringify(normalizeInputOptions(note.input_options_json || note.inputOptions || {})), note.updated_at);
+      const restoredTemplate = normalizeLogTemplate(note.log_template || 'strength');
+      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, restoredTemplate, JSON.stringify(normalizeMetricSchema(note.metric_schema_json || note.metricSchema || [], restoredTemplate)), JSON.stringify(normalizeInputOptions(note.input_options_json || note.inputOptions || {})), note.updated_at);
     }
     for (const weight of data.bodyWeights || []) {
       db.prepare('INSERT OR IGNORE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);
