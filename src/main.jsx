@@ -1301,9 +1301,19 @@ const templatePrimaryColumns = (template) => {
 const formatDuration = (seconds) => {
   const total = Number(seconds || 0);
   if (!total) return '';
-  const minutes = Math.floor(total / 60);
-  const rest = total % 60;
-  return minutes ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+};
+const secondsFromHms = (h, m, s) => (Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0);
+const hmsFromSeconds = (seconds) => {
+  const total = Number(seconds || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return [h, m, s];
 };
 const formatMetricValue = (key, value, settings = {}, metrics = {}) => {
   if (value === undefined || value === null || value === '') return '';
@@ -6887,25 +6897,51 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'time') {
-      const unit = set.done ? (set.metrics?.[unitKey] || option.durationUnit || 'sec') : (option.durationUnit || 'sec');
-      const displayValue = value === '' ? '' : (unit === 'min' ? formatMetricNumber(Number(value) / 60, 1) : formatMetricNumber(value, 0));
+      const [h, m, s] = hmsFromSeconds(value);
+      const hourOptions = Array.from({ length: 100 }, (_, i) => i);
+      const minSecOptions = Array.from({ length: 60 }, (_, i) => i);
       return (
         <div className="metric-unit-control" style={disabledStyle}>
-          <input
-            className="metric-input"
-            type="number"
-            step={unit === 'min' ? '0.1' : '1'}
-            disabled={set.done}
-            value={displayValue}
-            placeholder={unit}
-            onChange={(event) => {
-              const raw = event.target.value;
-              updateSetMetrics(set.setIndex, {
-                [storageKey]: raw === '' ? '' : (unit === 'min' ? Number(raw) * 60 : Number(raw)),
-                [unitKey]: unit
-              });
-            }}
-          />
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={h}
+                options={hourOptions}
+                disabled={set.done}
+                onChange={(hh) => {
+                  const newSeconds = secondsFromHms(hh, m, s);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>h</div>
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>:</div>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={m}
+                options={minSecOptions}
+                disabled={set.done}
+                onChange={(mm) => {
+                  const newSeconds = secondsFromHms(h, mm, s);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>m</div>
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>:</div>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={s}
+                options={minSecOptions}
+                disabled={set.done}
+                onChange={(ss) => {
+                  const newSeconds = secondsFromHms(h, m, ss);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>s</div>
+            </div>
+          </div>
         </div>
       );
     }
