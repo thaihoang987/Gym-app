@@ -2876,7 +2876,7 @@ function App() {
     const savedView = sameSession ? saved.view : workout.initialView;
     if (savedView !== 'exercise') {
       const sessionData = await api(`/api/sessions/${workout.sessionId}?userId=${user.id}`);
-      const totalSets = sessionData.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+      const totalSets = (sessionData?.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
       if (!totalSets) {
         await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId: user.id }) });
         localStorage.removeItem(`familyGymWorkout:${user.id}`);
@@ -3388,14 +3388,14 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                   </button>
                 </div>
                 {/* Per-exercise breakdown */}
-                {done && ws.exercises?.length > 0 && (
+                {done && (ws.exercises?.length || 0) > 0 && (
                   <details className="mt-2 ml-12">
                     <summary className="flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-emerald-400/70 hover:text-emerald-300">
                       <ChevronRight size={12} className="details-chevron transition-transform" />
-                      {ws.exercises.length} bài tập
+                      {(ws.exercises || []).length} bài tập
                     </summary>
                     <div className="mt-2 space-y-1.5">
-                      {ws.exercises.map((ex) => (
+                      {(ws.exercises || []).map((ex) => (
                         <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
                           <GifThumb exercise={ex} className="h-8 w-8" bg="bg-white/10" />
                           <div className="min-w-0 flex-1">
@@ -3423,7 +3423,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
   const t = useLang();
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
-  const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
+  const doneCount = (routine?.exercises || []).filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
   const exerciseIndexById = new Map((routine?.exercises || []).map((exercise, index) => [exercise.id, index]));
   // Có buổi tập đang dở cho routine hôm nay không?
   const hasActiveSession = activeSession?.sessions?.some((s) => s.session.routine_id === routine?.id);
@@ -3450,7 +3450,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
         <div className="mt-5 space-y-4">
           <div className="rounded-lg bg-white/8 p-3">
             <p className="text-sm text-emerald-200">{t('today_progress')}</p>
-            <p className="mt-1 text-xl font-bold">{t('logged_count', doneCount, routine.exercises.length)}</p>
+            <p className="mt-1 text-xl font-bold">{t('logged_count', doneCount, (routine?.exercises || []).length)}</p>
             <p className="mt-1 text-sm text-emerald-200">
               {todaySummary.length ? `${todaySummary.reduce((sum, row) => sum + Number(row.sets || 0), 0)} ${t('set')} · ${todaySummary.reduce((sum, row) => sum + Number(row.total_reps || 0), 0)} reps` : t('today_no_result')}
             </p>
@@ -3460,7 +3460,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
               <div key={group.id} className="rounded-lg border border-white/20 p-3" style={{background:'rgba(255,255,255,0.06)'}}>
                 <strong className="text-sm">{group.name}</strong>
                 <div className="mt-2 space-y-2">
-                  {group.exercises.map((exercise) => {
+                  {(group.exercises || []).map((exercise) => {
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
@@ -3518,14 +3518,14 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
       <div className="grid gap-2 md:grid-cols-2">
         {items.length === 0 && <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">{empty}</p>}
         {items.map((item) => {
-          const thumbs = item.exercises.slice(0, 4);
+          const thumbs = (item.exercises || []).slice(0, 4);
           return (
             <button key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 text-left" onClick={() => onStart(item)}>
               <div className="flex items-center gap-3">
                 <img src={exerciseAutoMediaUrl(thumbs[0])} className="h-14 w-14 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-950">{item.name}</p>
-                  <p className="text-sm text-teal-950">{t('exercises', item.exercises.length)}</p>
+                  <p className="text-sm text-teal-950">{t('exercises', (item.exercises || []).length)}</p>
                 </div>
                 <div className="flex -space-x-2">
                   {thumbs.map((exercise) => <GifThumb key={exercise.id} exercise={exercise} className="h-9 w-9" rounded="rounded-full" bg="border-2 border-white bg-slate-50" />)}
@@ -3564,7 +3564,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
     onStart({ sessionId: session.id });
   };
   const completeActiveSession = async (active) => {
-    const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+    const totalSets = (active?.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
     if (!totalSets) {
       if (!(await dialog.confirm(t('confirm_no_sets')))) return;
       await api(`/api/sessions/${active.session.id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -3594,8 +3594,8 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
         <div className="grid gap-3">
           {activeSessions.map((active) => {
             const title = active.routine?.name || active.group?.name || t('session_free_label');
-            const doneCount = active.exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
-            const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+            const doneCount = (active.exercises || []).filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
+            const totalSets = (active.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
             const exerciseGroups = workoutExerciseGroups(active);
             return (
               <article key={active.session.id} className="workout-card">
@@ -3603,7 +3603,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                   <div>
                     <h2 className="text-xl font-black">{title}</h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      {active.exercises.length} {t('bài')} · {t('logged_count', doneCount, active.exercises.length)} · {totalSets} {t('set')} · {t('started')} {formatTime(active.session.started_at, settings)}
+                      {(active.exercises || []).length} {t('bài')} · {t('logged_count', doneCount, (active.exercises || []).length)} · {totalSets} {t('set')} · {t('started')} {formatTime(active.session.started_at, settings)}
                     </p>
                   </div>
                 </div>
@@ -3612,10 +3612,10 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                     <div key={`${active.session.id}-${group.id}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h3 className="font-black text-slate-950">{group.name}</h3>
-                        <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', group.exercises.length)}</span>
+                        <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', (group.exercises || []).length)}</span>
                       </div>
                       <div className="grid gap-2">
-                        {group.exercises.map((exercise) => (
+                        {(group.exercises || []).map((exercise) => (
                           <button
                             key={`${active.session.id}-${group.id}-${exercise.id}-${exercise.workoutIndex}`}
                             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
@@ -4453,10 +4453,10 @@ function workoutExerciseGroups(sessionData, t) {
   if (sessionData?.group?.exercises?.length) {
     return [{
       id: sessionData.group.id || 'group',
-      name: sessionData.group.name || (t ? t('free_groups') : 'Exercise Group'),
-      isSuperset: Boolean(sessionData.group.isSuperset),
-      supersetRounds: Math.max(1, Number(sessionData.group.supersetRounds || 1)),
-      exercises: sessionData.group.exercises.map((exercise) => takeFlatExercise(exercise, sessionData.group.name))
+      name: sessionData.group?.name || (t ? t('free_groups') : 'Exercise Group'),
+      isSuperset: Boolean(sessionData.group?.isSuperset),
+      supersetRounds: Math.max(1, Number(sessionData.group?.supersetRounds || 1)),
+      exercises: (sessionData.group?.exercises || []).map((exercise) => takeFlatExercise(exercise, sessionData.group?.name))
     }];
   }
 
@@ -4616,9 +4616,9 @@ function SessionDetail({ detail, settings }) {
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_sets')}</p><strong>{detail.summary.totalSets}</strong></div>
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_volume')}</p><strong>{formatOneDecimal(detail.summary.totalVolume)}</strong></div>
       </div>
-      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail.summary.improvedCount, detail.summary.exerciseCount)}</p>
+      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail?.summary?.improvedCount || 0, detail?.summary?.exerciseCount || 0)}</p>
       <div className="space-y-2">
-        {detail.exercises.map((exercise) => {
+        {(detail?.exercises || []).map((exercise) => {
           const volume = Number(formatOneDecimal(exercise.volume || 0));
           const previousVolume = Number(formatOneDecimal(exercise.previousVolume || 0));
           const maxWeight = Number(formatOneDecimal(exercise.maxWeight || 0));
@@ -5492,7 +5492,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                       {group.isSuperset && <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">⚡ Superset ×{group.supersetRounds || 3}</span>}
                       {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', group.exercises.length)}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', (group.exercises || []).length)}</p>
                   </>
                 )}
               </div>
@@ -5558,10 +5558,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 )}
               </summary>
               <div className="mt-3 space-y-2">
-                {group.exercises.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
+                {(group.exercises || []).length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleExerciseDragEnd(event, group.id)}>
-                  <SortableContext items={group.exercises.map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
-                    {group.exercises.map((exercise) => (
+                  <SortableContext items={(group.exercises || []).map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
+                    {(group.exercises || []).map((exercise) => (
                       <SortableExerciseRow key={exercise.id} exercise={exercise} onRemove={(exerciseId) => removeExercise(group.id, exerciseId)} />
                     ))}
                   </SortableContext>
@@ -5582,9 +5582,9 @@ function Builder({ userId, boot, onStart, onChanged }) {
           {groups.map((group) => (
             <label key={group.id} className="flex items-center gap-3 rounded-md bg-slate-50 p-3">
               <input type="checkbox" checked={selectedGroups.includes(group.id)} onChange={(e) => setSelectedGroups((prev) => e.target.checked ? [...prev, group.id] : prev.filter((id) => id !== group.id))} />
-              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', group.exercises.length)})</small></span>
+              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', (group.exercises || []).length)})</small></span>
               <div className="flex -space-x-2">
-                {group.exercises.slice(0, 4).map((exercise) => (
+                {(group.exercises || []).slice(0, 4).map((exercise) => (
                   <GifThumb key={exercise.id} exercise={exercise} className="h-8 w-8" rounded="rounded-full" bg="border-2 border-white bg-white" />
                 ))}
               </div>
@@ -5618,7 +5618,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     ) : (
                       <>
                         <h3 className="break-words font-bold leading-tight">{routine.name}</h3>
-                        <p className="mt-0.5 text-xs text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{(routine.groups || []).length} group · {t('builder_exercises_count', (routine.exercises || []).length)}</p>
                       </>
                     )}
                   </div>
@@ -5710,7 +5710,7 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
               <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-11 w-11 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold">{routine.name}</h3>
-                <p className="text-xs text-slate-500">{t('builder_exercises_count', routine.exercises.length)} · {routine.groups.map((g) => g.name).join(' + ')}</p>
+                <p className="text-xs text-slate-500">{t('builder_exercises_count', (routine.exercises || []).length)} · {(routine.groups || []).map((g) => g.name).join(' + ')}</p>
               </div>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
@@ -6492,7 +6492,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setSets([...doneSets, ...drafts]);
     setData((currentData) => currentData ? {
       ...currentData,
-      exercises: currentData.exercises.map((item) => (
+      exercises: (currentData.exercises || []).map((item) => (
         item.id === exercise.id ? { ...item, completedSets: doneSets.length } : item
       ))
     } : currentData);
@@ -6619,7 +6619,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, weightKg: logWeightKg, weightUnit, done: true } : item));
     setData((current) => current ? {
       ...current,
-      exercises: current.exercises.map((item) => (
+      exercises: (current.exercises || []).map((item) => (
         item.id === exercise.id
           ? { ...item, completedSets: Number(item.completedSets || 0) + 1 }
           : item
@@ -7184,13 +7184,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               style={{opacity: index === 0 ? 0.3 : 1}}
             >‹</button>
             <span className="text-sm font-bold text-slate-600 min-w-[2.5rem] text-center whitespace-nowrap">
-              {index + 1}/{data.exercises.length}
+              {index + 1}/{(data?.exercises || []).length}
             </span>
             <button
               className="ghost-btn px-3 py-3 text-lg font-bold"
-              disabled={index >= data.exercises.length - 1}
+              disabled={index >= (data?.exercises || []).length - 1}
               onClick={() => openExercise(index + 1)}
-              style={{opacity: index >= data.exercises.length - 1 ? 0.3 : 1}}
+              style={{opacity: index >= (data?.exercises || []).length - 1 ? 0.3 : 1}}
             >›</button>
           </>
         )}
@@ -7215,12 +7215,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h2 className="font-black text-slate-950">{group.isSuperset ? `${t('superset_label')} · ${group.name}` : group.name}</h2>
                   <span className="text-xs font-bold text-slate-500">
-                    {t('builder_exercises_count', group.exercises.length)}
+                    {t('builder_exercises_count', (group.exercises || []).length)}
                     {group.isSuperset ? ` · ${group.supersetRounds || 1} ${t('superset_rounds')}` : ''}
                   </span>
                 </div>
                 <div className="grid gap-2">
-                  {group.exercises.map((item) => (
+                  {(group.exercises || []).map((item) => (
                     <button key={`${group.id}-${item.id}-${item.workoutIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(item.workoutIndex)}>
                       {exerciseAutoMediaUrl(item) ? <img src={exerciseAutoMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
                       <div className="min-w-0 flex-1">
@@ -7243,7 +7243,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       ) : (() => {
         const THRESHOLD = 80;
         const canPrev = index > 0;
-        const canNext = index < data.exercises.length - 1;
+        const canNext = index < (data?.exercises || []).length - 1;
         const progress = Math.min(1, Math.abs(swipeDx) / THRESHOLD);
         // Scale mũi tên: nhỏ → to theo lực kéo
         const arrowSize = 40 + progress * 40; // 40px → 80px
@@ -7780,9 +7780,9 @@ function Analytics({ userId, settings }) {
 
   useEffect(() => {
     api(`/api/analytics?userId=${userId}`).then((data) => {
-      setAnalytics(data);
-      setSelectedExerciseId((current) => current || data.exercises?.[0]?.id || '');
-      setSelectedRoutineName((current) => current || data.routines?.[0]?.name || '');
+      setAnalytics(data || { exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
+      setSelectedExerciseId((current) => current || data?.exercises?.[0]?.id || '');
+      setSelectedRoutineName((current) => current || data?.routines?.[0]?.name || '');
     });
     api(`/api/body-weight?userId=${userId}`).then(setWeights);
   }, [userId]);
