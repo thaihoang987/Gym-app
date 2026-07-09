@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
+import { normalizeLogTemplate, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -107,7 +108,6 @@ function requireBody(fields, body) {
   }
 }
 
-const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom', 'running', 'stairclimber', 'cycling', 'elliptical', 'rowing']);
 const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side', 'extra_side', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'rpe', 'rounds', 'custom', 'floors', 'cadence', 'watts', 'strides', 'spm']);
 
 function safeJsonParse(value, fallback) {
@@ -117,11 +117,6 @@ function safeJsonParse(value, fallback) {
   } catch {
     return fallback;
   }
-}
-
-function normalizeLogTemplate(value, fallback = 'strength') {
-  const template = String(value || fallback || 'strength').toLowerCase();
-  return LOG_TEMPLATES.has(template) ? template : 'strength';
 }
 
 function normalizeMetricSchema(value) {
@@ -210,7 +205,7 @@ function estimateOneRepMax(weightKg, reps) {
 }
 
 function higherPr(current, candidate) {
-  if (!candidate || !Number.isFinite(Number(candidate.value))) return current;
+  if (!candidate || !Number.isFinite(Number(candidate.value)) || Number(candidate.value) <= 0) return current;
   if (!current || Number(candidate.value) > Number(current.value || 0)) return candidate;
   return current;
 }
@@ -273,36 +268,10 @@ function buildPrStats(rows = [], template = 'strength') {
     }
   }
 
-  switch (normalizeLogTemplate(template)) {
-    case 'distance':
-      stats.primary = stats.template.distance || stats.template.pace || null;
-      break;
-    case 'running':
-      stats.primary = stats.template.pace || stats.template.distance || null;
-      break;
-    case 'cycling':
-    case 'rowing':
-      stats.primary = stats.template.distance || stats.template.pace || null;
-      break;
-    case 'stairclimber':
-      stats.primary = stats.template.duration || stats.metrics.floors || null;
-      break;
-    case 'elliptical':
-      stats.primary = stats.template.duration || stats.template.distance || null;
-      break;
-    case 'timed':
-    case 'mobility':
-      stats.primary = stats.template.duration || null;
-      break;
-    case 'bodyweight':
-      stats.primary = stats.template.reps || null;
-      break;
-    case 'carry':
-      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.distance || null;
-      break;
-    default:
-      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.volume || null;
-      break;
+  stats.primary = null;
+  for (const kind of templatePrimaryChain(template)) {
+    const value = kind.startsWith('metrics:') ? stats.metrics[kind.slice('metrics:'.length)] : stats.template[kind];
+    if (value) { stats.primary = value; break; }
   }
   return stats;
 }
@@ -2119,8 +2088,17 @@ app.post('/api/sessions/:id/logs', (req, res) => {
   const userId = getUserId(req);
   requireBody(['exerciseId'], req.body);
   const sessionId = Number(req.params.id);
-  const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : 'kg';
+  const exercisePref = one('SELECT log_template FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.body.exerciseId]);
+  const logTemplate = normalizeLogTemplate(exercisePref?.log_template || 'strength');
+  if (templateHasWeight(logTemplate)) requireBody(['weightKg'], req.body);
+  if (templateHasReps(logTemplate)) requireBody(['reps'], req.body);
   const metrics = normalizeMetrics(req.body.metrics || {});
+  if (!templateHasWeight(logTemplate) && !templateHasReps(logTemplate) && Object.keys(metrics).length === 0) {
+    const error = new Error(`Missing metrics for log template: ${logTemplate}`);
+    error.status = 400;
+    throw error;
+  }
+  const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : 'kg';
   const setIndex = one('SELECT COALESCE(MAX(set_index), 0) + 1 AS next_set FROM workout_logs WHERE session_id = ? AND exercise_id = ?', [sessionId, req.body.exerciseId]).next_set;
   const result = db.prepare(`
     INSERT INTO workout_logs (session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json)
@@ -2178,6 +2156,11 @@ app.patch('/api/logs/:id', (req, res) => {
   const logId = Number(req.params.id);
   const log = one('SELECT * FROM workout_logs WHERE id = ? AND user_id = ?', [logId, userId]);
   if (!log) return res.status(404).json({ error: 'Không tìm thấy set' });
+  if (req.body.weightKg === undefined && req.body.reps === undefined && req.body.metrics === undefined) {
+    const error = new Error('No fields to update');
+    error.status = 400;
+    throw error;
+  }
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : log.weight_unit || 'kg';
   const metrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
   db.prepare('UPDATE workout_logs SET weight_kg = ?, weight_unit = ?, reps = ?, metrics_json = ? WHERE id = ? AND user_id = ?')
@@ -2225,18 +2208,6 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   const manualSetRows = all('SELECT set_index, manual_weight_kg, manual_weight_lb FROM exercise_set_manual WHERE user_id = ? AND exercise_id = ? ORDER BY set_index', [userId, exerciseId]);
   const manualSets = manualSetRows.map((row) => ({ setIndex: row.set_index, manualWeightKg: row.manual_weight_kg ?? null, manualWeightLb: row.manual_weight_lb ?? null }));
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
-  // All-time PR: max weight đã từng log cho bài này
-  const prRow = one(`
-    SELECT COALESCE(MAX(wl.weight_kg * (1 + (wl.reps / 30.0))), 0) AS all_time_one_rm
-    FROM workout_logs wl
-    JOIN workout_sessions ws ON ws.id = wl.session_id
-    WHERE wl.user_id = ?
-      AND wl.exercise_id = ?
-      AND ws.status = 'COMPLETED'
-      AND wl.weight_kg > 0
-      AND wl.reps > 0
-  `, [userId, exerciseId]);
-  const allTimePR = Number(prRow?.all_time_one_rm || 0);
   const completedRows = all(`
     SELECT wl.id, wl.session_id, wl.set_index, wl.weight_kg, wl.weight_unit, wl.reps, wl.metrics_json, wl.completed_at
     FROM workout_logs wl
@@ -2250,6 +2221,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     ...buildPrStats(completedRows, normalizeLogTemplate(preference?.log_template || 'strength')),
     exerciseId
   };
+  // All-time PR (legacy field): reuses the one-rep-max already derived above, no extra query needed.
+  const allTimePR = Number(prStats.template?.oneRm?.value || 0);
   const inputOptions = normalizeInputOptions(preference?.input_options_json || '{}', {
     template: {
       weightMode: preference?.weight_mode || 'KG',

@@ -48,6 +48,14 @@ import './styles.css';
 import { createT } from './i18n.js';
 import { BODY_HIGHLIGHTER_PATHS } from './bodyHighlighterPaths.js';
 import { MUSCLE_DISPLAY_NAMES, MUSCLE_DISPLAY_NAMES_VI, addMuscleScore } from './muscleMapping.js';
+import {
+  normalizeLogTemplate as normalizeTemplate,
+  templateDefaultMetrics,
+  templateHasReps,
+  templateHasWeight,
+  templatePrimaryChain,
+  TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
+} from '../shared/logTemplates.js';
 
 function getMuscleNames(settings) {
   const locale = settings?.locale || '';
@@ -1113,20 +1121,6 @@ const lbOptions = defaultLbOptions;
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
 const timeOptions = Array.from({ length: 241 }, (_, index) => index * 5);
 const distanceOptions = Array.from({ length: 401 }, (_, index) => Number((index * 0.05).toFixed(2)));
-const LOG_TEMPLATE_DEFS = {
-  strength: { labelKey: 'template_strength', defaults: [] },
-  bodyweight: { labelKey: 'template_bodyweight', defaults: [] },
-  timed: { labelKey: 'template_timed', defaults: ['duration_seconds'] },
-  distance: { labelKey: 'template_distance', defaults: ['distance', 'duration_seconds'] },
-  carry: { labelKey: 'template_carry', defaults: ['distance', 'duration_seconds'] },
-  mobility: { labelKey: 'template_mobility', defaults: ['duration_seconds', 'side'] },
-  custom: { labelKey: 'template_custom', defaults: [] },
-  running: { labelKey: 'template_running', defaults: ['distance', 'duration_seconds', 'pace'] },
-  stairclimber: { labelKey: 'template_stairclimber', defaults: ['duration_seconds', 'steps', 'floors'] },
-  cycling: { labelKey: 'template_cycling', defaults: ['distance', 'duration_seconds', 'speed'] },
-  elliptical: { labelKey: 'template_elliptical', defaults: ['duration_seconds', 'distance', 'resistance'] },
-  rowing: { labelKey: 'template_rowing', defaults: ['distance', 'duration_seconds', 'spm'] }
-};
 const OPTIONAL_METRIC_DEFS = [
   { key: 'weight_kg', labelKey: 'metric_weight', unit: 'kg', type: 'weight' },
   { key: 'metric_reps', labelKey: 'metric_reps', unit: 'reps', type: 'reps' },
@@ -1205,7 +1199,6 @@ const metricFormatContext = (key, metrics = {}, scope = 'metric') => {
   if (key === 'weight_kg') return { weight_unit: metrics[metricUnitStorageKey(key, scope)] };
   return metrics;
 };
-const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const exerciseDefaultTemplate = (exercise) => {
   if (!exercise) return 'strength';
   const name = String(exercise.name || '').toLowerCase();
@@ -1220,11 +1213,8 @@ const exerciseDefaultTemplate = (exercise) => {
   if (name.includes('jump rope')) return 'timed';
   return 'timed';
 };
-const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
 const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
-const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
-const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
 const normalizeWeightMode = (value, fallback = 'KG') => ['KG', 'LB', 'MANUAL'].includes(String(value || fallback).toUpperCase()) ? String(value || fallback).toUpperCase() : 'KG';
 const normalizeManualUnit = (value, fallback = 'kg') => ['kg', 'lb'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'kg';
 const normalizeDurationUnit = (value, fallback = 'sec') => ['sec', 'min'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'sec';
@@ -1346,30 +1336,28 @@ const formatPrItem = (item, settings = {}, fallbackUnit = 'kg', t = createT(sett
       return t('pr_generic', t(`metric_${String(item.kind || 'metric').replace(/^metric_/, '')}`), formatMetricNumber(item.value, 1));
   }
 };
-const setPrValue = (set, template, settings = {}) => {
+const setPrValueForKind = (kind, set) => {
   const metrics = set?.metrics || {};
   const weightKg = Number(set?.weightKg ?? set?.weight_kg ?? 0);
   const reps = Number(set?.reps || 0);
   const distance = Number(metrics.distance || 0);
   const seconds = Number(metrics.duration_seconds || 0);
-  switch (normalizeTemplate(template)) {
-    case 'running':
+  switch (kind) {
+    case 'pace':
       return (distance > 0 && seconds > 0) ? seconds / distance : 0;
     case 'distance':
-    case 'cycling':
-    case 'rowing':
       return distance || 0;
-    case 'stairclimber':
-    case 'elliptical':
-    case 'timed':
-    case 'mobility':
+    case 'duration':
       return seconds || 0;
-    case 'bodyweight':
+    case 'reps':
       return reps || 0;
+    case 'weight':
+      return weightKg || 0;
     default:
       return estimateOneRepMaxKg(weightKg, reps);
   }
 };
+const setPrValue = (set, template, settings = {}) => setPrValueForKind(templatePrimaryChain(template)[0], set);
 const setBeatsPr = (value, prItem) => {
   if (!prItem || !Number(value)) return false;
   if (prItem.kind === 'pace' || prItem.kind === 'metric_pace') return Number(value) < Number(prItem.value || Infinity);
@@ -6204,10 +6192,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const manualLb = preferredManualLb ?? Number(kgToLb(baseWeightKg).toFixed(1));
         return {
           setIndex,
-          weightKg: nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg,
+          weightKg: templateHasWeight(nextTemplate)
+            ? (nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg)
+            : 0,
           manualKg,
           manualLb,
-          reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
+          reps: templateHasReps(nextTemplate) ? (previous?.reps ?? lastCurrent?.reps ?? defaultReps) : 0,
           metrics: { ...(previous?.metrics || {}), ...(lastCurrent?.metrics || {}) },
           done: false
         };
@@ -6392,7 +6382,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, weightUnit: row.weight_unit || 'kg', manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
     const lastMetricSource = [...doneSets].reverse().find((set) => set.metrics?.duration_unit || set.metrics?.distance_unit)?.metrics || {};
     const savedDurationUnit = ['sec', 'min'].includes(payload.defaultDurationUnit) ? payload.defaultDurationUnit : null;
-    const savedDistanceUnit = ['km', 'mile'].includes(payload.defaultDistanceUnit) ? payload.defaultDistanceUnit : null;
+    const savedDistanceUnit = ['km', 'mile', 'm'].includes(payload.defaultDistanceUnit) ? payload.defaultDistanceUnit : null;
     const nextMetricUnits = {
       duration_unit: savedDurationUnit || lastMetricSource.duration_unit || 'sec',
       distance_unit: savedDistanceUnit || lastMetricSource.distance_unit || settings?.distance_unit || 'km'
@@ -6418,10 +6408,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const draftManualLb = perSet?.manualWeightLb ?? payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
       return {
         setIndex,
-        weightKg: unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg,
+        weightKg: templateHasWeight(nextTemplate) ? (unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg) : 0,
         manualKg: draftManualKg,
         manualLb: draftManualLb,
-        reps: payload.defaultReps ?? settings?.default_reps ?? 12,
+        reps: templateHasReps(nextTemplate) ? (payload.defaultReps ?? settings?.default_reps ?? 12) : 0,
         metrics: {
           ...(lastDone?.metrics || {}),
           duration_unit: nextMetricUnits.duration_unit,
@@ -6439,7 +6429,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     } : currentData);
   };
   const addSet = async () => {
-    const lastSet = sets[sets.length - 1] || { weightKg: 20, manualKg: 20, manualLb: Number(kgToLb(20).toFixed(1)), reps: 8, metrics: {} };
+    const lastSet = sets[sets.length - 1] || {
+      weightKg: templateHasWeight(logTemplate) ? 20 : 0,
+      manualKg: 20,
+      manualLb: Number(kgToLb(20).toFixed(1)),
+      reps: templateHasReps(logTemplate) ? 8 : 0,
+      metrics: {}
+    };
     const nextCount = sets.length + 1;
     setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, manualKg: lastSet.manualKg ?? lastSet.weightKg, manualLb: lastSet.manualLb ?? Number(kgToLb(lastSet.weightKg).toFixed(1)), reps: lastSet.reps, metrics: { ...(lastSet.metrics || {}) }, done: false }]);
     await saveTargetSets(nextCount);
