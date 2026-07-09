@@ -539,6 +539,27 @@ function addToOfflineQueue(userId, entry) {
   if (entry.type === 'complete') {
     q = q.filter((item) => !(item.type === 'complete' && Number(item.sessionId) === Number(entry.sessionId)));
   }
+  if (entry.type === 'logUpdate') {
+    if (String(entry.logId).startsWith('offline_')) {
+      // The set this edits hasn't synced yet — fold the edit straight into its pending 'log' entry
+      // instead of queuing a PATCH for an id the server has never seen.
+      q = q.map((item) => (item.type === 'log' && item.localLogId === entry.logId) ? { ...item, ...entry.patch } : item);
+      saveOfflineQueue(userId, q);
+      return entry.logId;
+    }
+    const previous = q.filter((item) => item.type === 'logUpdate' && item.logId === entry.logId);
+    q = q.filter((item) => !(item.type === 'logUpdate' && item.logId === entry.logId));
+    entry = { ...entry, patch: Object.assign({}, ...previous.map((item) => item.patch || {}), entry.patch || {}) };
+  }
+  if (entry.type === 'logDelete') {
+    if (String(entry.logId).startsWith('offline_')) {
+      // Untick before the set ever synced — just drop the pending 'log' (and any edits queued for it).
+      q = q.filter((item) => !((item.type === 'log' && item.localLogId === entry.logId) || (item.type === 'logUpdate' && item.logId === entry.logId)));
+      saveOfflineQueue(userId, q);
+      return null;
+    }
+    q = q.filter((item) => !(item.type === 'logUpdate' && item.logId === entry.logId) && !(item.type === 'logDelete' && item.logId === entry.logId));
+  }
   q.push({ ...entry, tempId: Date.now() + Math.random(), queuedAt: new Date().toISOString(), syncStatus: 'pending' });
   saveOfflineQueue(userId, q);
   // KHÔNG clear cache khi vừa enqueue offline mutation — sẽ làm mất history offline.
@@ -613,6 +634,12 @@ async function flushOfflineQueue(userId) {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
         await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps, metrics: entry.metrics || {}, isSuperset: Boolean(entry.isSuperset) }) });
+      } else if (entry.type === 'logUpdate') {
+        // logId is always a real, already-synced id here — edits made before a set finished
+        // syncing are folded into its 'log' entry instead (see addToOfflineQueue).
+        await api(`/api/logs/${entry.logId}`, { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.patch || {}) }) });
+      } else if (entry.type === 'logDelete') {
+        await api(`/api/logs/${entry.logId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
       } else if (entry.type === 'complete') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
@@ -2238,6 +2265,24 @@ async function api(path, options = {}) {
       const userId = bodyUserId || userIdFromApiPath(path);
       addToOfflineQueue(userId, { type: 'exercisePreferenceUpdate', exerciseId, patch });
       cacheExercisePreferenceMutation(userId, exerciseId, patch);
+      return { ok: true, offline: true };
+    }
+    const logMatch = path.match(/^\/api\/logs\/([^/?]+)/);
+    if (offlineQueue && method === 'PATCH' && logMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const logId = decodeURIComponent(logMatch[1]);
+      const { userId: bodyUserId, ...patch } = body;
+      const userId = bodyUserId || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'logUpdate', logId, patch });
+      return { ok: true, offline: true };
+    }
+    if (offlineQueue && method === 'DELETE' && logMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const logId = decodeURIComponent(logMatch[1]);
+      addToOfflineQueue(userId, { type: 'logDelete', logId });
       return { ok: true, offline: true };
     }
     if (offlineQueue && method === 'POST' && path.startsWith('/api/weekly/reset')) {
@@ -6545,7 +6590,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', localLogId: tempId, sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, weightKg: logWeightKg, weightUnit, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
@@ -6558,7 +6603,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', localLogId: tempId, sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       result = { id: tempId };
     }
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, weightKg: logWeightKg, weightUnit, done: true } : item));
