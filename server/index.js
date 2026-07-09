@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
-import { normalizeLogTemplate, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
+import { distanceBucket, normalizeLogTemplate, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -228,7 +228,7 @@ function prBase(row, value, extra = {}) {
 }
 
 function buildPrStats(rows = [], template = 'strength') {
-  const stats = { template: {}, metrics: {}, metricOneRm: null };
+  const stats = { template: {}, metrics: {}, metricOneRm: null, paceByDistance: {} };
   for (const raw of rows) {
     const row = logRow(raw);
     const metrics = row.metrics || {};
@@ -252,6 +252,8 @@ function buildPrStats(rows = [], template = 'strength') {
     if (seconds > 0) stats.template.duration = higherPr(stats.template.duration, prBase(row, seconds, { kind: 'duration', unit: metrics.duration_unit || 'sec' }));
     if (distance > 0 && seconds > 0) {
       stats.template.pace = lowerPr(stats.template.pace, prBase(row, seconds / distance, { kind: 'pace', distance, seconds }));
+      const bucket = distanceBucket(distance);
+      stats.paceByDistance[bucket] = lowerPr(stats.paceByDistance[bucket], prBase(row, seconds / distance, { kind: 'pace', distance, seconds, bucket }));
     }
 
     if (metricWeightKg > 0) stats.metrics.weight_kg = higherPr(stats.metrics.weight_kg, prBase(row, metricWeightKg, { kind: 'metric_weight', unit: metrics.extra_weight_unit || 'kg' }));

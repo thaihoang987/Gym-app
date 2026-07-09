@@ -49,6 +49,7 @@ import { createT } from './i18n.js';
 import { BODY_HIGHLIGHTER_PATHS } from './bodyHighlighterPaths.js';
 import { MUSCLE_DISPLAY_NAMES, MUSCLE_DISPLAY_NAMES_VI, addMuscleScore } from './muscleMapping.js';
 import {
+  distanceBucket,
   normalizeLogTemplate as normalizeTemplate,
   templateDefaultMetrics,
   templateHasReps,
@@ -1362,6 +1363,16 @@ const setBeatsPr = (value, prItem) => {
   if (!prItem || !Number(value)) return false;
   if (prItem.kind === 'pace' || prItem.kind === 'metric_pace') return Number(value) < Number(prItem.value || Infinity);
   return Number(value) > Number(prItem.value || 0);
+};
+// Running has two independent PRs: longest distance ever (prStats.primary) and best pace
+// among runs of a similar distance (rounded to the nearest 0.25km, see distanceBucket).
+const runningPaceBeatsBucketPr = (set, prStats) => {
+  const metrics = set?.metrics || {};
+  const distance = Number(metrics.distance || 0);
+  const seconds = Number(metrics.duration_seconds || 0);
+  if (!(distance > 0 && seconds > 0)) return false;
+  const record = prStats?.paceByDistance?.[distanceBucket(distance)];
+  return setBeatsPr(seconds / distance, record);
 };
 const describeSetByTemplate = (set, template, settings = {}) => {
   const metrics = set?.metrics || {};
@@ -7278,7 +7289,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
                 const setPrimaryPrValue = setPrValue(set, logTemplate, settings);
-                const isPR = set.done && prStats?.primary && setBeatsPr(setPrimaryPrValue, prStats.primary);
+                const isPR = set.done && Boolean(
+                  (prStats?.primary && setBeatsPr(setPrimaryPrValue, prStats.primary)) ||
+                  (normalizeTemplate(logTemplate) === 'running' && runningPaceBeatsBucketPr(set, prStats))
+                );
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
                     {isPR && <div className="pr-banner">🏆 Personal Record!</div>}
