@@ -1312,7 +1312,7 @@ const hmsFromSeconds = (seconds) => {
   const total = Number(seconds || 0);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
+  const s = Math.floor(total % 60);
   return [h, m, s];
 };
 const formatMetricValue = (key, value, settings = {}, metrics = {}) => {
