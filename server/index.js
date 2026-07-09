@@ -2104,7 +2104,11 @@ app.post('/api/sessions/:id/logs', (req, res) => {
   const logTemplate = normalizeLogTemplate(exercisePref?.log_template || 'strength');
   if (templateHasWeight(logTemplate)) requireBody(['weightKg'], req.body);
   if (templateHasReps(logTemplate)) requireBody(['reps'], req.body);
-  const metrics = normalizeMetrics(req.body.metrics || {});
+  const rawMetrics = normalizeMetrics(req.body.metrics || {});
+  const metrics = {};
+  for (const key of normalizeMetricSchema(Object.keys(rawMetrics), logTemplate)) {
+    metrics[key] = rawMetrics[key];
+  }
   if (!templateHasWeight(logTemplate) && !templateHasReps(logTemplate) && Object.keys(metrics).length === 0) {
     const error = new Error(`Missing metrics for log template: ${logTemplate}`);
     error.status = 400;
@@ -2173,8 +2177,14 @@ app.patch('/api/logs/:id', (req, res) => {
     error.status = 400;
     throw error;
   }
+  const exercisePref = one('SELECT log_template FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, log.exercise_id]);
+  const logTemplate = normalizeLogTemplate(exercisePref?.log_template || 'strength');
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : log.weight_unit || 'kg';
-  const metrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
+  const rawMetrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
+  const metrics = normalizeMetricSchema(Object.keys(rawMetrics), logTemplate).reduce((acc, key) => {
+    acc[key] = rawMetrics[key];
+    return acc;
+  }, {});
   db.prepare('UPDATE workout_logs SET weight_kg = ?, weight_unit = ?, reps = ?, metrics_json = ? WHERE id = ? AND user_id = ?')
     .run(
       req.body.weightKg === undefined ? Number(log.weight_kg || 0) : Number(req.body.weightKg || 0),
