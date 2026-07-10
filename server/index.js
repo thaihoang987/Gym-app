@@ -6,6 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
 import { distanceBucket, normalizeLogTemplate, templateDefaultMetrics, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
+import { BODY_COMPOSITION_METRIC_DEFS } from '../shared/bodyCompositionMetrics.js';
+import { ocrBodyCompositionImage } from './ocr.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -2491,6 +2493,83 @@ app.post('/api/body-weight', (req, res) => {
   requireBody(['weight', 'unit'], req.body);
   const result = db.prepare('INSERT INTO body_weight_logs (user_id, weight, unit) VALUES (?, ?, ?)').run(userId, Number(req.body.weight), req.body.unit);
   res.status(201).json({ id: result.lastInsertRowid });
+});
+
+const BODY_COMPOSITION_FIELDS = [
+  'weight_kg', 'weight_grade', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade',
+  'body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg',
+  'muscle_mass_kg', 'muscle_mass_grade', 'muscle_percent', 'muscle_percent_grade',
+  'body_water_percent', 'body_water_percent_grade', 'protein_percent', 'protein_percent_grade',
+  'bone_mineral_percent', 'bone_mineral_percent_grade', 'skeletal_muscle_kg', 'skeletal_muscle_grade',
+  'visceral_fat_rating', 'visceral_fat_grade', 'bmr_kcal', 'bmr_grade', 'waist_hip_ratio', 'waist_hip_grade',
+  'body_age', 'fat_free_weight_kg', 'heart_rate_bpm', 'heart_rate_grade', 'body_type_zone',
+  'standard_weight_kg', 'weight_control_kg', 'fat_control_kg', 'muscle_control_text'
+];
+
+app.get('/api/body-composition', (req, res) => {
+  const userId = getUserId(req);
+  res.json(all('SELECT * FROM body_composition_logs WHERE user_id = ? ORDER BY logged_at ASC', [userId]));
+});
+
+// OCR the uploaded scale-report screenshot and return the extracted fields as a draft —
+// nothing is written to body_composition_logs here, the client shows an editable confirm
+// form first since OCR on this many fields will sometimes miss or misread a value.
+app.post('/api/body-composition/scan', async (req, res) => {
+  requireBody(['photo'], req.body);
+  const photoPath = saveUploadedDataUrl(req.body.photo, 'bodycomp');
+  const absolutePath = path.join(uploadDir, photoPath.replace(/^\/uploads\//, ''));
+  const { fields } = await ocrBodyCompositionImage(absolutePath);
+  res.json({ photoPath, fields });
+});
+
+app.post('/api/body-composition', (req, res) => {
+  const userId = getUserId(req);
+  const columns = ['user_id', 'photo_path', 'logged_at'];
+  const values = [userId, req.body.photoPath || null, req.body.loggedAt || new Date().toISOString()];
+  for (const field of BODY_COMPOSITION_FIELDS) {
+    if (req.body[field] === undefined) continue;
+    columns.push(field);
+    values.push(req.body[field]);
+  }
+  const placeholders = columns.map(() => '?').join(', ');
+  const result = db.prepare(`INSERT INTO body_composition_logs (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+  res.status(201).json({ id: result.lastInsertRowid });
+});
+
+app.delete('/api/body-composition/:id', (req, res) => {
+  const userId = getUserId(req);
+  db.prepare('DELETE FROM body_composition_logs WHERE id = ? AND user_id = ?').run(Number(req.params.id), userId);
+  res.json({ ok: true });
+});
+
+// Reference ranges (the Under/Standard/Good boundary numbers shown on each metric's detail
+// popup) come from the scale's own algorithm based on the user's age/gender/height, so they're
+// captured once per metric rather than re-extracted on every weigh-in scan.
+app.get('/api/body-composition/ranges', (req, res) => {
+  const userId = getUserId(req);
+  const rows = all('SELECT metric_key, boundaries_json FROM body_metric_ranges WHERE user_id = ?', [userId]);
+  const ranges = {};
+  for (const row of rows) {
+    ranges[row.metric_key] = safeJsonParse(row.boundaries_json, []);
+  }
+  res.json(ranges);
+});
+
+app.put('/api/body-composition/ranges/:metricKey', (req, res) => {
+  const userId = getUserId(req);
+  const metricKey = req.params.metricKey;
+  if (!BODY_COMPOSITION_METRIC_DEFS.some((def) => def.key === metricKey)) {
+    const error = new Error('Unknown metric');
+    error.status = 400;
+    throw error;
+  }
+  const boundaries = Array.isArray(req.body.boundaries) ? req.body.boundaries : [];
+  db.prepare(`
+    INSERT INTO body_metric_ranges (user_id, metric_key, boundaries_json, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, metric_key) DO UPDATE SET boundaries_json = excluded.boundaries_json, updated_at = CURRENT_TIMESTAMP
+  `).run(userId, metricKey, JSON.stringify(boundaries));
+  res.json({ ok: true });
 });
 
 function importBackupData(userId, backup) {

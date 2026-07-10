@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   BarChart3,
+  Camera,
   CalendarDays,
   Check,
   ChevronRight,
@@ -42,7 +43,7 @@ import {
   UserRound
 } from 'lucide-react';
 import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Brush, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
@@ -57,6 +58,7 @@ import {
   templatePrimaryChain,
   TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
 } from '../shared/logTemplates.js';
+import { BODY_COMPOSITION_METRIC_DEFS, gradeColorTier, GRADE_TIER_COLORS } from '../shared/bodyCompositionMetrics.js';
 
 function getMuscleNames(settings) {
   const locale = settings?.locale || '';
@@ -3222,6 +3224,7 @@ function BodyWeightInput({ userId, settings }) {
   const [weight, setWeight] = useState('');
   const [unit, setUnit] = useState(settings.default_weight_unit || 'kg');
   const [history, setHistory] = useState([]);
+  const [scanOpen, setScanOpen] = useState(false);
   const loadHistory = () => api(`/api/body-weight/recent?userId=${userId}`).then(setHistory);
   useEffect(() => {
     loadHistory();
@@ -3244,6 +3247,7 @@ function BodyWeightInput({ userId, settings }) {
           <option value="lb">lb</option>
         </select>
         <button className="icon-btn" onClick={save}><Check /></button>
+        <button className="icon-btn" title={t('bodycomp_scan_pick')} onClick={() => setScanOpen(true)}><Camera /></button>
       </div>
       <div className="weight-history">
         <div className="grid grid-cols-[1fr_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
@@ -3257,6 +3261,122 @@ function BodyWeightInput({ userId, settings }) {
             <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
           </div>
         ))}
+      </div>
+      {scanOpen && <BodyCompositionScanModal userId={userId} onClose={() => setScanOpen(false)} onSaved={loadHistory} />}
+    </div>
+  );
+}
+
+function BodyCompositionScanModal({ userId, onClose, onSaved }) {
+  const t = useLang();
+  const [step, setStep] = useState('pick');
+  const [photoPath, setPhotoPath] = useState(null);
+  const [fields, setFields] = useState({});
+  const [error, setError] = useState('');
+
+  const pickFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStep('loading');
+    setError('');
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const result = await api('/api/body-composition/scan', { method: 'POST', body: JSON.stringify({ photo: dataUrl }) });
+      setPhotoPath(result.photoPath);
+      setFields(result.fields);
+      setStep('confirm');
+    } catch (err) {
+      setError(err.message || 'Scan thất bại');
+      setStep('pick');
+    }
+  };
+
+  const updateField = (key, value) => setFields((current) => ({ ...current, [key]: value }));
+
+  const save = async () => {
+    await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, ...fields }) });
+    onSaved?.();
+    onClose();
+  };
+
+  const numberField = (key, label, width = 'w-24') => (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-2" key={key}>
+      <label className="text-sm font-semibold text-slate-700">{label}</label>
+      <input
+        className={`input compact-input ${width}`}
+        type="number"
+        step="0.1"
+        value={fields[key] ?? ''}
+        onChange={(e) => updateField(key, e.target.value === '' ? null : Number(e.target.value))}
+      />
+    </div>
+  );
+
+  const textField = (key, label, width = 'w-32') => (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-2" key={key}>
+      <label className="text-sm font-semibold text-slate-700">{label}</label>
+      <input
+        className={`input compact-input ${width}`}
+        type="text"
+        value={fields[key] ?? ''}
+        onChange={(e) => updateField(key, e.target.value || null)}
+      />
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 p-4">
+          <h3 className="font-black text-slate-950">{t('bodycomp_scan_title')}</h3>
+          <button className="icon-btn" onClick={onClose}><X /></button>
+        </div>
+        {step === 'pick' && (
+          <div className="space-y-3 p-4">
+            <p className="text-sm text-slate-600">{t('bodycomp_scan_hint')}</p>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <label className="primary flex items-center justify-center gap-2 cursor-pointer">
+              <Camera size={16} /> {t('bodycomp_scan_pick')}
+              <input type="file" accept="image/*" className="hidden" onChange={pickFile} />
+            </label>
+          </div>
+        )}
+        {step === 'loading' && <div className="p-8 text-center text-slate-500">{t('bodycomp_scan_processing')}</div>}
+        {step === 'confirm' && (
+          <div className="space-y-3 p-4 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+            <p className="text-xs text-slate-500">{t('bodycomp_scan_confirm_hint')}</p>
+            {numberField('body_score', t('bodycomp_body_score'))}
+            {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
+              <div key={def.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t(def.labelKey)}</label>
+                <input
+                  className="input compact-input w-20"
+                  type="number"
+                  step="0.1"
+                  value={fields[def.valueField] ?? ''}
+                  onChange={(e) => updateField(def.valueField, e.target.value === '' ? null : Number(e.target.value))}
+                />
+                {def.gradeField ? (
+                  <input
+                    className="input compact-input w-24"
+                    type="text"
+                    value={fields[def.gradeField] ?? ''}
+                    onChange={(e) => updateField(def.gradeField, e.target.value || null)}
+                  />
+                ) : <span />}
+              </div>
+            ))}
+            {textField('body_type_zone', t('bodycomp_body_type'))}
+            {numberField('standard_weight_kg', t('bodycomp_standard_weight'))}
+            {numberField('weight_control_kg', t('bodycomp_weight_control'))}
+            {numberField('fat_control_kg', t('bodycomp_fat_control'))}
+            {textField('muscle_control_text', t('bodycomp_muscle_control'))}
+            <div className="flex gap-2 pt-2">
+              <button className="ghost-btn flex-1" onClick={() => setStep('pick')}>{t('bodycomp_scan_retry')}</button>
+              <button className="primary flex-1" onClick={save}>{t('bodycomp_scan_save')}</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -7768,6 +7888,159 @@ function WeightHistoryPanel({ weightRows, t, settings }) {
   );
 }
 
+function bodyCompositionDelta(rows, index) {
+  if (index <= 0) return null;
+  const current = rows[index].value;
+  const previous = rows[index - 1].value;
+  if (current === null || current === undefined || previous === null || previous === undefined) return null;
+  return Number((current - previous).toFixed(2));
+}
+
+function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, t, onClose }) {
+  const tier = gradeColorTier(latestRow?.grade);
+  const numericBoundaries = (boundaries || []).filter((b) => Number.isFinite(Number(b.max)));
+  const maxBoundary = numericBoundaries.length ? Math.max(...numericBoundaries.map((b) => Number(b.max))) * 1.15 : null;
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-baseline gap-1">
+              <strong className="text-3xl text-slate-950">{latestRow?.value ?? '--'}</strong>
+              <span className="text-sm text-slate-500">{metricDef.unit}</span>
+            </div>
+            <p className="text-sm text-slate-500">{t(metricDef.labelKey)}</p>
+          </div>
+          {latestRow?.grade && (
+            <div className="text-right">
+              <strong className="text-lg" style={{ color: tier ? GRADE_TIER_COLORS[tier] : '#0f172a' }}>{latestRow.grade}</strong>
+              <p className="text-xs text-slate-500">{t('bodycomp_grading')}</p>
+            </div>
+          )}
+        </div>
+        {delta !== null && delta !== undefined && (
+          <p className="mt-2 text-sm text-slate-600">
+            {delta > 0 ? '↑' : delta < 0 ? '↓' : ''} {Math.abs(delta)} {metricDef.unit} {t('bodycomp_vs_previous')}
+          </p>
+        )}
+        {numericBoundaries.length > 0 && (
+          <div className="mt-4">
+            <div className="flex h-3 w-full overflow-hidden rounded-full">
+              {numericBoundaries.map((b, i) => {
+                const prevMax = i === 0 ? 0 : Number(numericBoundaries[i - 1].max);
+                const width = maxBoundary ? ((Number(b.max) - prevMax) / maxBoundary) * 100 : 100 / numericBoundaries.length;
+                return <div key={b.label} style={{ width: `${width}%`, background: GRADE_TIER_COLORS[gradeColorTier(b.label)] || '#94a3b8' }} />;
+              })}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
+              {numericBoundaries.map((b) => (
+                <span key={b.label}><span className="inline-block h-2 w-2 rounded-full mr-1" style={{ background: GRADE_TIER_COLORS[gradeColorTier(b.label)] || '#94a3b8' }} />{b.label} &lt;{b.max}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        <button className="ghost-btn w-full mt-4" onClick={onClose}>{t('close')}</button>
+      </div>
+    </div>
+  );
+}
+
+function BodyCompositionSection({ userId, settings }) {
+  const t = useLang();
+  const rangeOptions = getRangeOptions(t);
+  const [logs, setLogs] = useState([]);
+  const [ranges, setRanges] = useState({});
+  const [metricKey, setMetricKey] = useState('weight');
+  const [rangeKey, setRangeKey] = useState('30d');
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  useEffect(() => {
+    api(`/api/body-composition?userId=${userId}`).then(setLogs);
+    api(`/api/body-composition/ranges?userId=${userId}`).then(setRanges);
+  }, [userId]);
+
+  const metricDef = BODY_COMPOSITION_METRIC_DEFS.find((def) => def.key === metricKey) || BODY_COMPOSITION_METRIC_DEFS[0];
+  const rows = logs
+    .filter((row) => row[metricDef.valueField] !== null && row[metricDef.valueField] !== undefined)
+    .map((row) => ({
+      logged_at: row.logged_at,
+      ts: parseServerDate(row.logged_at)?.getTime(),
+      label: formatDate(row.logged_at, settings, { day: '2-digit', month: '2-digit' }),
+      value: row[metricDef.valueField],
+      grade: metricDef.gradeField ? row[metricDef.gradeField] : null
+    }));
+  const rangedRows = filterByRange(rows, 'logged_at', rangeKey);
+  const chartDomain = chartRangeDomain(rangeKey);
+  const latestRow = rows[rows.length - 1] || null;
+  const delta = rows.length ? bodyCompositionDelta(rows, rows.length - 1) : null;
+
+  if (!logs.length) return null;
+
+  return (
+    <div className="panel">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-bold">{t('bodycomp_section_title')}</h3>
+        <select className="input compact-input" value={metricKey} onChange={(e) => setMetricKey(e.target.value)}>
+          {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
+            <option key={def.key} value={def.key}>{t(def.labelKey)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="range-bar mb-3">
+        {rangeOptions.map(([key, label]) => (
+          <button key={key} className={rangeKey === key ? 'active' : ''} onClick={() => setRangeKey(key)}>{label}</button>
+        ))}
+      </div>
+      {latestRow && (
+        <button className="mb-3 flex w-full items-center justify-between rounded-lg bg-slate-50 p-3 text-left" onClick={() => setDetailOpen(true)}>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <strong className="text-2xl text-slate-950">{latestRow.value}</strong>
+              <span className="text-sm text-slate-500">{metricDef.unit}</span>
+            </div>
+            {delta !== null && delta !== undefined && (
+              <span className="text-xs text-slate-500">{delta > 0 ? '↑' : delta < 0 ? '↓' : ''} {Math.abs(delta)} {t('bodycomp_vs_previous')}</span>
+            )}
+          </div>
+          {latestRow.grade && (
+            <strong style={{ color: GRADE_TIER_COLORS[gradeColorTier(latestRow.grade)] || '#0f172a' }}>{latestRow.grade}</strong>
+          )}
+        </button>
+      )}
+      {rangedRows.length ? (
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={rangedRows} margin={{ top: 16, right: 18, bottom: 8, left: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              domain={chartDomain}
+              stroke="#6b668a"
+              tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
+              tickMargin={14}
+              minTickGap={22}
+            />
+            <YAxis stroke="#6b668a" tickMargin={10} domain={['dataMin - 1', 'dataMax + 1']} />
+            <Tooltip labelFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
+            <Line type="monotone" dataKey="value" name={t(metricDef.labelKey)} stroke="#2563eb" strokeWidth={3} dot />
+            <Brush dataKey="ts" height={22} stroke="#2563eb" travellerWidth={10} tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
+          </LineChart>
+        </ResponsiveContainer>
+      ) : <p className="text-slate-600">{t('bodycomp_no_data')}</p>}
+      {detailOpen && latestRow && (
+        <BodyCompositionDetailPopup
+          metricDef={metricDef}
+          latestRow={latestRow}
+          delta={delta}
+          boundaries={ranges[metricKey]}
+          t={t}
+          onClose={() => setDetailOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function Analytics({ userId, settings }) {
   const t = useLang();
   const rangeOptions = getRangeOptions(t);
@@ -7912,6 +8185,7 @@ function Analytics({ userId, settings }) {
           </ResponsiveContainer>
         ) : <p className="text-slate-600">{t('analytics_no_bmi_chart')}</p>}
       </div>
+      <BodyCompositionSection userId={userId} settings={settings} />
       <div className="panel">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold">{t('analytics_progress_section')}</h3>

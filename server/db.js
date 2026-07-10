@@ -263,6 +263,63 @@ export function migrate() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS body_composition_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      weight_kg REAL,
+      weight_grade TEXT,
+      body_score INTEGER,
+      bmi REAL,
+      bmi_grade TEXT,
+      body_fat_percent REAL,
+      body_fat_grade TEXT,
+      body_water_mass_kg REAL,
+      fat_mass_kg REAL,
+      bone_mineral_mass_kg REAL,
+      protein_mass_kg REAL,
+      muscle_mass_kg REAL,
+      muscle_mass_grade TEXT,
+      muscle_percent REAL,
+      muscle_percent_grade TEXT,
+      body_water_percent REAL,
+      body_water_percent_grade TEXT,
+      protein_percent REAL,
+      protein_percent_grade TEXT,
+      bone_mineral_percent REAL,
+      bone_mineral_percent_grade TEXT,
+      skeletal_muscle_kg REAL,
+      skeletal_muscle_grade TEXT,
+      visceral_fat_rating REAL,
+      visceral_fat_grade TEXT,
+      bmr_kcal REAL,
+      bmr_grade TEXT,
+      waist_hip_ratio REAL,
+      waist_hip_grade TEXT,
+      body_age INTEGER,
+      fat_free_weight_kg REAL,
+      heart_rate_bpm REAL,
+      heart_rate_grade TEXT,
+      body_type_zone TEXT,
+      standard_weight_kg REAL,
+      weight_control_kg REAL,
+      fat_control_kg REAL,
+      muscle_control_text TEXT,
+      photo_path TEXT,
+      logged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_body_composition_logs_user ON body_composition_logs(user_id, logged_at);
+
+    CREATE TABLE IF NOT EXISTS body_metric_ranges (
+      user_id INTEGER NOT NULL,
+      metric_key TEXT NOT NULL,
+      boundaries_json TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, metric_key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS exercise_set_manual (
       user_id INTEGER NOT NULL,
       exercise_id TEXT NOT NULL,
