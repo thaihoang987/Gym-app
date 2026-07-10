@@ -58,7 +58,7 @@ import {
   templatePrimaryChain,
   TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
 } from '../shared/logTemplates.js';
-import { BODY_COMPOSITION_METRIC_DEFS, gradeColorTier, GRADE_TIER_COLORS } from '../shared/bodyCompositionMetrics.js';
+import { BODY_COMPOSITION_METRIC_DEFS, BODY_TYPE_ZONES, gradeColorTier, GRADE_TIER_COLORS } from '../shared/bodyCompositionMetrics.js';
 
 function getMuscleNames(settings) {
   const locale = settings?.locale || '';
@@ -3267,11 +3267,55 @@ function BodyWeightInput({ userId, settings }) {
   );
 }
 
+function BodyCompMetricCard({ label, value, unit, grade, gradeOptions, onChangeValue, onChangeGrade }) {
+  const [open, setOpen] = useState(false);
+  const tier = gradeColorTier(grade);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+      <button type="button" className="flex w-full items-start justify-between gap-2 text-left" onClick={() => setOpen((v) => !v)}>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
+          <div className="flex items-baseline gap-1">
+            <strong className="text-lg text-slate-950">{value ?? '--'}</strong>
+            {unit && <span className="text-xs text-slate-500">{unit}</span>}
+          </div>
+        </div>
+        {grade && <span className="shrink-0 text-xs font-bold" style={{ color: tier ? GRADE_TIER_COLORS[tier] : '#64748b' }}>{grade}</span>}
+      </button>
+      {open && (
+        <div className="mt-2 flex gap-2 border-t border-slate-200 pt-2">
+          <input
+            className="input compact-input w-20"
+            type="number"
+            step="0.1"
+            value={value ?? ''}
+            onChange={(e) => onChangeValue(e.target.value === '' ? null : Number(e.target.value))}
+          />
+          {onChangeGrade && (
+            gradeOptions ? (
+              <select className="input compact-input flex-1" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)}>
+                <option value="">--</option>
+                {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            ) : (
+              <input className="input compact-input flex-1" type="text" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)} />
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BODYCOMP_GRADE_OPTIONS = ['Under', 'Standard', 'Normal', 'Good', 'Fit', 'Over', 'High', 'Very high', 'Dangerous'];
+
 function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const t = useLang();
   const [step, setStep] = useState('pick');
   const [photoPath, setPhotoPath] = useState(null);
   const [fields, setFields] = useState({});
+  const [rawText, setRawText] = useState('');
+  const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
 
   const pickFile = async (e) => {
@@ -3284,6 +3328,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
       const result = await api('/api/body-composition/scan', { method: 'POST', body: JSON.stringify({ photo: dataUrl }) });
       setPhotoPath(result.photoPath);
       setFields(result.fields);
+      setRawText(result.rawText || '');
       setStep('confirm');
     } catch (err) {
       setError(err.message || 'Scan thất bại');
@@ -3298,31 +3343,6 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
     onSaved?.();
     onClose();
   };
-
-  const numberField = (key, label, width = 'w-24') => (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-2" key={key}>
-      <label className="text-sm font-semibold text-slate-700">{label}</label>
-      <input
-        className={`input compact-input ${width}`}
-        type="number"
-        step="0.1"
-        value={fields[key] ?? ''}
-        onChange={(e) => updateField(key, e.target.value === '' ? null : Number(e.target.value))}
-      />
-    </div>
-  );
-
-  const textField = (key, label, width = 'w-32') => (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-2" key={key}>
-      <label className="text-sm font-semibold text-slate-700">{label}</label>
-      <input
-        className={`input compact-input ${width}`}
-        type="text"
-        value={fields[key] ?? ''}
-        onChange={(e) => updateField(key, e.target.value || null)}
-      />
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -3343,34 +3363,59 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
         )}
         {step === 'loading' && <div className="p-8 text-center text-slate-500">{t('bodycomp_scan_processing')}</div>}
         {step === 'confirm' && (
-          <div className="space-y-3 p-4 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+          <div className="space-y-3 p-4 overflow-y-auto" style={{ maxHeight: '75vh' }}>
             <p className="text-xs text-slate-500">{t('bodycomp_scan_confirm_hint')}</p>
-            {numberField('body_score', t('bodycomp_body_score'))}
-            {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
-              <div key={def.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700">{t(def.labelKey)}</label>
-                <input
-                  className="input compact-input w-20"
-                  type="number"
-                  step="0.1"
-                  value={fields[def.valueField] ?? ''}
-                  onChange={(e) => updateField(def.valueField, e.target.value === '' ? null : Number(e.target.value))}
+            <div className="grid grid-cols-2 gap-2">
+              <BodyCompMetricCard
+                label={t('bodycomp_body_score')}
+                value={fields.body_score}
+                unit=""
+                onChangeValue={(v) => updateField('body_score', v)}
+              />
+              {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
+                <BodyCompMetricCard
+                  key={def.key}
+                  label={t(def.labelKey)}
+                  value={fields[def.valueField]}
+                  unit={def.unit}
+                  grade={def.gradeField ? fields[def.gradeField] : undefined}
+                  gradeOptions={def.gradeField ? BODYCOMP_GRADE_OPTIONS : undefined}
+                  onChangeValue={(v) => updateField(def.valueField, v)}
+                  onChangeGrade={def.gradeField ? (v) => updateField(def.gradeField, v) : undefined}
                 />
-                {def.gradeField ? (
-                  <input
-                    className="input compact-input w-24"
-                    type="text"
-                    value={fields[def.gradeField] ?? ''}
-                    onChange={(e) => updateField(def.gradeField, e.target.value || null)}
-                  />
-                ) : <span />}
+              ))}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_body_type')}</label>
+                <select className="input compact-input w-40" value={fields.body_type_zone ?? ''} onChange={(e) => updateField('body_type_zone', e.target.value || null)}>
+                  <option value="">--</option>
+                  {BODY_TYPE_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                </select>
               </div>
-            ))}
-            {textField('body_type_zone', t('bodycomp_body_type'))}
-            {numberField('standard_weight_kg', t('bodycomp_standard_weight'))}
-            {numberField('weight_control_kg', t('bodycomp_weight_control'))}
-            {numberField('fat_control_kg', t('bodycomp_fat_control'))}
-            {textField('muscle_control_text', t('bodycomp_muscle_control'))}
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_standard_weight')}</label>
+                <input className="input compact-input w-24" type="number" step="0.1" value={fields.standard_weight_kg ?? ''} onChange={(e) => updateField('standard_weight_kg', e.target.value === '' ? null : Number(e.target.value))} />
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_weight_control')}</label>
+                <input className="input compact-input w-24" type="number" step="0.1" value={fields.weight_control_kg ?? ''} onChange={(e) => updateField('weight_control_kg', e.target.value === '' ? null : Number(e.target.value))} />
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_fat_control')}</label>
+                <input className="input compact-input w-24" type="number" step="0.1" value={fields.fat_control_kg ?? ''} onChange={(e) => updateField('fat_control_kg', e.target.value === '' ? null : Number(e.target.value))} />
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_muscle_control')}</label>
+                <input className="input compact-input w-32" type="text" value={fields.muscle_control_text ?? ''} onChange={(e) => updateField('muscle_control_text', e.target.value || null)} />
+              </div>
+            </div>
+            {rawText && (
+              <details className="rounded-lg border border-slate-200 p-2" open={showRaw} onToggle={(e) => setShowRaw(e.target.open)}>
+                <summary className="cursor-pointer text-xs font-semibold text-slate-500">{t('bodycomp_scan_raw_text')}</summary>
+                <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-[10px] text-slate-500">{rawText}</pre>
+              </details>
+            )}
             <div className="flex gap-2 pt-2">
               <button className="ghost-btn flex-1" onClick={() => setStep('pick')}>{t('bodycomp_scan_retry')}</button>
               <button className="primary flex-1" onClick={save}>{t('bodycomp_scan_save')}</button>

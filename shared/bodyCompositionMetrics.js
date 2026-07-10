@@ -48,3 +48,8 @@ export const GRADE_TIER_COLORS = {
   warning: '#eab308',
   danger: '#f97316'
 };
+
+// The body-type quadrant chart's highlighted cell is shown only by background color, which OCR
+// can't read — this list backs a manual-pick dropdown instead of a (necessarily unreliable)
+// text-based guess.
+export const BODY_TYPE_ZONES = ['Athletic', 'Overweight', 'Obese', 'Muscular', 'Fit', 'Slim & muscular', 'Slim', 'Invisibly obese', 'Lean', 'Underweight'];

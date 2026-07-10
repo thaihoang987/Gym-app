@@ -20,7 +20,7 @@
     // body composition (Xiaomi scale scan)
     bodycomp_scan_title: 'Scan body composition report', bodycomp_scan_hint: 'Take a photo of your Xiaomi scale report and the app will read the values for you.',
     bodycomp_scan_pick: 'Scan report', bodycomp_scan_processing: 'Reading photo...', bodycomp_scan_confirm_hint: 'Check the values below before saving — OCR can misread a number.',
-    bodycomp_scan_retry: 'Retake photo', bodycomp_scan_save: 'Save', bodycomp_body_score: 'Body score',
+    bodycomp_scan_retry: 'Retake photo', bodycomp_scan_save: 'Save', bodycomp_body_score: 'Body score', bodycomp_scan_raw_text: 'Raw OCR text (debug)',
     bodycomp_body_type: 'Body type', bodycomp_standard_weight: 'Standard weight', bodycomp_weight_control: 'Weight control',
     bodycomp_fat_control: 'Fat control', bodycomp_muscle_control: 'Muscle control',
     bodycomp_section_title: 'Body composition', bodycomp_vs_previous: 'vs previous', bodycomp_grading: 'Grading', bodycomp_no_data: 'No body composition data yet — scan a report to get started.',
@@ -362,7 +362,7 @@
     bw_label: 'Cân nặng', bw_date: 'Ngày tháng', bw_weight: 'Cân nặng', bw_no_history: 'Chưa có lịch sử.',
     bodycomp_scan_title: 'Scan báo cáo thành phần cơ thể', bodycomp_scan_hint: 'Chụp ảnh báo cáo từ cân Xiaomi, app sẽ tự đọc số liệu giúp bạn.',
     bodycomp_scan_pick: 'Scan báo cáo', bodycomp_scan_processing: 'Đang đọc ảnh...', bodycomp_scan_confirm_hint: 'Kiểm tra lại số liệu bên dưới trước khi lưu — OCR có thể đọc sai vài chỗ.',
-    bodycomp_scan_retry: 'Chụp lại', bodycomp_scan_save: 'Lưu', bodycomp_body_score: 'Điểm cơ thể',
+    bodycomp_scan_retry: 'Chụp lại', bodycomp_scan_save: 'Lưu', bodycomp_body_score: 'Điểm cơ thể', bodycomp_scan_raw_text: 'Text OCR gốc (debug)',
     bodycomp_body_type: 'Loại thể hình', bodycomp_standard_weight: 'Cân nặng chuẩn', bodycomp_weight_control: 'Cần giảm/tăng',
     bodycomp_fat_control: 'Cần giảm mỡ', bodycomp_muscle_control: 'Kiểm soát cơ',
     bodycomp_section_title: 'Thành phần cơ thể', bodycomp_vs_previous: 'so với lần trước', bodycomp_grading: 'Đánh giá', bodycomp_no_data: 'Chưa có dữ liệu thành phần cơ thể — scan báo cáo để bắt đầu.',

@@ -5,7 +5,10 @@ import tesseract from 'node-tesseract-ocr';
 // truncate at the comma, so normalize to a dot first.
 function parseLocaleNumber(text) {
   if (text === undefined || text === null) return null;
-  const cleaned = String(text).replace(/,/g, '.').replace(/[^\d.+-]/g, '');
+  const cleaned = String(text)
+    .replace(/[−–—]/g, '-') // Unicode minus/en-dash/em-dash -> plain hyphen
+    .replace(/,/g, '.')
+    .replace(/[^\d.+-]/g, '');
   const value = Number(cleaned);
   return Number.isFinite(value) ? value : null;
 }
@@ -64,18 +67,20 @@ class Cursor {
 const GRADE_WORDS = ['Very high', 'Dangerous', 'Standard', 'Under', 'Over', 'High', 'Normal', 'Good', 'Fit'];
 
 // The "Weight suggestions" section uses an inline "Label: Value" layout instead of the
-// stacked value-then-label layout used everywhere else on the report.
+// stacked value-then-label layout used everywhere else on the report. Tesseract sometimes
+// renders the minus sign as a Unicode minus/en-dash/em-dash rather than a plain hyphen, or
+// drops it entirely — the sign character class covers the common OCR variants, but a fully
+// dropped minus can't be recovered from text alone; the confirm form lets the user fix that.
+const SIGN_CHARS = '+\\u2212\\u2013\\u2014-';
 function numberAfterLabel(text, label, { window = 20, signed = false } = {}) {
   const idx = text.search(new RegExp(escapeRegex(label), 'i'));
   if (idx === -1) return null;
   const slice = text.slice(idx, idx + label.length + window);
-  const match = slice.match(/([+-]?[0-9]+[.,][0-9]+|[+-]?[0-9]+)/);
+  const match = slice.match(new RegExp(`([${SIGN_CHARS}]?\\s?[0-9]+[.,][0-9]+|[${SIGN_CHARS}]?\\s?[0-9]+)`));
   if (!match) return null;
-  const value = parseLocaleNumber(match[1]);
+  const value = parseLocaleNumber(match[1].replace(/\s/g, ''));
   return signed ? value : (value === null ? null : Math.abs(value));
 }
-
-const BODY_TYPE_ZONES = ['Athletic', 'Overweight', 'Obese', 'Muscular', 'Fit', 'Slim & muscular', 'Slim', 'Invisibly obese', 'Lean', 'Underweight'];
 
 export function parseBodyCompositionText(text) {
   const result = {};
@@ -113,8 +118,11 @@ export function parseBodyCompositionText(text) {
   ({ value: result.fat_free_weight_kg } = cursor.metric('Fat-free body weight', { hasGrade: false }));
   ({ value: result.heart_rate_bpm, grade: result.heart_rate_grade } = cursor.metric('Heart rate', { window: 25 }));
 
-  const bodyTypeIdx = Math.max(0, text.slice(cursor.pos).search(/Body type/i)) + cursor.pos;
-  result.body_type_zone = BODY_TYPE_ZONES.find((zone) => new RegExp(`\\b${zone.replace(/[&]/g, '\\&')}\\b`, 'i').test(text.slice(bodyTypeIdx))) || null;
+  // The highlighted body-type cell is shown by background color, not distinct text — OCR only
+  // sees the same 10 zone labels every time regardless of which one is actually lit up, so it
+  // can't be read reliably from text alone. Left null here; the confirm form has a dropdown of
+  // the 10 zones for the user to pick from looking at the photo.
+  result.body_type_zone = null;
 
   // Weight suggestions section — inline "Label: Value" layout, opposite direction from above.
   result.standard_weight_kg = numberAfterLabel(text, 'Standard weight');
