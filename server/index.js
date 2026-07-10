@@ -2518,8 +2518,8 @@ app.post('/api/body-composition/scan', async (req, res) => {
   requireBody(['photo'], req.body);
   const photoPath = saveUploadedDataUrl(req.body.photo, 'bodycomp');
   const absolutePath = path.join(uploadDir, photoPath.replace(/^\/uploads\//, ''));
-  const { fields } = await ocrBodyCompositionImage(absolutePath);
-  res.json({ photoPath, fields });
+  const { fields, rawText } = await ocrBodyCompositionImage(absolutePath);
+  res.json({ photoPath, fields, rawText });
 });
 
 app.post('/api/body-composition', (req, res) => {
