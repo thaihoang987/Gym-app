@@ -19,6 +19,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png"
 LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-app"
