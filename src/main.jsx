@@ -48,6 +48,15 @@ import './styles.css';
 import { createT } from './i18n.js';
 import { BODY_HIGHLIGHTER_PATHS } from './bodyHighlighterPaths.js';
 import { MUSCLE_DISPLAY_NAMES, MUSCLE_DISPLAY_NAMES_VI, addMuscleScore } from './muscleMapping.js';
+import {
+  distanceBucket,
+  normalizeLogTemplate as normalizeTemplate,
+  templateDefaultMetrics,
+  templateHasReps,
+  templateHasWeight,
+  templatePrimaryChain,
+  TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
+} from '../shared/logTemplates.js';
 
 function getMuscleNames(settings) {
   const locale = settings?.locale || '';
@@ -530,6 +539,27 @@ function addToOfflineQueue(userId, entry) {
   if (entry.type === 'complete') {
     q = q.filter((item) => !(item.type === 'complete' && Number(item.sessionId) === Number(entry.sessionId)));
   }
+  if (entry.type === 'logUpdate') {
+    if (String(entry.logId).startsWith('offline_')) {
+      // The set this edits hasn't synced yet — fold the edit straight into its pending 'log' entry
+      // instead of queuing a PATCH for an id the server has never seen.
+      q = q.map((item) => (item.type === 'log' && item.localLogId === entry.logId) ? { ...item, ...entry.patch } : item);
+      saveOfflineQueue(userId, q);
+      return entry.logId;
+    }
+    const previous = q.filter((item) => item.type === 'logUpdate' && item.logId === entry.logId);
+    q = q.filter((item) => !(item.type === 'logUpdate' && item.logId === entry.logId));
+    entry = { ...entry, patch: Object.assign({}, ...previous.map((item) => item.patch || {}), entry.patch || {}) };
+  }
+  if (entry.type === 'logDelete') {
+    if (String(entry.logId).startsWith('offline_')) {
+      // Untick before the set ever synced — just drop the pending 'log' (and any edits queued for it).
+      q = q.filter((item) => !((item.type === 'log' && item.localLogId === entry.logId) || (item.type === 'logUpdate' && item.logId === entry.logId)));
+      saveOfflineQueue(userId, q);
+      return null;
+    }
+    q = q.filter((item) => !(item.type === 'logUpdate' && item.logId === entry.logId) && !(item.type === 'logDelete' && item.logId === entry.logId));
+  }
   q.push({ ...entry, tempId: Date.now() + Math.random(), queuedAt: new Date().toISOString(), syncStatus: 'pending' });
   saveOfflineQueue(userId, q);
   // KHÔNG clear cache khi vừa enqueue offline mutation — sẽ làm mất history offline.
@@ -604,6 +634,12 @@ async function flushOfflineQueue(userId) {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
         await api(`/api/sessions/${sessionId}/logs`, { method: 'POST', offlineQueue: false, body: JSON.stringify({ userId, exerciseId: entry.exerciseId, weightKg: entry.weightKg, weightUnit: entry.weightUnit, reps: entry.reps, metrics: entry.metrics || {}, isSuperset: Boolean(entry.isSuperset) }) });
+      } else if (entry.type === 'logUpdate') {
+        // logId is always a real, already-synced id here — edits made before a set finished
+        // syncing are folded into its 'log' entry instead (see addToOfflineQueue).
+        await api(`/api/logs/${entry.logId}`, { method: 'PATCH', offlineQueue: false, body: JSON.stringify({ userId, ...(entry.patch || {}) }) });
+      } else if (entry.type === 'logDelete') {
+        await api(`/api/logs/${entry.logId}?userId=${userId}`, { method: 'DELETE', offlineQueue: false });
       } else if (entry.type === 'complete') {
         const sessionId = sessionIdMap.get(Number(entry.sessionId)) || entry.sessionId;
         if (localSessionIds.has(Number(entry.sessionId)) && !sessionIdMap.has(Number(entry.sessionId))) throw new Error('Offline session has not synced yet');
@@ -1113,20 +1149,6 @@ const lbOptions = defaultLbOptions;
 const repOptions = Array.from({ length: 100 }, (_, index) => index + 1);
 const timeOptions = Array.from({ length: 241 }, (_, index) => index * 5);
 const distanceOptions = Array.from({ length: 401 }, (_, index) => Number((index * 0.05).toFixed(2)));
-const LOG_TEMPLATE_DEFS = {
-  strength: { labelKey: 'template_strength', defaults: [] },
-  bodyweight: { labelKey: 'template_bodyweight', defaults: [] },
-  timed: { labelKey: 'template_timed', defaults: ['duration_seconds'] },
-  distance: { labelKey: 'template_distance', defaults: ['distance', 'duration_seconds'] },
-  carry: { labelKey: 'template_carry', defaults: ['distance', 'duration_seconds'] },
-  mobility: { labelKey: 'template_mobility', defaults: ['duration_seconds', 'side'] },
-  custom: { labelKey: 'template_custom', defaults: [] },
-  running: { labelKey: 'template_running', defaults: ['distance', 'duration_seconds', 'pace'] },
-  stairclimber: { labelKey: 'template_stairclimber', defaults: ['duration_seconds', 'steps', 'floors'] },
-  cycling: { labelKey: 'template_cycling', defaults: ['distance', 'duration_seconds', 'speed'] },
-  elliptical: { labelKey: 'template_elliptical', defaults: ['duration_seconds', 'distance', 'resistance'] },
-  rowing: { labelKey: 'template_rowing', defaults: ['distance', 'duration_seconds', 'spm'] }
-};
 const OPTIONAL_METRIC_DEFS = [
   { key: 'weight_kg', labelKey: 'metric_weight', unit: 'kg', type: 'weight' },
   { key: 'metric_reps', labelKey: 'metric_reps', unit: 'reps', type: 'reps' },
@@ -1205,7 +1227,6 @@ const metricFormatContext = (key, metrics = {}, scope = 'metric') => {
   if (key === 'weight_kg') return { weight_unit: metrics[metricUnitStorageKey(key, scope)] };
   return metrics;
 };
-const normalizeTemplate = (value) => LOG_TEMPLATE_DEFS[value] ? value : 'strength';
 const exerciseDefaultTemplate = (exercise) => {
   if (!exercise) return 'strength';
   const name = String(exercise.name || '').toLowerCase();
@@ -1220,11 +1241,11 @@ const exerciseDefaultTemplate = (exercise) => {
   if (name.includes('jump rope')) return 'timed';
   return 'timed';
 };
-const templateDefaultMetrics = (template) => LOG_TEMPLATE_DEFS[normalizeTemplate(template)].defaults || [];
 const templateMetrics = (template, schema = []) => [...new Set([...templateDefaultMetrics(template), ...(schema || [])])];
-const cleanMetricSchemaForTemplate = (_template, schema = []) => (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key));
-const templateHasWeight = (template) => ['strength', 'carry', 'custom'].includes(normalizeTemplate(template));
-const templateHasReps = (template) => ['strength', 'bodyweight', 'custom'].includes(normalizeTemplate(template));
+const cleanMetricSchemaForTemplate = (template, schema = []) => {
+  const primaryKeys = templatePrimaryColumns(template).filter((column) => column?.kind === 'metric').map((column) => column.key);
+  return (schema || []).filter((key) => OPTIONAL_METRIC_DEFS.some((item) => item.key === key) && !primaryKeys.includes(key));
+};
 const normalizeWeightMode = (value, fallback = 'KG') => ['KG', 'LB', 'MANUAL'].includes(String(value || fallback).toUpperCase()) ? String(value || fallback).toUpperCase() : 'KG';
 const normalizeManualUnit = (value, fallback = 'kg') => ['kg', 'lb'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'kg';
 const normalizeDurationUnit = (value, fallback = 'sec') => ['sec', 'min'].includes(String(value || fallback).toLowerCase()) ? String(value || fallback).toLowerCase() : 'sec';
@@ -1280,9 +1301,19 @@ const templatePrimaryColumns = (template) => {
 const formatDuration = (seconds) => {
   const total = Number(seconds || 0);
   if (!total) return '';
-  const minutes = Math.floor(total / 60);
-  const rest = total % 60;
-  return minutes ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+};
+const secondsFromHms = (h, m, s) => (Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0);
+const hmsFromSeconds = (seconds) => {
+  const total = Number(seconds || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = Math.floor(total % 60);
+  return [h, m, s];
 };
 const formatMetricValue = (key, value, settings = {}, metrics = {}) => {
   if (value === undefined || value === null || value === '') return '';
@@ -1346,34 +1377,42 @@ const formatPrItem = (item, settings = {}, fallbackUnit = 'kg', t = createT(sett
       return t('pr_generic', t(`metric_${String(item.kind || 'metric').replace(/^metric_/, '')}`), formatMetricNumber(item.value, 1));
   }
 };
-const setPrValue = (set, template, settings = {}) => {
+const setPrValueForKind = (kind, set) => {
   const metrics = set?.metrics || {};
   const weightKg = Number(set?.weightKg ?? set?.weight_kg ?? 0);
   const reps = Number(set?.reps || 0);
   const distance = Number(metrics.distance || 0);
   const seconds = Number(metrics.duration_seconds || 0);
-  switch (normalizeTemplate(template)) {
-    case 'running':
+  switch (kind) {
+    case 'pace':
       return (distance > 0 && seconds > 0) ? seconds / distance : 0;
     case 'distance':
-    case 'cycling':
-    case 'rowing':
       return distance || 0;
-    case 'stairclimber':
-    case 'elliptical':
-    case 'timed':
-    case 'mobility':
+    case 'duration':
       return seconds || 0;
-    case 'bodyweight':
+    case 'reps':
       return reps || 0;
+    case 'weight':
+      return weightKg || 0;
     default:
       return estimateOneRepMaxKg(weightKg, reps);
   }
 };
+const setPrValue = (set, template, settings = {}) => setPrValueForKind(templatePrimaryChain(template)[0], set);
 const setBeatsPr = (value, prItem) => {
   if (!prItem || !Number(value)) return false;
   if (prItem.kind === 'pace' || prItem.kind === 'metric_pace') return Number(value) < Number(prItem.value || Infinity);
   return Number(value) > Number(prItem.value || 0);
+};
+// Running has two independent PRs: longest distance ever (prStats.primary) and best pace
+// among runs of a similar distance (rounded to the nearest 0.25km, see distanceBucket).
+const runningPaceBeatsBucketPr = (set, prStats) => {
+  const metrics = set?.metrics || {};
+  const distance = Number(metrics.distance || 0);
+  const seconds = Number(metrics.duration_seconds || 0);
+  if (!(distance > 0 && seconds > 0)) return false;
+  const record = prStats?.paceByDistance?.[distanceBucket(distance)];
+  return setBeatsPr(seconds / distance, record);
 };
 const describeSetByTemplate = (set, template, settings = {}) => {
   const metrics = set?.metrics || {};
@@ -2238,6 +2277,24 @@ async function api(path, options = {}) {
       cacheExercisePreferenceMutation(userId, exerciseId, patch);
       return { ok: true, offline: true };
     }
+    const logMatch = path.match(/^\/api\/logs\/([^/?]+)/);
+    if (offlineQueue && method === 'PATCH' && logMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      let body = {};
+      try { body = JSON.parse(options.body || '{}'); } catch {}
+      const logId = decodeURIComponent(logMatch[1]);
+      const { userId: bodyUserId, ...patch } = body;
+      const userId = bodyUserId || userIdFromApiPath(path);
+      addToOfflineQueue(userId, { type: 'logUpdate', logId, patch });
+      return { ok: true, offline: true };
+    }
+    if (offlineQueue && method === 'DELETE' && logMatch) {
+      if (!browserOffline && await checkServerAvailable(1000)) throw err;
+      const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
+      const logId = decodeURIComponent(logMatch[1]);
+      addToOfflineQueue(userId, { type: 'logDelete', logId });
+      return { ok: true, offline: true };
+    }
     if (offlineQueue && method === 'POST' && path.startsWith('/api/weekly/reset')) {
       if (!browserOffline && await checkServerAvailable(1000)) throw err;
       const userId = userIdFromRequestOptions(options) || userIdFromApiPath(path);
@@ -2819,7 +2876,7 @@ function App() {
     const savedView = sameSession ? saved.view : workout.initialView;
     if (savedView !== 'exercise') {
       const sessionData = await api(`/api/sessions/${workout.sessionId}?userId=${user.id}`);
-      const totalSets = sessionData.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+      const totalSets = (sessionData?.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
       if (!totalSets) {
         await api(`/api/sessions/${workout.sessionId}`, { method: 'DELETE', body: JSON.stringify({ userId: user.id }) });
         localStorage.removeItem(`familyGymWorkout:${user.id}`);
@@ -3331,14 +3388,14 @@ function WeeklyGoalCard({ suggestion, clock, settings, onStartRoutine, userId, o
                   </button>
                 </div>
                 {/* Per-exercise breakdown */}
-                {done && ws.exercises?.length > 0 && (
+                {done && (ws.exercises?.length || 0) > 0 && (
                   <details className="mt-2 ml-12">
                     <summary className="flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-emerald-400/70 hover:text-emerald-300">
                       <ChevronRight size={12} className="details-chevron transition-transform" />
-                      {ws.exercises.length} bài tập
+                      {(ws.exercises || []).length} bài tập
                     </summary>
                     <div className="mt-2 space-y-1.5">
-                      {ws.exercises.map((ex) => (
+                      {(ws.exercises || []).map((ex) => (
                         <div key={ex.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
                           <GifThumb exercise={ex} className="h-8 w-8" bg="bg-white/10" />
                           <div className="min-w-0 flex-1">
@@ -3366,7 +3423,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
   const t = useLang();
   const summaryByExercise = new Map(todaySummary.map((row) => [row.exercise_id, row]));
   const routine = suggestion?.routine;
-  const doneCount = routine?.exercises.filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
+  const doneCount = (routine?.exercises || []).filter((exercise) => summaryByExercise.has(exercise.id)).length || 0;
   const exerciseIndexById = new Map((routine?.exercises || []).map((exercise, index) => [exercise.id, index]));
   // Có buổi tập đang dở cho routine hôm nay không?
   const hasActiveSession = activeSession?.sessions?.some((s) => s.session.routine_id === routine?.id);
@@ -3393,7 +3450,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
         <div className="mt-5 space-y-4">
           <div className="rounded-lg bg-white/8 p-3">
             <p className="text-sm text-emerald-200">{t('today_progress')}</p>
-            <p className="mt-1 text-xl font-bold">{t('logged_count', doneCount, routine.exercises.length)}</p>
+            <p className="mt-1 text-xl font-bold">{t('logged_count', doneCount, (routine?.exercises || []).length)}</p>
             <p className="mt-1 text-sm text-emerald-200">
               {todaySummary.length ? `${todaySummary.reduce((sum, row) => sum + Number(row.sets || 0), 0)} ${t('set')} · ${todaySummary.reduce((sum, row) => sum + Number(row.total_reps || 0), 0)} reps` : t('today_no_result')}
             </p>
@@ -3403,7 +3460,7 @@ function TodayWorkoutCard({ suggestion, clock, todaySummary, onStartRoutine, set
               <div key={group.id} className="rounded-lg border border-white/20 p-3" style={{background:'rgba(255,255,255,0.06)'}}>
                 <strong className="text-sm">{group.name}</strong>
                 <div className="mt-2 space-y-2">
-                  {group.exercises.map((exercise) => {
+                  {(group.exercises || []).map((exercise) => {
                     const summary = summaryByExercise.get(exercise.id);
                     const done = Boolean(summary);
                     return (
@@ -3461,14 +3518,14 @@ function FreeTrainingSection({ title, items, empty, onStart }) {
       <div className="grid gap-2 md:grid-cols-2">
         {items.length === 0 && <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">{empty}</p>}
         {items.map((item) => {
-          const thumbs = item.exercises.slice(0, 4);
+          const thumbs = (item.exercises || []).slice(0, 4);
           return (
             <button key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 text-left" onClick={() => onStart(item)}>
               <div className="flex items-center gap-3">
                 <img src={exerciseAutoMediaUrl(thumbs[0])} className="h-14 w-14 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-950">{item.name}</p>
-                  <p className="text-sm text-teal-950">{t('exercises', item.exercises.length)}</p>
+                  <p className="text-sm text-teal-950">{t('exercises', (item.exercises || []).length)}</p>
                 </div>
                 <div className="flex -space-x-2">
                   {thumbs.map((exercise) => <GifThumb key={exercise.id} exercise={exercise} className="h-9 w-9" rounded="rounded-full" bg="border-2 border-white bg-slate-50" />)}
@@ -3507,7 +3564,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
     onStart({ sessionId: session.id });
   };
   const completeActiveSession = async (active) => {
-    const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+    const totalSets = (active?.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
     if (!totalSets) {
       if (!(await dialog.confirm(t('confirm_no_sets')))) return;
       await api(`/api/sessions/${active.session.id}`, { method: 'DELETE', body: JSON.stringify({ userId }) });
@@ -3537,8 +3594,8 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
         <div className="grid gap-3">
           {activeSessions.map((active) => {
             const title = active.routine?.name || active.group?.name || t('session_free_label');
-            const doneCount = active.exercises.filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
-            const totalSets = active.exercises.reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
+            const doneCount = (active.exercises || []).filter((exercise) => Number(exercise.completedSets || 0) > 0).length;
+            const totalSets = (active.exercises || []).reduce((sum, exercise) => sum + Number(exercise.completedSets || 0), 0);
             const exerciseGroups = workoutExerciseGroups(active);
             return (
               <article key={active.session.id} className="workout-card">
@@ -3546,7 +3603,7 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                   <div>
                     <h2 className="text-xl font-black">{title}</h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      {active.exercises.length} {t('bài')} · {t('logged_count', doneCount, active.exercises.length)} · {totalSets} {t('set')} · {t('started')} {formatTime(active.session.started_at, settings)}
+                      {(active.exercises || []).length} {t('bài')} · {t('logged_count', doneCount, (active.exercises || []).length)} · {totalSets} {t('set')} · {t('started')} {formatTime(active.session.started_at, settings)}
                     </p>
                   </div>
                 </div>
@@ -3555,10 +3612,10 @@ function StartWorkoutPage({ userId, onStart, refresh, settings }) {
                     <div key={`${active.session.id}-${group.id}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h3 className="font-black text-slate-950">{group.name}</h3>
-                        <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', group.exercises.length)}</span>
+                        <span className="text-xs font-bold text-slate-500">{t('builder_exercises_count', (group.exercises || []).length)}</span>
                       </div>
                       <div className="grid gap-2">
-                        {group.exercises.map((exercise) => (
+                        {(group.exercises || []).map((exercise) => (
                           <button
                             key={`${active.session.id}-${group.id}-${exercise.id}-${exercise.workoutIndex}`}
                             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${exercise.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`}
@@ -4396,10 +4453,10 @@ function workoutExerciseGroups(sessionData, t) {
   if (sessionData?.group?.exercises?.length) {
     return [{
       id: sessionData.group.id || 'group',
-      name: sessionData.group.name || (t ? t('free_groups') : 'Exercise Group'),
-      isSuperset: Boolean(sessionData.group.isSuperset),
-      supersetRounds: Math.max(1, Number(sessionData.group.supersetRounds || 1)),
-      exercises: sessionData.group.exercises.map((exercise) => takeFlatExercise(exercise, sessionData.group.name))
+      name: sessionData.group?.name || (t ? t('free_groups') : 'Exercise Group'),
+      isSuperset: Boolean(sessionData.group?.isSuperset),
+      supersetRounds: Math.max(1, Number(sessionData.group?.supersetRounds || 1)),
+      exercises: (sessionData.group?.exercises || []).map((exercise) => takeFlatExercise(exercise, sessionData.group?.name))
     }];
   }
 
@@ -4559,9 +4616,9 @@ function SessionDetail({ detail, settings }) {
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_sets')}</p><strong>{detail.summary.totalSets}</strong></div>
         <div className="rounded-md bg-slate-50 p-2"><p className="text-xs text-slate-500">{t('detail_volume')}</p><strong>{formatOneDecimal(detail.summary.totalVolume)}</strong></div>
       </div>
-      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail.summary.improvedCount, detail.summary.exerciseCount)}</p>
+      <p className="rounded-md bg-orange-50 p-2 text-sm font-bold text-orange-900">{statusText} · {t('detail_improved', detail?.summary?.improvedCount || 0, detail?.summary?.exerciseCount || 0)}</p>
       <div className="space-y-2">
-        {detail.exercises.map((exercise) => {
+        {(detail?.exercises || []).map((exercise) => {
           const volume = Number(formatOneDecimal(exercise.volume || 0));
           const previousVolume = Number(formatOneDecimal(exercise.previousVolume || 0));
           const maxWeight = Number(formatOneDecimal(exercise.maxWeight || 0));
@@ -5435,7 +5492,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                       {group.isSuperset && <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-black text-orange-700">⚡ Superset ×{group.supersetRounds || 3}</span>}
                       {group.syncStatus === 'pending' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đang chờ đồng bộ">⟲</span>}
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', group.exercises.length)}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{t('builder_exercises_count', (group.exercises || []).length)}</p>
                   </>
                 )}
               </div>
@@ -5501,10 +5558,10 @@ function Builder({ userId, boot, onStart, onChanged }) {
                 )}
               </summary>
               <div className="mt-3 space-y-2">
-                {group.exercises.length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
+                {(group.exercises || []).length === 0 && <p className="text-sm text-slate-600">{t('builder_no_exercises')}</p>}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleExerciseDragEnd(event, group.id)}>
-                  <SortableContext items={group.exercises.map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
-                    {group.exercises.map((exercise) => (
+                  <SortableContext items={(group.exercises || []).map((exercise) => exercise.id)} strategy={verticalListSortingStrategy}>
+                    {(group.exercises || []).map((exercise) => (
                       <SortableExerciseRow key={exercise.id} exercise={exercise} onRemove={(exerciseId) => removeExercise(group.id, exerciseId)} />
                     ))}
                   </SortableContext>
@@ -5525,9 +5582,9 @@ function Builder({ userId, boot, onStart, onChanged }) {
           {groups.map((group) => (
             <label key={group.id} className="flex items-center gap-3 rounded-md bg-slate-50 p-3">
               <input type="checkbox" checked={selectedGroups.includes(group.id)} onChange={(e) => setSelectedGroups((prev) => e.target.checked ? [...prev, group.id] : prev.filter((id) => id !== group.id))} />
-              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', group.exercises.length)})</small></span>
+              <span className="min-w-0 flex-1">{group.name} <small className="text-teal-950">({t('builder_exercises_count', (group.exercises || []).length)})</small></span>
               <div className="flex -space-x-2">
-                {group.exercises.slice(0, 4).map((exercise) => (
+                {(group.exercises || []).slice(0, 4).map((exercise) => (
                   <GifThumb key={exercise.id} exercise={exercise} className="h-8 w-8" rounded="rounded-full" bg="border-2 border-white bg-white" />
                 ))}
               </div>
@@ -5561,7 +5618,7 @@ function Builder({ userId, boot, onStart, onChanged }) {
                     ) : (
                       <>
                         <h3 className="break-words font-bold leading-tight">{routine.name}</h3>
-                        <p className="mt-0.5 text-xs text-slate-500">{routine.groups.length} group · {t('builder_exercises_count', routine.exercises.length)}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{(routine.groups || []).length} group · {t('builder_exercises_count', (routine.exercises || []).length)}</p>
                       </>
                     )}
                   </div>
@@ -5653,7 +5710,7 @@ function ScheduleAssignPanel({ title, description, mode, routines, rules, onAssi
               <img src={exerciseAutoMediaUrl(routine.exercises[0])} className="h-11 w-11 rounded-md bg-slate-50 object-contain ring-1 ring-slate-200" />
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold">{routine.name}</h3>
-                <p className="text-xs text-slate-500">{t('builder_exercises_count', routine.exercises.length)} · {routine.groups.map((g) => g.name).join(' + ')}</p>
+                <p className="text-xs text-slate-500">{t('builder_exercises_count', (routine.exercises || []).length)} · {(routine.groups || []).map((g) => g.name).join(' + ')}</p>
               </div>
             </div>
             <select className="input mt-3" onChange={(e) => e.target.value && onAssign(routine.id, mode, e.target.value)}>
@@ -6204,10 +6261,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const manualLb = preferredManualLb ?? Number(kgToLb(baseWeightKg).toFixed(1));
         return {
           setIndex,
-          weightKg: nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg,
+          weightKg: templateHasWeight(nextTemplate)
+            ? (nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg)
+            : 0,
           manualKg,
           manualLb,
-          reps: previous?.reps ?? lastCurrent?.reps ?? defaultReps,
+          reps: templateHasReps(nextTemplate) ? (previous?.reps ?? lastCurrent?.reps ?? defaultReps) : 0,
           metrics: { ...(previous?.metrics || {}), ...(lastCurrent?.metrics || {}) },
           done: false
         };
@@ -6392,7 +6451,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     const doneSets = current.map((row) => ({ id: row.id, setIndex: row.set_index, weightKg: row.weight_kg, weightUnit: row.weight_unit || 'kg', manualKg: row.weight_kg, manualLb: Number(kgToLb(row.weight_kg).toFixed(1)), reps: row.reps, metrics: row.metrics || {}, done: true }));
     const lastMetricSource = [...doneSets].reverse().find((set) => set.metrics?.duration_unit || set.metrics?.distance_unit)?.metrics || {};
     const savedDurationUnit = ['sec', 'min'].includes(payload.defaultDurationUnit) ? payload.defaultDurationUnit : null;
-    const savedDistanceUnit = ['km', 'mile'].includes(payload.defaultDistanceUnit) ? payload.defaultDistanceUnit : null;
+    const savedDistanceUnit = ['km', 'mile', 'm'].includes(payload.defaultDistanceUnit) ? payload.defaultDistanceUnit : null;
     const nextMetricUnits = {
       duration_unit: savedDurationUnit || lastMetricSource.duration_unit || 'sec',
       distance_unit: savedDistanceUnit || lastMetricSource.distance_unit || settings?.distance_unit || 'km'
@@ -6418,10 +6477,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const draftManualLb = perSet?.manualWeightLb ?? payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
       return {
         setIndex,
-        weightKg: unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg,
+        weightKg: templateHasWeight(nextTemplate) ? (unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg) : 0,
         manualKg: draftManualKg,
         manualLb: draftManualLb,
-        reps: payload.defaultReps ?? settings?.default_reps ?? 12,
+        reps: templateHasReps(nextTemplate) ? (payload.defaultReps ?? settings?.default_reps ?? 12) : 0,
         metrics: {
           ...(lastDone?.metrics || {}),
           duration_unit: nextMetricUnits.duration_unit,
@@ -6433,13 +6492,19 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     setSets([...doneSets, ...drafts]);
     setData((currentData) => currentData ? {
       ...currentData,
-      exercises: currentData.exercises.map((item) => (
+      exercises: (currentData.exercises || []).map((item) => (
         item.id === exercise.id ? { ...item, completedSets: doneSets.length } : item
       ))
     } : currentData);
   };
   const addSet = async () => {
-    const lastSet = sets[sets.length - 1] || { weightKg: 20, manualKg: 20, manualLb: Number(kgToLb(20).toFixed(1)), reps: 8, metrics: {} };
+    const lastSet = sets[sets.length - 1] || {
+      weightKg: templateHasWeight(logTemplate) ? 20 : 0,
+      manualKg: 20,
+      manualLb: Number(kgToLb(20).toFixed(1)),
+      reps: templateHasReps(logTemplate) ? 8 : 0,
+      metrics: {}
+    };
     const nextCount = sets.length + 1;
     setSets((old) => [...old, { setIndex: nextCount, weightKg: lastSet.weightKg, manualKg: lastSet.manualKg ?? lastSet.weightKg, manualLb: lastSet.manualLb ?? Number(kgToLb(lastSet.weightKg).toFixed(1)), reps: lastSet.reps, metrics: { ...(lastSet.metrics || {}) }, done: false }]);
     await saveTargetSets(nextCount);
@@ -6535,7 +6600,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (!isOnline) {
       // Offline: lưu queue, dùng temp ID
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', localLogId: tempId, sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: tempId, weightKg: logWeightKg, weightUnit, done: true } : item));
       setData((current) => current ? { ...current, exercises: current.exercises.map((item) => item.id === exercise.id ? { ...item, completedSets: Number(item.completedSets || 0) + 1 } : item) } : current);
       if (!options.skipTimer) startTimer(Number(settings?.rest_seconds || 60));
@@ -6548,13 +6613,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
-      addToOfflineQueue(userId, { type: 'log', sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
+      addToOfflineQueue(userId, { type: 'log', localLogId: tempId, sessionId: workout.sessionId, exerciseId: exercise.id, setIndex: set.setIndex, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) });
       result = { id: tempId };
     }
     setSets((old) => old.map((item) => item.setIndex === set.setIndex ? { ...item, id: result.id, weightKg: logWeightKg, weightUnit, done: true } : item));
     setData((current) => current ? {
       ...current,
-      exercises: current.exercises.map((item) => (
+      exercises: (current.exercises || []).map((item) => (
         item.id === exercise.id
           ? { ...item, completedSets: Number(item.completedSets || 0) + 1 }
           : item
@@ -6783,7 +6848,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const primaryMetricKeys = primaryColumns.filter((column) => column?.kind === 'metric').map((column) => column.key);
   const rowMetricKeys = metricSchema;
   const exerciseWeightUnit = currentWeightUnit();
-  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !metricSchema.includes(item.key));
+  // Don't offer a metric that's already the template's own primary column (e.g. distance/duration for running) —
+  // it would create a redundant second input for data that's already recorded as the exercise's main field.
+  const metricChoices = OPTIONAL_METRIC_DEFS.filter((item) => !metricSchema.includes(item.key) && !primaryMetricKeys.includes(item.key));
   const hasTimeMetric = activeMetricKeys.includes('duration_seconds');
   const hasDistanceMetric = activeMetricKeys.includes('distance');
   const hasWeightMetric = metricSchema.includes('weight_kg');
@@ -6830,25 +6897,51 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       );
     }
     if (def.type === 'time') {
-      const unit = set.done ? (set.metrics?.[unitKey] || option.durationUnit || 'sec') : (option.durationUnit || 'sec');
-      const displayValue = value === '' ? '' : (unit === 'min' ? formatMetricNumber(Number(value) / 60, 1) : formatMetricNumber(value, 0));
+      const [h, m, s] = hmsFromSeconds(value);
+      const hourOptions = Array.from({ length: 100 }, (_, i) => i);
+      const minSecOptions = Array.from({ length: 60 }, (_, i) => i);
       return (
         <div className="metric-unit-control" style={disabledStyle}>
-          <input
-            className="metric-input"
-            type="number"
-            step={unit === 'min' ? '0.1' : '1'}
-            disabled={set.done}
-            value={displayValue}
-            placeholder={unit}
-            onChange={(event) => {
-              const raw = event.target.value;
-              updateSetMetrics(set.setIndex, {
-                [storageKey]: raw === '' ? '' : (unit === 'min' ? Number(raw) * 60 : Number(raw)),
-                [unitKey]: unit
-              });
-            }}
-          />
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={h}
+                options={hourOptions}
+                disabled={set.done}
+                onChange={(hh) => {
+                  const newSeconds = secondsFromHms(hh, m, s);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>h</div>
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>:</div>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={m}
+                options={minSecOptions}
+                disabled={set.done}
+                onChange={(mm) => {
+                  const newSeconds = secondsFromHms(h, mm, s);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>m</div>
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>:</div>
+            <div style={{ flex: 1 }}>
+              <WheelPicker
+                value={s}
+                options={minSecOptions}
+                disabled={set.done}
+                onChange={(ss) => {
+                  const newSeconds = secondsFromHms(h, m, ss);
+                  updateSetMetrics(set.setIndex, { [storageKey]: newSeconds, [unitKey]: 'sec' });
+                }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '4px', color: '#666' }}>s</div>
+            </div>
+          </div>
         </div>
       );
     }
@@ -7015,8 +7108,8 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     return items.map((item) => formatPrItem(item, settings, exerciseWeightUnit, t)).filter(Boolean).slice(0, 1);
   })();
   const metricPrForSet = (set, key) => {
-    const prWorthyMetrics = new Set(['weight_kg', 'metric_reps', 'duration_seconds', 'distance', 'steps', 'floors', 'watts']);
-    if (!prWorthyMetrics.has(key)) return '';
+    // Every numeric metric gets a PR — only the categorical 'side' selector has nothing to compare.
+    if (metricDef(key).type === 'side') return '';
     const metrics = set?.metrics || {};
     const storageKey = metricStorageKey(key, 'metric');
     const weightKey = metricStorageKey('weight_kg', 'metric');
@@ -7091,13 +7184,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
               style={{opacity: index === 0 ? 0.3 : 1}}
             >‹</button>
             <span className="text-sm font-bold text-slate-600 min-w-[2.5rem] text-center whitespace-nowrap">
-              {index + 1}/{data.exercises.length}
+              {index + 1}/{(data?.exercises || []).length}
             </span>
             <button
               className="ghost-btn px-3 py-3 text-lg font-bold"
-              disabled={index >= data.exercises.length - 1}
+              disabled={index >= (data?.exercises || []).length - 1}
               onClick={() => openExercise(index + 1)}
-              style={{opacity: index >= data.exercises.length - 1 ? 0.3 : 1}}
+              style={{opacity: index >= (data?.exercises || []).length - 1 ? 0.3 : 1}}
             >›</button>
           </>
         )}
@@ -7122,12 +7215,12 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h2 className="font-black text-slate-950">{group.isSuperset ? `${t('superset_label')} · ${group.name}` : group.name}</h2>
                   <span className="text-xs font-bold text-slate-500">
-                    {t('builder_exercises_count', group.exercises.length)}
+                    {t('builder_exercises_count', (group.exercises || []).length)}
                     {group.isSuperset ? ` · ${group.supersetRounds || 1} ${t('superset_rounds')}` : ''}
                   </span>
                 </div>
                 <div className="grid gap-2">
-                  {group.exercises.map((item) => (
+                  {(group.exercises || []).map((item) => (
                     <button key={`${group.id}-${item.id}-${item.workoutIndex}`} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${item.completedSets ? 'border-emerald-300 bg-emerald-50' : 'border-orange-200 bg-orange-50'}`} onClick={() => openExercise(item.workoutIndex)}>
                       {exerciseAutoMediaUrl(item) ? <img src={exerciseAutoMediaUrl(item)} className="h-14 w-14 rounded-md bg-slate-50 object-contain" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-white text-2xl">{item.customIcon || '🏋️'}</span>}
                       <div className="min-w-0 flex-1">
@@ -7150,7 +7243,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       ) : (() => {
         const THRESHOLD = 80;
         const canPrev = index > 0;
-        const canNext = index < data.exercises.length - 1;
+        const canNext = index < (data?.exercises || []).length - 1;
         const progress = Math.min(1, Math.abs(swipeDx) / THRESHOLD);
         // Scale mũi tên: nhỏ → to theo lực kéo
         const arrowSize = 40 + progress * 40; // 40px → 80px
@@ -7282,7 +7375,10 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
                 const lockedDone = set.done && set.setIndex !== lastDoneIndex;
                 const locked = lockedUndone || lockedDone;
                 const setPrimaryPrValue = setPrValue(set, logTemplate, settings);
-                const isPR = set.done && prStats?.primary && setBeatsPr(setPrimaryPrValue, prStats.primary);
+                const isPR = set.done && Boolean(
+                  (prStats?.primary && setBeatsPr(setPrimaryPrValue, prStats.primary)) ||
+                  (normalizeTemplate(logTemplate) === 'running' && runningPaceBeatsBucketPr(set, prStats))
+                );
                 return (
                   <div key={set.setIndex} className={`set-card ${set.done ? 'done' : ''} ${isPR ? 'pr' : ''}`}>
                     {isPR && <div className="pr-banner">🏆 Personal Record!</div>}
@@ -7684,9 +7780,9 @@ function Analytics({ userId, settings }) {
 
   useEffect(() => {
     api(`/api/analytics?userId=${userId}`).then((data) => {
-      setAnalytics(data);
-      setSelectedExerciseId((current) => current || data.exercises?.[0]?.id || '');
-      setSelectedRoutineName((current) => current || data.routines?.[0]?.name || '');
+      setAnalytics(data || { exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
+      setSelectedExerciseId((current) => current || data?.exercises?.[0]?.id || '');
+      setSelectedRoutineName((current) => current || data?.routines?.[0]?.name || '');
     });
     api(`/api/body-weight?userId=${userId}`).then(setWeights);
   }, [userId]);

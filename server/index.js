@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authVersion, db, getExerciseTranslation, hashPassword, importHasaneyldrmDataset, migrate, publicExercise, rootDir, uploadDir, verifyPassword } from './db.js';
+import { distanceBucket, normalizeLogTemplate, templateDefaultMetrics, templateHasReps, templateHasWeight, templatePrimaryChain } from '../shared/logTemplates.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -107,7 +108,6 @@ function requireBody(fields, body) {
   }
 }
 
-const LOG_TEMPLATES = new Set(['strength', 'bodyweight', 'timed', 'distance', 'carry', 'mobility', 'custom', 'running', 'stairclimber', 'cycling', 'elliptical', 'rowing']);
 const METRIC_KEYS = new Set(['duration_seconds', 'duration_unit', 'distance', 'distance_unit', 'weight_kg', 'weight_unit', 'metric_reps', 'extra_duration_seconds', 'extra_duration_unit', 'extra_distance', 'extra_distance_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'side', 'extra_side', 'speed', 'pace', 'calories', 'heart_rate', 'incline', 'resistance', 'level', 'steps', 'rpe', 'rounds', 'custom', 'floors', 'cadence', 'watts', 'strides', 'spm']);
 
 function safeJsonParse(value, fallback) {
@@ -119,16 +119,14 @@ function safeJsonParse(value, fallback) {
   }
 }
 
-function normalizeLogTemplate(value, fallback = 'strength') {
-  const template = String(value || fallback || 'strength').toLowerCase();
-  return LOG_TEMPLATES.has(template) ? template : 'strength';
-}
-
-function normalizeMetricSchema(value) {
+function normalizeMetricSchema(value, template = null) {
   const source = Array.isArray(value) ? value : safeJsonParse(value, []);
-  return Array.isArray(source)
-    ? [...new Set(source.map((item) => String(item || '').trim()).filter((item) => item && (METRIC_KEYS.has(item) || item.startsWith('custom:'))))].slice(0, 12)
-    : [];
+  if (!Array.isArray(source)) return [];
+  // A template's own primary fields (templateDefaultMetrics) are never valid entries in the
+  // user-added metric schema — enforced here too, not just in the client UI, so the primary/secondary
+  // boundary holds even for requests that bypass the normal "Add metric" flow.
+  const primaryKeys = template ? new Set(templateDefaultMetrics(template)) : new Set();
+  return [...new Set(source.map((item) => String(item || '').trim()).filter((item) => item && (METRIC_KEYS.has(item) || item.startsWith('custom:')) && !primaryKeys.has(item)))].slice(0, 12);
 }
 
 function normalizeWeightMode(value, fallback = 'KG') {
@@ -210,10 +208,12 @@ function estimateOneRepMax(weightKg, reps) {
 }
 
 function higherPr(current, candidate) {
-  if (!candidate || !Number.isFinite(Number(candidate.value))) return current;
+  if (!candidate || !Number.isFinite(Number(candidate.value)) || Number(candidate.value) <= 0) return current;
   if (!current || Number(candidate.value) > Number(current.value || 0)) return candidate;
   return current;
 }
+
+const LOWER_IS_BETTER_METRIC_KEYS = new Set(['pace']);
 
 function lowerPr(current, candidate) {
   if (!candidate || !Number.isFinite(Number(candidate.value)) || Number(candidate.value) <= 0) return current;
@@ -233,7 +233,7 @@ function prBase(row, value, extra = {}) {
 }
 
 function buildPrStats(rows = [], template = 'strength') {
-  const stats = { template: {}, metrics: {}, metricOneRm: null };
+  const stats = { template: {}, metrics: {}, metricOneRm: null, paceByDistance: {} };
   for (const raw of rows) {
     const row = logRow(raw);
     const metrics = row.metrics || {};
@@ -257,6 +257,8 @@ function buildPrStats(rows = [], template = 'strength') {
     if (seconds > 0) stats.template.duration = higherPr(stats.template.duration, prBase(row, seconds, { kind: 'duration', unit: metrics.duration_unit || 'sec' }));
     if (distance > 0 && seconds > 0) {
       stats.template.pace = lowerPr(stats.template.pace, prBase(row, seconds / distance, { kind: 'pace', distance, seconds }));
+      const bucket = distanceBucket(distance);
+      stats.paceByDistance[bucket] = lowerPr(stats.paceByDistance[bucket], prBase(row, seconds / distance, { kind: 'pace', distance, seconds, bucket }));
     }
 
     if (metricWeightKg > 0) stats.metrics.weight_kg = higherPr(stats.metrics.weight_kg, prBase(row, metricWeightKg, { kind: 'metric_weight', unit: metrics.extra_weight_unit || 'kg' }));
@@ -269,40 +271,18 @@ function buildPrStats(rows = [], template = 'strength') {
     for (const [key, value] of Object.entries(metrics)) {
       if (['weight_kg', 'weight_unit', 'metric_reps', 'distance', 'distance_unit', 'duration_seconds', 'duration_unit', 'extra_weight_kg', 'extra_weight_unit', 'extra_metric_reps', 'extra_distance', 'extra_distance_unit', 'extra_duration_seconds', 'extra_duration_unit'].includes(key)) continue;
       const numeric = Number(value);
-      if (Number.isFinite(numeric)) stats.metrics[key] = higherPr(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
+      if (!Number.isFinite(numeric)) continue;
+      // 'pace' is lower-is-better (seconds/km), same as the derived pace above — keep the comparison direction consistent
+      // whether the value came from a manually-entered pace metric or the extra_distance/extra_duration_seconds calculation.
+      const pick = LOWER_IS_BETTER_METRIC_KEYS.has(key) ? lowerPr : higherPr;
+      stats.metrics[key] = pick(stats.metrics[key], prBase(row, numeric, { kind: `metric_${key}` }));
     }
   }
 
-  switch (normalizeLogTemplate(template)) {
-    case 'distance':
-      stats.primary = stats.template.distance || stats.template.pace || null;
-      break;
-    case 'running':
-      stats.primary = stats.template.pace || stats.template.distance || null;
-      break;
-    case 'cycling':
-    case 'rowing':
-      stats.primary = stats.template.distance || stats.template.pace || null;
-      break;
-    case 'stairclimber':
-      stats.primary = stats.template.duration || stats.metrics.floors || null;
-      break;
-    case 'elliptical':
-      stats.primary = stats.template.duration || stats.template.distance || null;
-      break;
-    case 'timed':
-    case 'mobility':
-      stats.primary = stats.template.duration || null;
-      break;
-    case 'bodyweight':
-      stats.primary = stats.template.reps || null;
-      break;
-    case 'carry':
-      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.distance || null;
-      break;
-    default:
-      stats.primary = stats.template.oneRm || stats.template.weight || stats.template.volume || null;
-      break;
+  stats.primary = null;
+  for (const kind of templatePrimaryChain(template)) {
+    const value = kind.startsWith('metrics:') ? stats.metrics[kind.slice('metrics:'.length)] : stats.template[kind];
+    if (value) { stats.primary = value; break; }
   }
   return stats;
 }
@@ -698,7 +678,8 @@ function importExcelRows(userId, rows) {
         db.prepare('INSERT OR REPLACE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(data.id, data.session_id, userId, data.exercise_id, data.set_index, data.weight_kg, data.weight_unit || 'kg', data.reps, JSON.stringify(normalizeMetrics(data.metrics_json || data.metrics || {})), data.completed_at);
         bump(type);
       } else if (type === 'Ghi chú bài tập') {
-        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, normalizeLogTemplate(data.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(data.metric_schema_json || data.metricSchema || [])), JSON.stringify(normalizeInputOptions(data.input_options_json || data.inputOptions || {})), data.updated_at);
+        const restoredTemplate = normalizeLogTemplate(data.log_template || 'strength');
+        db.prepare('INSERT OR REPLACE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, data.exercise_id, data.note || '', data.target_sets || 3, data.weight_mode || 'KG', data.manual_weight_kg ?? null, data.default_reps ?? null, data.default_weight_kg ?? null, restoredTemplate, JSON.stringify(normalizeMetricSchema(data.metric_schema_json || data.metricSchema || [], restoredTemplate)), JSON.stringify(normalizeInputOptions(data.input_options_json || data.inputOptions || {})), data.updated_at);
         bump(type);
       } else if (type === 'Cân nặng cơ thể') {
         db.prepare('INSERT OR REPLACE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(data.id, userId, data.weight, data.unit || 'kg', data.logged_at);
@@ -2119,8 +2100,21 @@ app.post('/api/sessions/:id/logs', (req, res) => {
   const userId = getUserId(req);
   requireBody(['exerciseId'], req.body);
   const sessionId = Number(req.params.id);
+  const exercisePref = one('SELECT log_template FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, req.body.exerciseId]);
+  const logTemplate = normalizeLogTemplate(exercisePref?.log_template || 'strength');
+  if (templateHasWeight(logTemplate)) requireBody(['weightKg'], req.body);
+  if (templateHasReps(logTemplate)) requireBody(['reps'], req.body);
+  const rawMetrics = normalizeMetrics(req.body.metrics || {});
+  const metrics = {};
+  for (const key of normalizeMetricSchema(Object.keys(rawMetrics), logTemplate)) {
+    metrics[key] = rawMetrics[key];
+  }
+  if (!templateHasWeight(logTemplate) && !templateHasReps(logTemplate) && Object.keys(metrics).length === 0) {
+    const error = new Error(`Missing metrics for log template: ${logTemplate}`);
+    error.status = 400;
+    throw error;
+  }
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : 'kg';
-  const metrics = normalizeMetrics(req.body.metrics || {});
   const setIndex = one('SELECT COALESCE(MAX(set_index), 0) + 1 AS next_set FROM workout_logs WHERE session_id = ? AND exercise_id = ?', [sessionId, req.body.exerciseId]).next_set;
   const result = db.prepare(`
     INSERT INTO workout_logs (session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json)
@@ -2178,8 +2172,19 @@ app.patch('/api/logs/:id', (req, res) => {
   const logId = Number(req.params.id);
   const log = one('SELECT * FROM workout_logs WHERE id = ? AND user_id = ?', [logId, userId]);
   if (!log) return res.status(404).json({ error: 'Không tìm thấy set' });
+  if (req.body.weightKg === undefined && req.body.reps === undefined && req.body.metrics === undefined) {
+    const error = new Error('No fields to update');
+    error.status = 400;
+    throw error;
+  }
+  const exercisePref = one('SELECT log_template FROM exercise_notes WHERE user_id = ? AND exercise_id = ?', [userId, log.exercise_id]);
+  const logTemplate = normalizeLogTemplate(exercisePref?.log_template || 'strength');
   const weightUnit = ['kg', 'lb'].includes(req.body.weightUnit) ? req.body.weightUnit : log.weight_unit || 'kg';
-  const metrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
+  const rawMetrics = req.body.metrics === undefined ? normalizeMetrics(log.metrics_json || {}) : normalizeMetrics(req.body.metrics || {});
+  const metrics = normalizeMetricSchema(Object.keys(rawMetrics), logTemplate).reduce((acc, key) => {
+    acc[key] = rawMetrics[key];
+    return acc;
+  }, {});
   db.prepare('UPDATE workout_logs SET weight_kg = ?, weight_unit = ?, reps = ?, metrics_json = ? WHERE id = ? AND user_id = ?')
     .run(
       req.body.weightKg === undefined ? Number(log.weight_kg || 0) : Number(req.body.weightKg || 0),
@@ -2225,18 +2230,6 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
   const manualSetRows = all('SELECT set_index, manual_weight_kg, manual_weight_lb FROM exercise_set_manual WHERE user_id = ? AND exercise_id = ? ORDER BY set_index', [userId, exerciseId]);
   const manualSets = manualSetRows.map((row) => ({ setIndex: row.set_index, manualWeightKg: row.manual_weight_kg ?? null, manualWeightLb: row.manual_weight_lb ?? null }));
   const settings = one('SELECT default_sets, default_reps FROM user_settings WHERE user_id = ?', [userId]) || {};
-  // All-time PR: max weight đã từng log cho bài này
-  const prRow = one(`
-    SELECT COALESCE(MAX(wl.weight_kg * (1 + (wl.reps / 30.0))), 0) AS all_time_one_rm
-    FROM workout_logs wl
-    JOIN workout_sessions ws ON ws.id = wl.session_id
-    WHERE wl.user_id = ?
-      AND wl.exercise_id = ?
-      AND ws.status = 'COMPLETED'
-      AND wl.weight_kg > 0
-      AND wl.reps > 0
-  `, [userId, exerciseId]);
-  const allTimePR = Number(prRow?.all_time_one_rm || 0);
   const completedRows = all(`
     SELECT wl.id, wl.session_id, wl.set_index, wl.weight_kg, wl.weight_unit, wl.reps, wl.metrics_json, wl.completed_at
     FROM workout_logs wl
@@ -2250,6 +2243,8 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     ...buildPrStats(completedRows, normalizeLogTemplate(preference?.log_template || 'strength')),
     exerciseId
   };
+  // All-time PR (legacy field): reuses the one-rep-max already derived above, no extra query needed.
+  const allTimePR = Number(prStats.template?.oneRm?.value || 0);
   const inputOptions = normalizeInputOptions(preference?.input_options_json || '{}', {
     template: {
       weightMode: preference?.weight_mode || 'KG',
@@ -2274,7 +2269,7 @@ app.get('/api/sessions/:id/exercises/:exerciseId/sets', (req, res) => {
     manualWeightLb: preference?.manual_weight_lb ?? null,
     manualUnit: preference?.manual_unit || 'kg',
     logTemplate: preference ? normalizeLogTemplate(preference.log_template || 'strength') : null,
-    metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]'),
+    metricSchema: normalizeMetricSchema(preference?.metric_schema_json || '[]', normalizeLogTemplate(preference?.log_template || 'strength')),
     inputOptions,
     defaultDurationUnit: ['sec', 'min'].includes(preference?.default_duration_unit) ? preference.default_duration_unit : 'sec',
     defaultDistanceUnit: ['km', 'mile', 'm'].includes(preference?.default_distance_unit) ? preference.default_distance_unit : 'km',
@@ -2342,8 +2337,8 @@ app.put('/api/exercises/:id/preferences', (req, res) => {
     ? normalizeLogTemplate(previous.log_template || 'strength')
     : normalizeLogTemplate(req.body.logTemplate);
   const metricSchema = req.body.metricSchema === undefined
-    ? normalizeMetricSchema(previous.metric_schema_json || '[]')
-    : normalizeMetricSchema(req.body.metricSchema || []);
+    ? normalizeMetricSchema(previous.metric_schema_json || '[]', logTemplate)
+    : normalizeMetricSchema(req.body.metricSchema || [], logTemplate);
   const defaultDurationUnit = req.body.defaultDurationUnit === undefined
     ? (['sec', 'min'].includes(previous.default_duration_unit) ? previous.default_duration_unit : 'sec')
     : (['sec', 'min'].includes(req.body.defaultDurationUnit) ? req.body.defaultDurationUnit : 'sec');
@@ -2556,7 +2551,8 @@ function importBackupData(userId, backup) {
       db.prepare('INSERT OR IGNORE INTO workout_logs (id, session_id, user_id, exercise_id, set_index, weight_kg, weight_unit, reps, metrics_json, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(log.id, log.session_id, userId, log.exercise_id, log.set_index, log.weight_kg, log.weight_unit || 'kg', log.reps, JSON.stringify(normalizeMetrics(log.metrics_json || log.metrics || {})), log.completed_at);
     }
     for (const note of data.exerciseNotes || []) {
-      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, normalizeLogTemplate(note.log_template || 'strength'), JSON.stringify(normalizeMetricSchema(note.metric_schema_json || note.metricSchema || [])), JSON.stringify(normalizeInputOptions(note.input_options_json || note.inputOptions || {})), note.updated_at);
+      const restoredTemplate = normalizeLogTemplate(note.log_template || 'strength');
+      db.prepare('INSERT OR IGNORE INTO exercise_notes (user_id, exercise_id, note, target_sets, weight_mode, manual_weight_kg, default_reps, default_weight_kg, log_template, metric_schema_json, input_options_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(userId, note.exercise_id, note.note || '', note.target_sets || 3, note.weight_mode || 'KG', note.manual_weight_kg ?? null, note.default_reps ?? null, note.default_weight_kg ?? null, restoredTemplate, JSON.stringify(normalizeMetricSchema(note.metric_schema_json || note.metricSchema || [], restoredTemplate)), JSON.stringify(normalizeInputOptions(note.input_options_json || note.inputOptions || {})), note.updated_at);
     }
     for (const weight of data.bodyWeights || []) {
       db.prepare('INSERT OR IGNORE INTO body_weight_logs (id, user_id, weight, unit, logged_at) VALUES (?, ?, ?, ?, ?)').run(weight.id, userId, weight.weight, weight.unit || 'kg', weight.logged_at);
