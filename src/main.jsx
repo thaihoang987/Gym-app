@@ -1550,6 +1550,7 @@ const localeOptions = [
   ['de-DE', 'Deutsch'],
   ['fr-FR', 'Français'],
   ['ru-RU', 'Русский'],
+  ['it-IT', 'Italiano'],
 ];
 const rangeOptionsDays = { '3d': 3, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825, 'all': null };
 const getRangeOptions = (t) => [
@@ -5062,11 +5063,19 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 
 function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
   const t = useLang();
-  const rawSteps = (exercise.steps?.length
-    ? exercise.steps
-    : exercise.instructions
-      ? String(exercise.instructions).split(/\n+/)
-      : []);
+  const locale = settings?.locale || 'en-US';
+  const langCode = locale.split('-')[0];
+  const localizedSteps = langCode === 'it' ? exercise.stepsIt : langCode === 'tr' ? exercise.stepsTr : null;
+  const localizedInstructions = langCode === 'it' ? exercise.instructionsIt : langCode === 'tr' ? exercise.instructionsTr : null;
+  const rawSteps = (localizedSteps?.length
+    ? localizedSteps
+    : localizedInstructions
+      ? String(localizedInstructions).split(/\n+/)
+      : exercise.steps?.length
+        ? exercise.steps
+        : exercise.instructions
+          ? String(exercise.instructions).split(/\n+/)
+          : []);
   const steps = rawSteps
     .map((step) => {
       if (typeof step === 'string') return step;

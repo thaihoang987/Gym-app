@@ -358,7 +358,11 @@ export function migrate() {
     ['is_custom', 'INTEGER NOT NULL DEFAULT 0'],
     ['is_hidden', 'INTEGER NOT NULL DEFAULT 0'],
     ['custom_icon', 'TEXT'],
-    ['display_media', "TEXT NOT NULL DEFAULT 'auto'"]
+    ['display_media', "TEXT NOT NULL DEFAULT 'auto'"],
+    ['instructions_it', 'TEXT'],
+    ['instruction_steps_it_json', 'TEXT'],
+    ['instructions_tr', 'TEXT'],
+    ['instruction_steps_tr_json', 'TEXT']
   ];
   for (const [column, definition] of exerciseColumns) {
     if (!hasColumn('exercises', column)) {
@@ -444,6 +448,28 @@ export function migrate() {
     db.prepare("UPDATE users SET role = 'ADMIN' WHERE id = 1").run();
   }
   db.prepare('INSERT OR IGNORE INTO user_settings (user_id) SELECT id FROM users').run();
+
+  // Backfill Italian/Turkish instructions from dataset if columns exist but are empty
+  const needsBackfill = db.prepare('SELECT COUNT(*) AS total FROM exercises WHERE instructions_it IS NULL AND is_custom = 0').get().total > 0;
+  if (needsBackfill) {
+    const sourcePath = path.join(rootDir, 'hasaneyldrm-exercises-dataset', 'data', 'exercises.json');
+    if (fs.existsSync(sourcePath)) {
+      const exercises = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+      const update = db.prepare('UPDATE exercises SET instructions_it = ?, instruction_steps_it_json = ?, instructions_tr = ?, instruction_steps_tr_json = ? WHERE id = ? AND is_custom = 0');
+      const tx = db.transaction((items) => {
+        for (const item of items) {
+          update.run(
+            item.instructions?.it || null,
+            JSON.stringify(item.instruction_steps?.it || []),
+            item.instructions?.tr || null,
+            JSON.stringify(item.instruction_steps?.tr || []),
+            item.id
+          );
+        }
+      });
+      tx(exercises);
+    }
+  }
 }
 
 export function publicExercise(row) {
@@ -465,6 +491,10 @@ export function publicExercise(row) {
     secondaryMuscles: JSON.parse(row.secondary_muscles_json || '[]'),
     instructions: row.instructions_en,
     steps: JSON.parse(row.instruction_steps_json || '[]'),
+    instructionsIt: row.instructions_it || null,
+    stepsIt: JSON.parse(row.instruction_steps_it_json || '[]'),
+    instructionsTr: row.instructions_tr || null,
+    stepsTr: JSON.parse(row.instruction_steps_tr_json || '[]'),
     nameVi: translation?.nameVi || null,
     bodyPartVi: translation?.bodyPartVi || null,
     equipmentVi: translation?.equipmentVi || null,
@@ -496,11 +526,15 @@ export function importHasaneyldrmDataset() {
     INSERT INTO exercises (
       id, name, category, body_part, equipment, target, muscle_group,
       secondary_muscles_json, instructions_en, instruction_steps_json,
+      instructions_it, instruction_steps_it_json,
+      instructions_tr, instruction_steps_tr_json,
       image_path, gif_path, source_created_at
     )
     VALUES (
       @id, @name, @category, @body_part, @equipment, @target, @muscle_group,
       @secondary_muscles_json, @instructions_en, @instruction_steps_json,
+      @instructions_it, @instruction_steps_it_json,
+      @instructions_tr, @instruction_steps_tr_json,
       @image_path, @gif_path, @source_created_at
     )
     ON CONFLICT(id) DO UPDATE SET
@@ -513,6 +547,10 @@ export function importHasaneyldrmDataset() {
       secondary_muscles_json = excluded.secondary_muscles_json,
       instructions_en = excluded.instructions_en,
       instruction_steps_json = excluded.instruction_steps_json,
+      instructions_it = excluded.instructions_it,
+      instruction_steps_it_json = excluded.instruction_steps_it_json,
+      instructions_tr = excluded.instructions_tr,
+      instruction_steps_tr_json = excluded.instruction_steps_tr_json,
       image_path = excluded.image_path,
       gif_path = excluded.gif_path,
       source_created_at = excluded.source_created_at
@@ -531,6 +569,10 @@ export function importHasaneyldrmDataset() {
         secondary_muscles_json: JSON.stringify(item.secondary_muscles || []),
         instructions_en: item.instructions?.en || null,
         instruction_steps_json: JSON.stringify(item.instruction_steps?.en || []),
+        instructions_it: item.instructions?.it || null,
+        instruction_steps_it_json: JSON.stringify(item.instruction_steps?.it || []),
+        instructions_tr: item.instructions?.tr || null,
+        instruction_steps_tr_json: JSON.stringify(item.instruction_steps?.tr || []),
         image_path: item.image || null,
         gif_path: item.gif_url || null,
         source_created_at: item.created_at || null
