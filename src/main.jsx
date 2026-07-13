@@ -3223,14 +3223,27 @@ function BodyWeightInput({ userId, settings }) {
   const [weight, setWeight] = useState('');
   const [unit, setUnit] = useState(settings.default_weight_unit || 'kg');
   const [history, setHistory] = useState([]);
+  const [editId, setEditId] = useState(null);
+  const [editWeight, setEditWeight] = useState('');
+  const [editUnit, setEditUnit] = useState('kg');
   const loadHistory = () => api(`/api/body-weight/recent?userId=${userId}`).then(setHistory);
-  useEffect(() => {
-    loadHistory();
-  }, [userId]);
+  useEffect(() => { loadHistory(); }, [userId]);
   const save = async () => {
     if (!weight) return;
     await api('/api/body-weight', { method: 'POST', body: JSON.stringify({ userId, weight: Number(weight), unit }) });
     setWeight('');
+    loadHistory();
+  };
+  const startEdit = (row) => {
+    setEditId(row.id);
+    setEditWeight(String(row.weight));
+    setEditUnit(row.unit);
+  };
+  const cancelEdit = () => setEditId(null);
+  const saveEdit = async (id) => {
+    if (!editWeight) return;
+    await api(`/api/body-weight/${id}`, { method: 'PUT', body: JSON.stringify({ weight: Number(editWeight), unit: editUnit }) });
+    setEditId(null);
     loadHistory();
   };
   const deleteRow = async (id) => {
@@ -3251,18 +3264,35 @@ function BodyWeightInput({ userId, settings }) {
         <button className="icon-btn" onClick={save}><Check /></button>
       </div>
       <div className="weight-history">
-        <div className="grid grid-cols-[1fr_auto_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
+        <div className="grid grid-cols-[1fr_auto_auto_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
           <span>{t('bw_date')}</span>
           <span>{t('bw_weight')}</span>
-          <span />
+          <span /><span />
         </div>
         {history.length === 0 && <p className="py-2 text-sm text-slate-600">{t('bw_no_history')}</p>}
         <div style={{ maxHeight: '10rem', overflowY: 'auto' }}>
           {history.map((row) => (
-            <div key={row.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-stone-100 py-1.5 text-sm last:border-b-0">
+            <div key={row.id} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1.5 border-b border-stone-100 py-1.5 text-sm last:border-b-0">
               <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
-              <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
-              <button className="icon-btn p-0.5 text-slate-400 hover:text-red-500" onClick={() => deleteRow(row.id)}><Trash2 size={14} /></button>
+              {editId === row.id ? (
+                <>
+                  <input className="input compact-input w-16 text-right" type="number" step="0.1" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} autoFocus />
+                  <select className="input compact-input" value={editUnit} onChange={(e) => setEditUnit(e.target.value)}>
+                    <option value="kg">kg</option>
+                    <option value="lb">lb</option>
+                  </select>
+                  <div className="flex gap-1">
+                    <button className="icon-btn p-0.5 text-emerald-600" onClick={() => saveEdit(row.id)}><Check size={14} /></button>
+                    <button className="icon-btn p-0.5 text-slate-400" onClick={cancelEdit}><X size={14} /></button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
+                  <button className="icon-btn p-0.5 text-slate-400 hover:text-blue-500" onClick={() => startEdit(row)}><Pencil size={14} /></button>
+                  <button className="icon-btn p-0.5 text-slate-400 hover:text-red-500" onClick={() => deleteRow(row.id)}><Trash2 size={14} /></button>
+                </>
+              )}
             </div>
           ))}
         </div>
