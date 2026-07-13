@@ -3233,6 +3233,10 @@ function BodyWeightInput({ userId, settings }) {
     setWeight('');
     loadHistory();
   };
+  const deleteRow = async (id) => {
+    await api(`/api/body-weight/${id}`, { method: 'DELETE' });
+    loadHistory();
+  };
   return (
     <div className="panel body-weight-card">
       <div className="body-weight-panel">
@@ -3247,17 +3251,21 @@ function BodyWeightInput({ userId, settings }) {
         <button className="icon-btn" onClick={save}><Check /></button>
       </div>
       <div className="weight-history">
-        <div className="grid grid-cols-[1fr_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
+        <div className="grid grid-cols-[1fr_auto_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
           <span>{t('bw_date')}</span>
           <span>{t('bw_weight')}</span>
+          <span />
         </div>
         {history.length === 0 && <p className="py-2 text-sm text-slate-600">{t('bw_no_history')}</p>}
-        {history.map((row) => (
-          <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-stone-100 py-2 text-sm last:border-b-0">
-            <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
-            <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
-          </div>
-        ))}
+        <div style={{ maxHeight: '10rem', overflowY: 'auto' }}>
+          {history.map((row) => (
+            <div key={row.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-stone-100 py-1.5 text-sm last:border-b-0">
+              <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
+              <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
+              <button className="icon-btn p-0.5 text-slate-400 hover:text-red-500" onClick={() => deleteRow(row.id)}><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

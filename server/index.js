@@ -2493,6 +2493,14 @@ app.post('/api/body-weight', (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
+app.delete('/api/body-weight/:id', (req, res) => {
+  const userId = getUserId(req);
+  const row = one('SELECT id FROM body_weight_logs WHERE id = ? AND user_id = ?', [req.params.id, userId]);
+  if (!row) { const e = new Error('Not found'); e.status = 404; throw e; }
+  db.prepare('DELETE FROM body_weight_logs WHERE id = ? AND user_id = ?').run(req.params.id, userId);
+  res.json({ ok: true });
+});
+
 function importBackupData(userId, backup) {
   const data = backup?.data || backup;
   if (!data || typeof data !== 'object') {
