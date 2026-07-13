@@ -1508,14 +1508,14 @@ function exerciseDisplayName(exercise, settings = {}) {
 
 function stableColorForName(name) {
   const colors = [
-    { dot: '#f05a28', fill: '#ffe3d3', ring: '#ffbd9a' },
-    { dot: '#166534', fill: '#dcfce7', ring: '#86efac' },
-    { dot: '#2563eb', fill: '#dbeafe', ring: '#93c5fd' },
-    { dot: '#7c3aed', fill: '#ede9fe', ring: '#c4b5fd' },
-    { dot: '#0f766e', fill: '#ccfbf1', ring: '#5eead4' },
-    { dot: '#be123c', fill: '#ffe4e6', ring: '#fda4af' },
-    { dot: '#ca8a04', fill: '#fef3c7', ring: '#fde68a' },
-    { dot: '#334155', fill: '#e2e8f0', ring: '#cbd5e1' }
+    { dot: '#e53e3e', fill: '#fed7d7', ring: '#fc8181' },
+    { dot: '#3182ce', fill: '#bee3f8', ring: '#63b3ed' },
+    { dot: '#38a169', fill: '#c6f6d5', ring: '#68d391' },
+    { dot: '#d69e2e', fill: '#fefcbf', ring: '#f6e05e' },
+    { dot: '#805ad5', fill: '#e9d8fd', ring: '#b794f4' },
+    { dot: '#dd6b20', fill: '#feebc8', ring: '#f6ad55' },
+    { dot: '#0bc5ea', fill: '#c4f1f9', ring: '#76e4f7' },
+    { dot: '#d53f8c', fill: '#fed7e2', ring: '#f687b3' },
   ];
   const text = String(name || 'Free workout');
   let hash = 0;
