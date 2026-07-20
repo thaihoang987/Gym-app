@@ -6656,7 +6656,16 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     let result;
     try {
       result = await api(`/api/sessions/${workout.sessionId}/logs`, { method: 'POST', body: JSON.stringify({ userId, exerciseId: exercise.id, weightKg: logWeightKg, weightUnit, reps: set.reps, metrics: set.metrics || {}, isSuperset: Boolean(supersetContext) }) });
-      await saveWeightPreference({ defaultReps: set.reps, defaultWeightKg: logWeightKg, weightMode, logTemplate, metricSchema, inputOptions });
+      await saveWeightPreference({
+        defaultReps: set.reps,
+        defaultWeightKg: logWeightKg,
+        weightMode,
+        logTemplate,
+        metricSchema,
+        inputOptions,
+        ...(weightMode === 'MANUAL' && manualUnit === 'lb' && set.manualLb != null ? { manualWeightLb: set.manualLb } : {}),
+        ...(weightMode === 'MANUAL' && manualUnit === 'kg' && set.manualKg != null ? { manualWeightKg: set.manualKg } : {}),
+      });
     } catch (error) {
       if (await checkServerAvailable(1000)) throw error;
       const tempId = `offline_${Date.now()}`;
