@@ -6628,15 +6628,13 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       if (!set.id || String(set.id).startsWith('offline_')) return;
       // Optimistic update trước
       setSets((old) => old.map((s) => s.setIndex === set.setIndex ? { ...s, done: false, id: undefined } : s));
+      setData((current) => current ? { ...current, exercises: (current.exercises || []).map((item) => item.id === exercise.id ? { ...item, completedSets: Math.max(0, Number(item.completedSets || 0) - 1) } : item) } : current);
       try {
         await api(`/api/logs/${set.id}?userId=${userId}`, { method: 'DELETE' });
       } catch {
         // DELETE thất bại — revert về trạng thái từ DB
         await refreshExerciseSets().catch(() => {});
-        return;
       }
-      // DELETE thành công — đồng bộ lại từ DB
-      await refreshExerciseSets().catch(() => {});
       return;
     }
     // Tick: bắt buộc theo thứ tự
